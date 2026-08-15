@@ -17,6 +17,16 @@ def test_one_basket_reliance_credit_pe(client):
     reliance = next(h for h in basket["holdings"] if h["name"] == "Reliance Industries")
     assert reliance["isin"] == "INE002A01018"
     assert reliance["weight"] == 8.5
+    assert basket["sector"] == {
+        "Energy": 8.5,
+        "Financial": 7.2,
+        "Unclassified": 4.0,
+    }
+    assert basket["asset"] == {"equity": 15.7, "cash": 4.0}
+    assert basket["equitySplit"]["large"] == 15.7
+    assert basket["equitySplit"]["mid"] == 0
+    assert basket["equitySplit"]["small"] == 0
+    assert basket["equitySplit"]["unclassified"] == 0
     assert basket["credit"] is None
     assert basket["pe"] is None
     assert data["asOf"] == "2026-07-31"
