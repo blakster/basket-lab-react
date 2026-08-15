@@ -1,0 +1,161 @@
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import sqlite3
+from datetime import datetime, timezone
+from pathlib import Path
+from urllib.parse import urljoin, urlparse
+
+import httpx
+
+from app.db import init_db
+from app.ingest.parse import load_holdings, parse_holdings_csv
+
+AMFI_PORTFOLIO_URL = "https://www.amfiindia.com/online-center/portfolio-disclosure"
+REPO_ROOT = Path(__file__).resolve().parents[4]
+DB_PATH = REPO_ROOT / "data" / "basket.sqlite"
+INCOMING_DIR = REPO_ROOT / "data" / "incoming"
+FIXTURE_CSV = REPO_ROOT / "fixtures" / "holdings" / "sample.csv"
+
+_FILE_EXT = (".xls", ".xlsx", ".xlsm", ".csv")
+
+
+def run_ingest(
+    conn: sqlite3.Connection,
+    *,
+    month: str,
+    files: list[Path],
+    notes: str | None = None,
+) -> dict:
+    started_at = datetime.now(timezone.utc).isoformat()
+    files_ok = 0
+    files_failed = 0
+
+    for path in files:
+        try:
+            text = Path(path).read_text(encoding="utf-8")
+            rows = parse_holdings_csv(text)
+            load_holdings(conn, rows)
+            files_ok += 1
+        except Exception:
+            files_failed += 1
+
+    finished_at = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        """
+        INSERT INTO ingest_runs (
+          started_at, finished_at, month, files_ok, files_failed, notes
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (started_at, finished_at, month, files_ok, files_failed, notes),
+    )
+    conn.commit()
+    return {
+        "month": month,
+        "files_ok": files_ok,
+        "files_failed": files_failed,
+        "notes": notes,
+    }
+
+
+def download_amfi_month(month: str, dest: Path) -> list[Path]:
+    if os.environ.get("AMFI_INGEST") != "1":
+        return []
+
+    dest = Path(dest)
+    dest.mkdir(parents=True, exist_ok=True)
+    try:
+        response = httpx.get(AMFI_PORTFOLIO_URL, follow_redirects=True, timeout=30.0)
+        response.raise_for_status()
+    except Exception:
+        return []
+
+    urls = _amfi_file_urls(response.text, month=month)
+    if not urls:
+        return []
+
+    saved: list[Path] = []
+    for url in urls:
+        try:
+            file_resp = httpx.get(url, follow_redirects=True, timeout=60.0)
+            file_resp.raise_for_status()
+            name = Path(urlparse(url).path).name or "amfi-download"
+            path = dest / name
+            path.write_bytes(file_resp.content)
+            saved.append(path)
+        except Exception:
+            continue
+    return saved
+
+
+def resolve_ingest_files(
+    *,
+    month: str,
+    source: str | None = None,
+    incoming: Path | None = None,
+) -> tuple[list[Path], str | None]:
+    if source == "fixture":
+        return [FIXTURE_CSV], None
+
+    dest = incoming if incoming is not None else INCOMING_DIR
+    if os.environ.get("AMFI_INGEST") == "1":
+        paths = download_amfi_month(month, dest)
+        notes = "amfi-listing-unparsed" if not paths else None
+        return paths, notes
+
+    if dest.is_dir():
+        return sorted(dest.glob("*.csv")), None
+    return [], None
+
+
+def _amfi_file_urls(html: str, *, month: str) -> list[str]:
+    hrefs = re.findall(r"""href\s*=\s*["']([^"']+)["']""", html, flags=re.I)
+    if not hrefs:
+        return []
+
+    file_urls: list[str] = []
+    for href in hrefs:
+        path = urlparse(href).path.lower()
+        if path.endswith(_FILE_EXT):
+            file_urls.append(urljoin(AMFI_PORTFOLIO_URL, href))
+    if not file_urls:
+        return []
+
+    month_tokens = _month_tokens(month)
+    matched = [u for u in file_urls if any(tok in u.lower() for tok in month_tokens)]
+    return matched or file_urls
+
+
+def _month_tokens(month: str) -> list[str]:
+    tokens = {month.lower(), month.replace("-", "").lower()}
+    try:
+        year, mon = month.split("-", 1)
+        dt = datetime(int(year), int(mon), 1)
+        tokens.add(dt.strftime("%b-%Y").lower())
+        tokens.add(dt.strftime("%b%Y").lower())
+        tokens.add(dt.strftime("%B-%Y").lower())
+        tokens.add(dt.strftime("%B%Y").lower())
+    except (TypeError, ValueError):
+        pass
+    return [t for t in tokens if t]
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Ingest holdings CSVs into SQLite")
+    parser.add_argument("--month", required=True, help="Filing month YYYY-MM")
+    parser.add_argument("--source", default=None, help='Use "fixture" for sample.csv')
+    args = parser.parse_args()
+
+    conn = init_db(DB_PATH)
+    try:
+        files, notes = resolve_ingest_files(month=args.month, source=args.source)
+        result = run_ingest(conn, month=args.month, files=files, notes=notes)
+        print(result)
+    finally:
+        conn.close()
+
+
+if __name__ == "__main__":
+    main()
