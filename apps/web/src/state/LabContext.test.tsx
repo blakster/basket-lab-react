@@ -1,7 +1,25 @@
 import { act, render } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LabProvider, useLab } from "./LabContext";
 import type { Basket } from "../types";
+
+const { fetchNavMock, readNavCacheEntryMock, writeNavCacheMock } = vi.hoisted(
+  () => ({
+    fetchNavMock: vi.fn(),
+    readNavCacheEntryMock: vi.fn(),
+    writeNavCacheMock: vi.fn(),
+  }),
+);
+
+vi.mock("../lib/api/nav", () => ({
+  fetchNav: (...args: unknown[]) => fetchNavMock(...args),
+}));
+
+vi.mock("../lib/navCache", () => ({
+  isNavCacheFresh: () => false,
+  readNavCacheEntry: (...args: unknown[]) => readNavCacheEntryMock(...args),
+  writeNavCache: (...args: unknown[]) => writeNavCacheMock(...args),
+}));
 
 function makeBasket(weight: number): Basket {
   return {
@@ -111,6 +129,12 @@ describe("LabContext saveBasket", () => {
 describe("LabContext runAnalysis", () => {
   beforeEach(() => {
     window.localStorage.removeItem("basket-lab-v1");
+    fetchNavMock.mockReset();
+    readNavCacheEntryMock.mockReset();
+    writeNavCacheMock.mockReset();
+    fetchNavMock.mockResolvedValue({});
+    readNavCacheEntryMock.mockResolvedValue(null);
+    writeNavCacheMock.mockResolvedValue(undefined);
   });
 
   it("skips when amount is below 100 or an active basket is unbalanced", async () => {
@@ -143,5 +167,83 @@ describe("LabContext runAnalysis", () => {
       await api.current!.runAnalysis();
     });
     expect(api.current!.results).toEqual([]);
+  });
+
+  it("clears results when amount drops below 100 after a successful run", async () => {
+    fetchNavMock.mockResolvedValue({
+      "118741": [
+        { date: "2023-01-01", nav: 10 },
+        { date: "2024-01-01", nav: 12 },
+      ],
+    });
+
+    const api: { current: ReturnType<typeof useLab> | null } = { current: null };
+    render(
+      <LabProvider>
+        <Consumer api={api} />
+      </LabProvider>,
+    );
+
+    act(() => {
+      api.current!.setBaskets([makeBasket(100)]);
+      api.current!.setSettings({
+        mode: "lumpsum",
+        amount: 1000,
+        period: "Custom",
+        customStart: "2023-01-01",
+        customEnd: "2024-01-01",
+      });
+    });
+    await act(async () => {
+      await api.current!.runAnalysis();
+    });
+    expect(api.current!.results).toHaveLength(1);
+    expect(api.current!.results[0].error).toBeUndefined();
+    expect(api.current!.results[0].stats.final).toBeGreaterThan(0);
+
+    act(() => {
+      api.current!.setSettings({ ...api.current!.settings, amount: 50 });
+    });
+    await act(async () => {
+      await api.current!.runAnalysis();
+    });
+    expect(api.current!.results).toEqual([]);
+  });
+
+  it("sets no-nav when fetch fails and cache does not cover the range", async () => {
+    fetchNavMock.mockResolvedValue({ "118741": [] });
+    readNavCacheEntryMock.mockResolvedValue({
+      points: [
+        { date: "2020-01-01", nav: 10 },
+        { date: "2020-06-01", nav: 12 },
+      ],
+      writtenAt: Date.now(),
+    });
+
+    const api: { current: ReturnType<typeof useLab> | null } = { current: null };
+    render(
+      <LabProvider>
+        <Consumer api={api} />
+      </LabProvider>,
+    );
+
+    act(() => {
+      api.current!.setBaskets([makeBasket(100)]);
+      api.current!.setSettings({
+        mode: "lumpsum",
+        amount: 1000,
+        period: "Custom",
+        customStart: "2023-01-01",
+        customEnd: "2024-01-01",
+      });
+    });
+    await act(async () => {
+      await api.current!.runAnalysis();
+    });
+
+    expect(api.current!.results).toHaveLength(1);
+    expect(api.current!.results[0].error).toBe("no-nav");
+    expect(api.current!.results[0].stats.final).toBe(0);
+    expect(api.current!.results[0].stats.abs).not.toBe(-100);
   });
 });

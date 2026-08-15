@@ -172,12 +172,16 @@ export function LabProvider({ children }: { children: ReactNode }) {
 
   const runAnalysis = useCallback(async () => {
     const runId = ++runIdRef.current;
-    if (settings.amount < 100) return;
+    if (settings.amount < 100) {
+      if (runId === runIdRef.current) setResults([]);
+      return;
+    }
 
     const active = baskets.filter((b) => b.active);
     if (
       active.some((b) => Math.abs(weightSum(b) - 100) >= WEIGHT_TOLERANCE)
     ) {
+      if (runId === runIdRef.current) setResults([]);
       return;
     }
     if (!active.length) {
@@ -235,7 +239,11 @@ export function LabProvider({ children }: { children: ReactNode }) {
             await writeNavCache(code, merged);
             navs[code] = merged;
           } else {
-            navs[code] = prev?.points ?? [];
+            // Failed fetch: reuse covering-but-stale cache only ("Using saved NAV").
+            navs[code] =
+              prev && cacheCoversRange(prev.points, start, end)
+                ? prev.points
+                : [];
           }
         }),
       );
