@@ -3,6 +3,7 @@ import { BacktestView } from "./components/BacktestView";
 import { BasketEditor } from "./components/BasketEditor";
 import { BasketList } from "./components/BasketList";
 import { InvestmentSettings } from "./components/InvestmentSettings";
+import { ShareBar } from "./components/ShareBar";
 
 export default function App() {
   return (
@@ -14,7 +15,7 @@ export default function App() {
       </div>
       <BasketEditor />
       <BacktestView />
-      <section />
+      <ShareBar />
     </div>
   );
 }

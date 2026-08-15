@@ -48,9 +48,16 @@ function Consumer({
   return null;
 }
 
+function clearShareQuery(): void {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("s");
+  window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
 describe("LabContext saveBasket", () => {
   beforeEach(() => {
     window.localStorage.removeItem("basket-lab-v1");
+    clearShareQuery();
   });
 
   it("returns false when weights sum to 90 and true when they sum to 100", () => {
@@ -129,6 +136,7 @@ describe("LabContext saveBasket", () => {
 describe("LabContext runAnalysis", () => {
   beforeEach(() => {
     window.localStorage.removeItem("basket-lab-v1");
+    clearShareQuery();
     fetchNavMock.mockReset();
     readNavCacheEntryMock.mockReset();
     writeNavCacheMock.mockReset();

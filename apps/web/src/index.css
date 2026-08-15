@@ -333,3 +333,37 @@ button:disabled {
   font-size: 0.85rem;
   color: #52525b;
 }
+
+.share-bar {
+  background: #fff;
+  border: 1px solid #e4e4e7;
+  border-radius: 10px;
+  padding: 1rem;
+  margin-top: 1.25rem;
+}
+
+.share-bar-field {
+  margin: 0;
+}
+
+.share-bar-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.share-bar-row input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid #d4d4d8;
+  border-radius: 6px;
+  padding: 0.4rem 0.5rem;
+  background: #fafafa;
+  color: #3f3f46;
+}
+
+.share-toast {
+  margin: 0.5rem 0 0;
+  font-size: 0.875rem;
+  color: #18181b;
+}

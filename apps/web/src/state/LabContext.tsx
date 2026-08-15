@@ -20,6 +20,7 @@ import {
   type NavCacheEntry,
 } from "../lib/navCache";
 import { resolveRange } from "../lib/resolveSettings";
+import { decodeShare, encodeShare } from "../lib/shareUrl";
 import type {
   BacktestResult,
   Basket,
@@ -45,6 +46,8 @@ type LabContextValue = {
   saveBasket: (basket: Basket) => boolean;
   results: BacktestResult[];
   runAnalysis: () => Promise<void>;
+  /** True when `?s=` was present but could not be decoded. */
+  shareHydrateError: boolean;
 };
 
 const LabContext = createContext<LabContextValue | null>(null);
@@ -66,6 +69,54 @@ function loadPersisted(): { settings: LabSettings; baskets: Basket[] } {
     return { settings: parsed.settings, baskets: parsed.baskets };
   } catch {
     return fallback;
+  }
+}
+
+function loadInitial(): {
+  settings: LabSettings;
+  baskets: Basket[];
+  shareHydrateError: boolean;
+} {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const s = params.get("s");
+    if (s != null && s !== "") {
+      const decoded = decodeShare(s);
+      if (decoded) {
+        return {
+          settings: decoded.settings,
+          baskets: decoded.baskets,
+          shareHydrateError: false,
+        };
+      }
+      // Drop corrupt s= so a refresh does not keep failing hydrate.
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("s");
+        window.history.replaceState(
+          null,
+          "",
+          `${url.pathname}${url.search}${url.hash}`,
+        );
+      } catch {
+        // ignore
+      }
+      return { ...cloneDefaults(), shareHydrateError: true };
+    }
+  } catch {
+    // Fall through to localStorage.
+  }
+  return { ...loadPersisted(), shareHydrateError: false };
+}
+
+function writeShareQuery(settings: LabSettings, baskets: Basket[]): void {
+  try {
+    const encoded = encodeShare({ settings, baskets });
+    const url = new URL(window.location.href);
+    url.searchParams.set("s", encoded);
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  } catch {
+    // Ignore history / encode failures (private mode, etc.).
   }
 }
 
@@ -145,9 +196,10 @@ function mergeNav(a: NavPoint[], b: NavPoint[]): NavPoint[] {
 }
 
 export function LabProvider({ children }: { children: ReactNode }) {
-  const initial = loadPersisted();
+  const initial = loadInitial();
   const [settings, setSettings] = useState<LabSettings>(initial.settings);
   const [baskets, setBaskets] = useState<Basket[]>(initial.baskets);
+  const [shareHydrateError] = useState(initial.shareHydrateError);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editorSeed, setEditorSeed] = useState<Basket | null>(null);
   const [results, setResults] = useState<BacktestResult[]>([]);
@@ -267,6 +319,7 @@ export function LabProvider({ children }: { children: ReactNode }) {
     setResults(
       active.map((b) => backtestBasket(b, navsForBasket(b, navs), resolved)),
     );
+    writeShareQuery(settings, baskets);
   }, [settings, baskets]);
 
   const value = useMemo(
@@ -282,6 +335,7 @@ export function LabProvider({ children }: { children: ReactNode }) {
       saveBasket,
       results,
       runAnalysis,
+      shareHydrateError,
     }),
     [
       settings,
@@ -293,6 +347,7 @@ export function LabProvider({ children }: { children: ReactNode }) {
       saveBasket,
       results,
       runAnalysis,
+      shareHydrateError,
     ],
   );
 
