@@ -7,8 +7,9 @@ import {
   PointElement,
   Tooltip,
 } from "chart.js";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { Line } from "react-chartjs-2";
+import { yearlyRanking } from "../lib/ranking";
 import { useLab } from "../state/LabContext";
 import type { BacktestResult, Basket } from "../types";
 
@@ -78,6 +79,11 @@ export function BacktestView() {
   }, [runAnalysis]);
 
   const labels = unionLabels(results);
+  const ranking = useMemo(() => yearlyRanking(results), [results]);
+  const nameById = useMemo(
+    () => new Map(baskets.map((b) => [b.id, b.name])),
+    [baskets],
+  );
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
@@ -159,6 +165,34 @@ export function BacktestView() {
           />
         </figure>
       </div>
+      {ranking.length > 0 && (
+        <div className="yearly-ranking">
+          <h3>Yearly ranking</h3>
+          <p className="yearly-ranking-note">
+            <em>
+              Make sure all funds have data for the selected timeframe for
+              accurate results
+            </em>
+          </p>
+          <div className="yearly-ranking-years">
+            {ranking.map(({ year, order }) => (
+              <div key={year} className="yearly-ranking-year">
+                <h4>{year}</h4>
+                <ol>
+                  {order.map((entry) => (
+                    <li key={entry.basketId}>
+                      {nameById.get(entry.basketId) ?? entry.basketId}{" "}
+                      <span className="yearly-ranking-ret">
+                        {formatPct(entry.ret)}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </section>
   );
 }
