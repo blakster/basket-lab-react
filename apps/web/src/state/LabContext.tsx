@@ -380,8 +380,15 @@ export function LabProvider({ children }: { children: ReactNode }) {
     }
 
     if (runId !== runIdRef.current) return;
-    const missing = codes.some((c) => !navs[c]?.length);
-    if (missing) {
+    const nextResults = active.map((b) =>
+      backtestBasket(b, navsForBasket(b, navs), resolved),
+    );
+    // Global no-nav only when every active basket failed (one empty scheme
+    // still leaves sibling baskets runnable and the header ready/cached-nav).
+    const allNoNav =
+      nextResults.length > 0 &&
+      nextResults.every((r) => r.error === "no-nav");
+    if (allNoNav) {
       setNavStatus({ kind: "no-nav" });
     } else if (staleCacheCodes.size) {
       let detail = "";
@@ -395,9 +402,7 @@ export function LabProvider({ children }: { children: ReactNode }) {
     } else {
       setNavStatus(READY_STATUS);
     }
-    setResults(
-      active.map((b) => backtestBasket(b, navsForBasket(b, navs), resolved)),
-    );
+    setResults(nextResults);
     writeShareQuery(settings, baskets);
   }, [settings, baskets]);
 

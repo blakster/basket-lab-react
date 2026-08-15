@@ -426,5 +426,7 @@ describe("LabContext runAnalysis", () => {
     expect(basket2?.error).toBeUndefined();
     expect(basket2!.stats.final).toBeGreaterThan(0);
     expect(basket2!.stats.abs).not.toBe(-100);
+    // Header stays ready/cached-nav; only basket 1 shows No NAV
+    expect(api.current!.status.kind).not.toBe("no-nav");
   });
 });
