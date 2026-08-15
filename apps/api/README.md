@@ -2,8 +2,19 @@
 
 Local FastAPI service for AMFI holdings ingest and basket insights. Bind to loopback only.
 
+Do not run bare `uvicorn`. Your PATH `uvicorn` is often a different Python than the one you `pip install`ed.
+
 ```
-uvicorn app.main:app --host 127.0.0.1 --port 8000
+cd apps/api
+python3.11 -m venv .venv
+.venv/bin/python -m pip install -e ".[dev]"
+.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+Without a venv, use the same interpreter you installed into:
+
+```
+python3.11 -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
 ## Ingest (v1)
