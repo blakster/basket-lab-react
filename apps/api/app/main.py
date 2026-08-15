@@ -16,6 +16,16 @@ DB_PATH = Path(__file__).resolve().parents[3] / "data" / "basket.sqlite"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     conn = init_db(DB_PATH)
+    holdings_n = conn.execute("SELECT COUNT(*) FROM holdings").fetchone()[0]
+    if holdings_n == 0:
+        month = datetime.now(timezone.utc).strftime("%Y-%m")
+        files, notes = resolve_ingest_files(month=month, source="fixture")
+        run_ingest(
+            conn,
+            month=month,
+            files=files,
+            notes=notes or "auto-seed-fixture",
+        )
     app.state.db = conn
     try:
         yield

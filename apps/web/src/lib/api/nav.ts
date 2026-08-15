@@ -7,7 +7,9 @@ const CHUNK_SIZE = 50;
 type RawNavRow = { date: string; nav: string | number };
 
 type TigZigBulk = {
-  schemes?: Record<string, { data?: RawNavRow[] }>;
+  schemes?:
+    | Record<string, { data?: RawNavRow[] }>
+    | Array<{ scheme_code?: string | number; data?: RawNavRow[] }>;
   data?: RawNavRow[];
 };
 
@@ -57,11 +59,28 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
+type TigZigSchemeRow = {
+  scheme_code?: string | number;
+  data?: RawNavRow[];
+};
+
 function parseTigZigBody(
   body: TigZigBulk,
   codes: string[],
 ): Record<string, NavPoint[]> {
   const out: Record<string, NavPoint[]> = {};
+
+  if (Array.isArray(body.schemes)) {
+    const byCode = new Map<string, NavPoint[]>();
+    for (const row of body.schemes as TigZigSchemeRow[]) {
+      if (row?.scheme_code == null) continue;
+      byCode.set(String(row.scheme_code), mapTigZigRows(row.data));
+    }
+    for (const code of codes) {
+      out[code] = byCode.get(code) ?? [];
+    }
+    return out;
+  }
 
   if (body.schemes && typeof body.schemes === "object") {
     for (const code of codes) {

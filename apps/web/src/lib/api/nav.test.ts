@@ -44,6 +44,36 @@ describe("fetchNav", () => {
     expect(String(fetchFn.mock.calls[0][0])).toContain("schemes=118741");
   });
 
+  it("maps TigZig live bulk shape: schemes is an array of { scheme_code, data }", async () => {
+    const fetchFn = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        count: 2,
+        schemes: [
+          {
+            scheme_code: 118741,
+            data: [{ date: "2023-01-02", nav: 34.9 }],
+          },
+          {
+            scheme_code: 122639,
+            data: [{ date: "2023-01-02", nav: 50.1 }],
+          },
+        ],
+        not_found: [],
+      }),
+    }));
+
+    const result = await fetchNav(
+      ["118741", "122639"],
+      "2023-01-01",
+      "2023-01-31",
+      fetchFn as unknown as typeof fetch,
+    );
+
+    expect(result["118741"][0].nav).toBe(34.9);
+    expect(result["122639"][0].nav).toBe(50.1);
+  });
+
   it("falls back to MFAPI per code when TigZig throws, parsing DD-MM-YYYY", async () => {
     const fetchFn = vi.fn(async (url: string) => {
       const u = String(url);
