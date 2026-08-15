@@ -20,7 +20,7 @@ function cloneBasket(basket: Basket): Basket {
 }
 
 export function BasketEditor() {
-  const { baskets, editingId, closeEditor, saveBasket } = useLab();
+  const { baskets, editingId, editorSeed, closeEditor, saveBasket } = useLab();
   const [draft, setDraft] = useState<Basket | null>(null);
   const basketsRef = useRef(baskets);
   basketsRef.current = baskets;
@@ -32,8 +32,15 @@ export function BasketEditor() {
       return;
     }
     const found = basketsRef.current.find((b) => b.id === editingId);
-    setDraft(found ? cloneBasket(found) : null);
-  }, [editingId]);
+    if (found) {
+      setDraft(cloneBasket(found));
+      return;
+    }
+    // Create-new path: seed is editor-only until saveBasket upserts it.
+    setDraft(
+      editorSeed && editorSeed.id === editingId ? cloneBasket(editorSeed) : null,
+    );
+  }, [editingId, editorSeed]);
 
   if (!editingId || !draft) return null;
 

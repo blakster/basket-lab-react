@@ -48,8 +48,8 @@ export function BasketList() {
       active: true,
       funds: [],
     };
-    setBaskets((prev) => [...prev, basket]);
-    openEditor(basket.id);
+    // Editor-only draft until saveBasket accepts (weights 100 ± 0.1).
+    openEditor(basket.id, basket);
   }
 
   function resetDefaults() {

@@ -21,7 +21,9 @@ type LabContextValue = {
   baskets: Basket[];
   setBaskets: Dispatch<SetStateAction<Basket[]>>;
   editingId: string | null;
-  openEditor: (id: string) => void;
+  /** Seed for a basket not yet in `baskets` (create-new draft). */
+  editorSeed: Basket | null;
+  openEditor: (id: string, seed?: Basket) => void;
   closeEditor: () => void;
   saveBasket: (basket: Basket) => boolean;
 };
@@ -53,6 +55,7 @@ export function LabProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<LabSettings>(initial.settings);
   const [baskets, setBaskets] = useState<Basket[]>(initial.baskets);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editorSeed, setEditorSeed] = useState<Basket | null>(null);
 
   useEffect(() => {
     try {
@@ -62,12 +65,14 @@ export function LabProvider({ children }: { children: ReactNode }) {
     }
   }, [baskets, settings]);
 
-  const openEditor = useCallback((id: string) => {
+  const openEditor = useCallback((id: string, seed?: Basket) => {
     setEditingId(id);
+    setEditorSeed(seed ?? null);
   }, []);
 
   const closeEditor = useCallback(() => {
     setEditingId(null);
+    setEditorSeed(null);
   }, []);
 
   const saveBasket = useCallback((basket: Basket): boolean => {
@@ -90,11 +95,12 @@ export function LabProvider({ children }: { children: ReactNode }) {
       baskets,
       setBaskets,
       editingId,
+      editorSeed,
       openEditor,
       closeEditor,
       saveBasket,
     }),
-    [settings, baskets, editingId, openEditor, closeEditor, saveBasket],
+    [settings, baskets, editingId, editorSeed, openEditor, closeEditor, saveBasket],
   );
 
   return <LabContext.Provider value={value}>{children}</LabContext.Provider>;

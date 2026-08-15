@@ -60,4 +60,50 @@ describe("LabContext saveBasket", () => {
     expect(saved!.name).toBe("Test");
     expect(saved!.funds.reduce((s, f) => s + f.weight, 0)).toBe(100);
   });
+
+  it("create-new draft cancel leaves baskets unchanged and does not persist a 0% basket", () => {
+    const api: { current: ReturnType<typeof useLab> | null } = { current: null };
+    render(
+      <LabProvider>
+        <Consumer api={api} />
+      </LabProvider>,
+    );
+
+    const before = api.current!.baskets;
+    const beforeLen = before.length;
+    const draft: Basket = {
+      id: "draft-new",
+      name: "New Basket",
+      color: "#18181b",
+      active: true,
+      funds: [],
+    };
+
+    act(() => {
+      api.current!.openEditor(draft.id, draft);
+    });
+    expect(api.current!.editingId).toBe("draft-new");
+    expect(api.current!.editorSeed?.id).toBe("draft-new");
+    expect(api.current!.baskets).toHaveLength(beforeLen);
+    expect(api.current!.baskets.some((b) => b.id === "draft-new")).toBe(false);
+
+    act(() => {
+      api.current!.closeEditor();
+    });
+    expect(api.current!.editingId).toBeNull();
+    expect(api.current!.editorSeed).toBeNull();
+    expect(api.current!.baskets).toHaveLength(beforeLen);
+    expect(api.current!.baskets.some((b) => b.id === "draft-new")).toBe(false);
+
+    const raw = window.localStorage.getItem("basket-lab-v1");
+    expect(raw).toBeTruthy();
+    const persisted = JSON.parse(raw!) as { baskets: Basket[] };
+    expect(persisted.baskets).toHaveLength(beforeLen);
+    expect(persisted.baskets.some((b) => b.id === "draft-new")).toBe(false);
+    expect(
+      persisted.baskets.some(
+        (b) => b.funds.length === 0 || b.funds.reduce((s, f) => s + f.weight, 0) === 0,
+      ),
+    ).toBe(false);
+  });
 });
