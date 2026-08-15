@@ -1,0 +1,5 @@
+as_of,scheme_code,isin,instrument_name,asset_class,sector,rating,market_cap_bucket,weight_pct
+2026-07-31,122639,INE002A01018,Reliance Industries,equity,Energy,,large,8.5
+2026-07-31,122639,INE040A01034,HDFC Bank,equity,Financial,,large,7.2
+2026-07-31,122639,,TREPS,cash,,,unclassified,4.0
+2026-07-31,140084,INE002A01018,Reliance Industries,equity,Energy,,large,10.1
