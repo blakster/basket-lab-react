@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -31,9 +32,25 @@ def test_parse_holdings_csv_rejects_missing_scheme_code():
         parse_holdings_csv(bad)
 
 
+def test_parse_holdings_csv_matches_golden():
+    rows = parse_holdings_csv(SAMPLE_CSV)
+    golden = json.loads((FIXTURES / "golden.json").read_text())
+    assert rows == golden
+
+
 def test_load_holdings_inserts_rows(tmp_path):
     conn = init_db(tmp_path / "basket.sqlite")
     rows = parse_holdings_csv(SAMPLE_CSV)
+    n = load_holdings(conn, rows)
+    assert n == 4
+    count = conn.execute("SELECT COUNT(*) FROM holdings").fetchone()[0]
+    assert count == 4
+
+
+def test_load_holdings_reingest_replaces(tmp_path):
+    conn = init_db(tmp_path / "basket.sqlite")
+    rows = parse_holdings_csv(SAMPLE_CSV)
+    load_holdings(conn, rows)
     n = load_holdings(conn, rows)
     assert n == 4
     count = conn.execute("SELECT COUNT(*) FROM holdings").fetchone()[0]

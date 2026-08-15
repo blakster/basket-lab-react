@@ -1,3 +1,15 @@
+from app.insights import _rating_bucket
+
+
+def test_rating_bucket_agency_prefix_and_unknown():
+    assert _rating_bucket("CRISIL AAA") == "AAA"
+    assert _rating_bucket("ICRA AA+") == "AA"
+    assert _rating_bucket("SOV") == "Unrated"
+    assert _rating_bucket("AAA") == "AAA"
+    assert _rating_bucket("BB") == "Below BBB"
+    assert _rating_bucket(None) == "Unrated"
+
+
 def test_one_basket_reliance_credit_pe(client):
     res = client.post(
         "/api/insights",

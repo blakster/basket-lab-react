@@ -72,6 +72,16 @@ def parse_holdings_csv(text: str) -> list[dict[str, Any]]:
 
 
 def load_holdings(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> int:
+    seen: set[tuple[str, str]] = set()
+    for r in rows:
+        key = (str(r["as_of"]), str(r["scheme_code"]))
+        if key in seen:
+            continue
+        seen.add(key)
+        conn.execute(
+            "DELETE FROM holdings WHERE as_of = ? AND scheme_code = ?",
+            key,
+        )
     sql = """
     INSERT INTO holdings (
       as_of, scheme_code, isin, instrument_name,

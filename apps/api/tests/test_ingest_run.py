@@ -25,6 +25,15 @@ def test_run_ingest_sample(tmp_path):
     assert conn.execute("SELECT COUNT(*) FROM ingest_runs").fetchone()[0] == 1
 
 
+def test_run_ingest_sample_twice_replaces(tmp_path):
+    conn = init_db(tmp_path / "basket.sqlite")
+    first = run_ingest(conn, month="2026-07", files=[SAMPLE])
+    second = run_ingest(conn, month="2026-07", files=[SAMPLE])
+    assert first["files_ok"] == 1
+    assert second["files_ok"] == 1
+    assert conn.execute("SELECT COUNT(*) FROM holdings").fetchone()[0] == 4
+
+
 def test_run_ingest_junk_and_sample_keeps_holdings(tmp_path):
     conn = init_db(tmp_path / "basket.sqlite")
     junk = tmp_path / "junk.csv"

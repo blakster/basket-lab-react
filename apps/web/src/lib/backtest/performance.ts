@@ -29,6 +29,15 @@ function navOnOrBefore(history: NavPoint[], day: Date): number | null {
 
 const emptyStats = { initial: 0, final: 0, abs: 0, cagr: 0, mdd: 0 };
 
+function noNav(basketId: string): BacktestResult {
+  return {
+    basketId,
+    series: [],
+    stats: { ...emptyStats },
+    error: "no-nav",
+  };
+}
+
 export function backtestBasket(
   basket: Basket,
   navs: Record<string, NavPoint[]>,
@@ -41,12 +50,7 @@ export function backtestBasket(
   for (const f of basket.funds) {
     if (f.weight <= 0) continue;
     if (!navs[f.schemeCode]?.length) {
-      return {
-        basketId: basket.id,
-        series: [],
-        stats: { ...emptyStats },
-        error: "no-nav",
-      };
+      return noNav(basket.id);
     }
   }
 
@@ -54,18 +58,15 @@ export function backtestBasket(
     .map((p) => p.date)
     .filter((d) => parseDay(d) >= startDate && parseDay(d) <= endDate);
 
+  if (timeline.length === 0) return noNav(basket.id);
+
   if (settings.mode === "lumpsum") {
     const holdings: Record<string, number> = {};
     for (const f of basket.funds) {
       if (f.weight <= 0) continue;
       const px = navOnOrBefore(navs[f.schemeCode], startDate);
       if (px == null || px === 0) {
-        return {
-          basketId: basket.id,
-          series: [],
-          stats: { ...emptyStats },
-          error: "no-nav",
-        };
+        return noNav(basket.id);
       }
       holdings[f.schemeCode] = (settings.amount * f.weight) / 100 / px;
     }
@@ -90,6 +91,7 @@ export function backtestBasket(
       if (dd < mdd) mdd = dd;
       series.push({ x: iso, y: value, drawdown: dd });
     }
+    if (series.length === 0) return noNav(basket.id);
     const final = series.at(-1)?.y ?? 0;
     // Day-count / 365 so a non-leap calendar year is exactly 1.0 (matches CAGR fixtures).
     const years =
@@ -124,12 +126,21 @@ export function backtestBasket(
   for (const iso of timeline) {
     const day = parseDay(iso);
     if (day >= nextSip) {
+      const adds: Record<string, number> = {};
+      let priced = true;
       for (const f of basket.funds) {
         if (f.weight <= 0) continue;
         const px = navOnOrBefore(navs[f.schemeCode], day);
-        if (px == null || px === 0) continue;
-        holdings[f.schemeCode].units +=
-          (settings.amount * f.weight) / 100 / px;
+        if (px == null || px === 0) {
+          priced = false;
+          break;
+        }
+        adds[f.schemeCode] = (settings.amount * f.weight) / 100 / px;
+      }
+      // Missing a weighted fund's price: do not book the full cashflow.
+      if (!priced) return noNav(basket.id);
+      for (const [code, units] of Object.entries(adds)) {
+        holdings[code]!.units += units;
       }
       cashflows.push({ date: new Date(day), amount: -settings.amount });
       totalInvested += settings.amount;
@@ -153,6 +164,7 @@ export function backtestBasket(
     if (dd < mdd) mdd = dd;
     series.push({ x: iso, y: value, drawdown: dd });
   }
+  if (series.length === 0) return noNav(basket.id);
   const final = series.at(-1)?.y ?? 0;
   if (series.length) {
     cashflows.push({ date: parseDay(series.at(-1)!.x), amount: final });

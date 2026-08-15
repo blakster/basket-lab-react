@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import sqlite3
 from collections import defaultdict
 from typing import Any
@@ -174,16 +175,19 @@ def _credit(lines: list[dict[str, Any]]) -> tuple[dict[str, float] | None, str |
 def _rating_bucket(rating: str | None) -> str:
     if not rating:
         return "Unrated"
-    r = rating.strip().upper().replace(" ", "")
-    if r.startswith("AAA"):
+    parts = [p for p in re.split(r"[\s/|]+", rating.strip().upper()) if p]
+    token = parts[-1] if parts else ""
+    if token.startswith("AAA"):
         return "AAA"
-    if r.startswith("AA"):
+    if token.startswith("AA"):
         return "AA"
-    if r.startswith("A"):
+    if token.startswith("A"):
         return "A"
-    if r.startswith("BBB"):
+    if token.startswith("BBB"):
         return "BBB"
-    return "Below BBB"
+    if token.startswith(("BB", "B", "CCC", "CC", "C", "D")):
+        return "Below BBB"
+    return "Unrated"
 
 
 def _equity_split(lines: list[dict[str, Any]]) -> dict[str, float]:

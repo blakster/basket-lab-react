@@ -117,116 +117,114 @@ export function InsightsPanel() {
   return (
     <section className="insights-panel">
       <h2>Insights</h2>
-      {isError ? (
-        <p>Insights unavailable</p>
-      ) : data ? (
-        <>
-          {data.asOf && <p className="insights-asof">As of {data.asOf}</p>}
-          <div className="insights-grid">
-            <InsightCard title="Top holdings">
-              {data.baskets.map((ib) => (
-                <HoldingsBlock
-                  key={ib.id}
-                  ib={ib}
-                  basket={baskets.find((b) => b.id === ib.id)}
-                />
-              ))}
-            </InsightCard>
-            <InsightCard title="Sector">
-              {data.baskets.map((ib) => (
-                <BreakdownBlock
-                  key={ib.id}
-                  name={basketName(ib.id, baskets)}
-                  map={ib.sector}
-                />
-              ))}
-            </InsightCard>
-            <InsightCard title="Asset">
-              {data.baskets.map((ib) => (
-                <BreakdownBlock
-                  key={ib.id}
-                  name={basketName(ib.id, baskets)}
-                  map={ib.asset}
-                />
-              ))}
-            </InsightCard>
-            <InsightCard title="Credit">
-              {data.baskets.map((ib) => (
-                <CreditBlock
-                  key={ib.id}
-                  name={basketName(ib.id, baskets)}
-                  ib={ib}
-                />
-              ))}
-            </InsightCard>
-            <InsightCard title="Equity split">
-              {data.baskets.map((ib) => (
-                <BasketSlice key={ib.id} name={basketName(ib.id, baskets)}>
-                  <WeightList
-                    rows={EQUITY_ORDER.map((key) => ({
-                      key,
-                      label: formatLabel(key),
-                      weight: ib.equitySplit[key],
-                    }))}
+      {isError && <p>Insights unavailable</p>}
+      {data?.asOf && <p className="insights-asof">As of {data.asOf}</p>}
+      {(data || sharpes.length > 0) && (
+        <div className="insights-grid">
+          {data && (
+            <>
+              <InsightCard title="Top holdings">
+                {data.baskets.map((ib) => (
+                  <HoldingsBlock
+                    key={ib.id}
+                    ib={ib}
+                    basket={baskets.find((b) => b.id === ib.id)}
                   />
-                </BasketSlice>
-              ))}
-            </InsightCard>
-            <InsightCard title="Overlap">
-              {data.overlap == null ? (
-                <p className="insight-empty">
-                  Add another basket with holdings data
-                </p>
-              ) : (
-                <ul>
-                  {Object.entries(data.overlap)
-                    .sort(([a], [b]) => a.localeCompare(b))
-                    .map(([key, weight]) => {
-                      const [left, right] = key.split("|");
-                      const label = `${basketName(left ?? "", baskets)} × ${basketName(right ?? "", baskets)}`;
-                      return (
-                        <li key={key}>
-                          <span>{label}</span>
-                          <span className="insight-weight">
-                            {formatPct(weight)}
-                          </span>
-                        </li>
-                      );
-                    })}
-                </ul>
-              )}
-            </InsightCard>
-            <InsightCard title="Expense">
-              {data.baskets.map((ib) => (
-                <BasketSlice key={ib.id} name={basketName(ib.id, baskets)}>
-                  <p>{formatFilingMetric(ib.expenseRatio, ib.expenseIncomplete)}</p>
-                </BasketSlice>
-              ))}
-            </InsightCard>
-            <InsightCard title="PE">
-              {data.baskets.map((ib) => (
-                <BasketSlice key={ib.id} name={basketName(ib.id, baskets)}>
-                  <p>{formatFilingMetric(ib.pe, ib.peIncomplete)}</p>
-                </BasketSlice>
-              ))}
-            </InsightCard>
-            {sharpes.length > 0 && (
-              <InsightCard title="Sharpe">
-                <ul>
-                  {sharpes.map((row) => (
-                    <li key={row.id}>
-                      <span>{row.name}</span>
-                      <span className="insight-weight">
-                        {row.value.toFixed(2)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+                ))}
               </InsightCard>
-            )}
-          </div>
-        </>
-      ) : null}
+              <InsightCard title="Sector">
+                {data.baskets.map((ib) => (
+                  <BreakdownBlock
+                    key={ib.id}
+                    name={basketName(ib.id, baskets)}
+                    map={ib.sector}
+                  />
+                ))}
+              </InsightCard>
+              <InsightCard title="Asset">
+                {data.baskets.map((ib) => (
+                  <BreakdownBlock
+                    key={ib.id}
+                    name={basketName(ib.id, baskets)}
+                    map={ib.asset}
+                  />
+                ))}
+              </InsightCard>
+              <InsightCard title="Credit">
+                {data.baskets.map((ib) => (
+                  <CreditBlock
+                    key={ib.id}
+                    name={basketName(ib.id, baskets)}
+                    ib={ib}
+                  />
+                ))}
+              </InsightCard>
+              <InsightCard title="Equity split">
+                {data.baskets.map((ib) => (
+                  <EquitySplitBlock
+                    key={ib.id}
+                    name={basketName(ib.id, baskets)}
+                    ib={ib}
+                    basket={baskets.find((b) => b.id === ib.id)}
+                  />
+                ))}
+              </InsightCard>
+              <InsightCard title="Overlap">
+                {data.overlap == null ? (
+                  <p className="insight-empty">
+                    Add another basket with holdings data
+                  </p>
+                ) : (
+                  <ul>
+                    {Object.entries(data.overlap)
+                      .sort(([a], [b]) => a.localeCompare(b))
+                      .map(([key, weight]) => {
+                        const [left, right] = key.split("|");
+                        const label = `${basketName(left ?? "", baskets)} × ${basketName(right ?? "", baskets)}`;
+                        return (
+                          <li key={key}>
+                            <span>{label}</span>
+                            <span className="insight-weight">
+                              {formatPct(weight)}
+                            </span>
+                          </li>
+                        );
+                      })}
+                  </ul>
+                )}
+              </InsightCard>
+              <InsightCard title="Expense">
+                {data.baskets.map((ib) => (
+                  <BasketSlice key={ib.id} name={basketName(ib.id, baskets)}>
+                    <p>{formatFilingMetric(ib.expenseRatio, ib.expenseIncomplete)}</p>
+                  </BasketSlice>
+                ))}
+              </InsightCard>
+              <InsightCard title="PE">
+                {data.baskets.map((ib) => (
+                  <BasketSlice key={ib.id} name={basketName(ib.id, baskets)}>
+                    <p>{formatFilingMetric(ib.pe, ib.peIncomplete)}</p>
+                  </BasketSlice>
+                ))}
+              </InsightCard>
+            </>
+          )}
+          {sharpes.length > 0 && (
+            <InsightCard title="Sharpe">
+              <ul>
+                {sharpes.map((row) => (
+                  <li key={row.id}>
+                    <span>{row.name}</span>
+                    <span className="insight-weight">
+                      {row.value.toFixed(2)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </InsightCard>
+          )}
+        </div>
+      )}
     </section>
   );
 }
@@ -287,6 +285,48 @@ function BreakdownBlock({
           weight,
         }))}
       />
+    </BasketSlice>
+  );
+}
+
+function equitySplitEmpty(
+  ib: InsightsBasket,
+  basket: Basket | undefined,
+): string | null {
+  const codes = (basket?.funds ?? [])
+    .filter((f) => f.weight > 0)
+    .map((f) => f.schemeCode);
+  const allMissing =
+    codes.length > 0 && codes.every((c) => ib.missingSchemes.includes(c));
+  if (allMissing) return "No AMFI filing";
+  const hasEquity = EQUITY_ORDER.some((key) => (ib.equitySplit[key] ?? 0) > 0);
+  if (!hasEquity) return "No equity holdings";
+  return null;
+}
+
+function EquitySplitBlock({
+  name,
+  ib,
+  basket,
+}: {
+  name: string;
+  ib: InsightsBasket;
+  basket: Basket | undefined;
+}) {
+  const empty = equitySplitEmpty(ib, basket);
+  return (
+    <BasketSlice name={name}>
+      {empty ? (
+        <p className="insight-empty">{empty}</p>
+      ) : (
+        <WeightList
+          rows={EQUITY_ORDER.map((key) => ({
+            key,
+            label: formatLabel(key),
+            weight: ib.equitySplit[key],
+          }))}
+        />
+      )}
     </BasketSlice>
   );
 }
