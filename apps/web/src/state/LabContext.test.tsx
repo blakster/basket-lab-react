@@ -107,3 +107,41 @@ describe("LabContext saveBasket", () => {
     ).toBe(false);
   });
 });
+
+describe("LabContext runAnalysis", () => {
+  beforeEach(() => {
+    window.localStorage.removeItem("basket-lab-v1");
+  });
+
+  it("skips when amount is below 100 or an active basket is unbalanced", async () => {
+    const api: { current: ReturnType<typeof useLab> | null } = { current: null };
+    render(
+      <LabProvider>
+        <Consumer api={api} />
+      </LabProvider>,
+    );
+
+    act(() => {
+      api.current!.setSettings({ ...api.current!.settings, amount: 50 });
+    });
+    await act(async () => {
+      await api.current!.runAnalysis();
+    });
+    expect(api.current!.results).toEqual([]);
+
+    act(() => {
+      api.current!.setSettings({ ...api.current!.settings, amount: 1000 });
+      api.current!.setBaskets(
+        api.current!.baskets.map((b, i) =>
+          i === 0
+            ? { ...b, funds: b.funds.map((f) => ({ ...f, weight: 50 })) }
+            : b,
+        ),
+      );
+    });
+    await act(async () => {
+      await api.current!.runAnalysis();
+    });
+    expect(api.current!.results).toEqual([]);
+  });
+});

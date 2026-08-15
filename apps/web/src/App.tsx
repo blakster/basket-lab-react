@@ -1,4 +1,5 @@
 import { AppHeader } from "./components/AppHeader";
+import { BacktestView } from "./components/BacktestView";
 import { BasketEditor } from "./components/BasketEditor";
 import { BasketList } from "./components/BasketList";
 import { InvestmentSettings } from "./components/InvestmentSettings";
@@ -12,7 +13,7 @@ export default function App() {
         <BasketList />
       </div>
       <BasketEditor />
-      <section />
+      <BacktestView />
       <section />
     </div>
   );

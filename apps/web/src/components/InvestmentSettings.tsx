@@ -31,10 +31,17 @@ export function InvestmentSettings() {
           type="number"
           min={100}
           value={settings.amount}
+          aria-invalid={settings.amount < 100}
+          aria-describedby={settings.amount < 100 ? "amount-error" : undefined}
           onChange={(e) =>
             setSettings({ ...settings, amount: Number(e.target.value) })
           }
         />
+        {settings.amount < 100 && (
+          <p id="amount-error" className="total-bad">
+            Minimum amount should be ₹100
+          </p>
+        )}
       </label>
       <div className="period-buttons" role="group" aria-label="Period">
         {PERIODS.map((period) => (

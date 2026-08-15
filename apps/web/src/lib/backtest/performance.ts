@@ -3,61 +3,15 @@ import type {
   Basket,
   LabSettings,
   NavPoint,
-  Period,
   TimePoint,
 } from "../../types";
 import { calculateXirr } from "./xirr";
 
+export { resolveRange } from "../resolveSettings";
+
 export function cagr(initial: number, final: number, years: number): number {
   if (initial <= 0 || years <= 0) return 0;
   return (Math.pow(final / initial, 1 / years) - 1) * 100;
-}
-
-function pad2(n: number): string {
-  return n < 10 ? `0${n}` : String(n);
-}
-
-function formatIso(d: Date): string {
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-}
-
-/** Resolve a named period (or Custom ISO bounds) to inclusive start/end dates. */
-export function resolveRange(
-  period: Period,
-  customStart: string | null,
-  customEnd: string | null,
-  today: Date = new Date(),
-): { start: string; end: string } {
-  const end = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const start = new Date(end);
-
-  switch (period) {
-    case "3M":
-      start.setMonth(start.getMonth() - 3);
-      break;
-    case "6M":
-      start.setMonth(start.getMonth() - 6);
-      break;
-    case "1Y":
-      start.setFullYear(start.getFullYear() - 1);
-      break;
-    case "3Y":
-      start.setFullYear(start.getFullYear() - 3);
-      break;
-    case "5Y":
-      start.setFullYear(start.getFullYear() - 5);
-      break;
-    case "10Y":
-      start.setFullYear(start.getFullYear() - 10);
-      break;
-    case "Custom":
-      return {
-        start: customStart ?? formatIso(end),
-        end: customEnd ?? formatIso(end),
-      };
-  }
-
-  return { start: formatIso(start), end: formatIso(end) };
 }
 
 function parseDay(iso: string): Date {
