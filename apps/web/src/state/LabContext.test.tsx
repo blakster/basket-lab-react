@@ -246,4 +246,41 @@ describe("LabContext runAnalysis", () => {
     expect(api.current!.results[0].stats.final).toBe(0);
     expect(api.current!.results[0].stats.abs).not.toBe(-100);
   });
+
+  it("does not zero sibling baskets when one scheme has an empty NAV series", async () => {
+    fetchNavMock.mockResolvedValue({
+      "118741": [],
+      "122639": [
+        { date: "2023-01-01", nav: 10 },
+        { date: "2024-01-01", nav: 12 },
+      ],
+    });
+
+    const api: { current: ReturnType<typeof useLab> | null } = { current: null };
+    render(
+      <LabProvider>
+        <Consumer api={api} />
+      </LabProvider>,
+    );
+
+    act(() => {
+      api.current!.setSettings({
+        mode: "lumpsum",
+        amount: 1000,
+        period: "Custom",
+        customStart: "2023-01-01",
+        customEnd: "2024-01-01",
+      });
+    });
+    await act(async () => {
+      await api.current!.runAnalysis();
+    });
+
+    const basket1 = api.current!.results.find((r) => r.basketId === "1");
+    const basket2 = api.current!.results.find((r) => r.basketId === "2");
+    expect(basket1?.error).toBe("no-nav");
+    expect(basket2?.error).toBeUndefined();
+    expect(basket2!.stats.final).toBeGreaterThan(0);
+    expect(basket2!.stats.abs).not.toBe(-100);
+  });
 });

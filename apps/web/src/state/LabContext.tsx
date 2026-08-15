@@ -121,6 +121,20 @@ function cacheUsable(
   return isNavCacheFresh(entry.points, freshSince, freshTo, entry.writtenAt);
 }
 
+/** Per-basket map: only that basket's codes, empty series omitted. */
+function navsForBasket(
+  basket: Basket,
+  navs: Record<string, NavPoint[]>,
+): Record<string, NavPoint[]> {
+  const subset: Record<string, NavPoint[]> = {};
+  for (const f of basket.funds) {
+    if (f.weight <= 0) continue;
+    const series = navs[f.schemeCode];
+    if (series?.length) subset[f.schemeCode] = series;
+  }
+  return subset;
+}
+
 function mergeNav(a: NavPoint[], b: NavPoint[]): NavPoint[] {
   const byDate = new Map<string, number>();
   for (const p of a) byDate.set(p.date, p.nav);
@@ -250,7 +264,9 @@ export function LabProvider({ children }: { children: ReactNode }) {
     }
 
     if (runId !== runIdRef.current) return;
-    setResults(active.map((b) => backtestBasket(b, navs, resolved)));
+    setResults(
+      active.map((b) => backtestBasket(b, navsForBasket(b, navs), resolved)),
+    );
   }, [settings, baskets]);
 
   const value = useMemo(
