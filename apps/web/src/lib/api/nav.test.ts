@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchNav } from "./nav";
+import { fetchNav, fetchNavWithStatus } from "./nav";
 import { isNavCacheFresh, readNavCache, writeNavCache } from "../navCache";
 
 const { store } = vi.hoisted(() => ({
@@ -133,6 +133,47 @@ describe("fetchNav", () => {
     );
 
     expect(result["118741"][0].nav).toBe(100.1);
+  });
+
+  it("surfaces usedFallback=false when TigZig succeeds", async () => {
+    const fetchFn = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        schemes: { "118741": { data: [{ date: "2023-01-02", nav: 100.1 }] } },
+      }),
+    }));
+
+    const result = await fetchNavWithStatus(
+      ["118741"],
+      "2023-01-01",
+      "2023-01-31",
+      fetchFn as unknown as typeof fetch,
+    );
+
+    expect(result.usedFallback).toBe(false);
+    expect(result.navs["118741"][0].nav).toBe(100.1);
+  });
+
+  it("surfaces usedFallback=true when TigZig fails and MFAPI succeeds", async () => {
+    const fetchFn = vi.fn(async (url: string) => {
+      if (String(url).includes("tigzig")) throw new Error("down");
+      return {
+        ok: true,
+        json: async () => ({
+          data: [{ date: "02-01-2023", nav: "100.10000" }],
+        }),
+      } as Response;
+    });
+
+    const result = await fetchNavWithStatus(
+      ["118741"],
+      "2023-01-01",
+      "2023-01-31",
+      fetchFn as unknown as typeof fetch,
+    );
+
+    expect(result.usedFallback).toBe(true);
+    expect(result.navs["118741"][0]).toEqual({ date: "2023-01-02", nav: 100.1 });
   });
 });
 

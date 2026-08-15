@@ -97,12 +97,17 @@ async function fetchMfapiOne(
   return mapMfapiRows(body.data, since, to);
 }
 
+export type NavFetchResult = {
+  navs: Record<string, NavPoint[]>;
+  usedFallback: boolean;
+};
+
 async function fetchTigZigChunk(
   codes: string[],
   since: string,
   to: string,
   fetchFn: typeof fetch,
-): Promise<Record<string, NavPoint[]>> {
+): Promise<NavFetchResult> {
   const url =
     `${TIGZIG_NAV}?schemes=${encodeURIComponent(codes.join(","))}` +
     `&since=${encodeURIComponent(since)}&to=${encodeURIComponent(to)}`;
@@ -111,7 +116,7 @@ async function fetchTigZigChunk(
     const res = await fetchFn(url);
     if (!res.ok) throw new Error(`TigZig NAV ${res.status}`);
     const body = (await res.json()) as TigZigBulk;
-    return parseTigZigBody(body, codes);
+    return { navs: parseTigZigBody(body, codes), usedFallback: false };
   } catch {
     const out: Record<string, NavPoint[]> = {};
     await Promise.all(
@@ -123,26 +128,39 @@ async function fetchTigZigChunk(
         }
       }),
     );
-    return out;
+    return { navs: out, usedFallback: true };
   }
 }
 
 /**
  * Fetch NAV series for scheme codes via TigZig (chunks of 50).
  * On chunk failure, fall back to MFAPI per code (DD-MM-YYYY → ISO).
+ * `usedFallback` is true when any chunk used MFAPI.
  */
+export async function fetchNavWithStatus(
+  codes: string[],
+  since: string,
+  to: string,
+  fetchFn: typeof fetch = fetch,
+): Promise<NavFetchResult> {
+  if (!codes.length) return { navs: {}, usedFallback: false };
+
+  const navs: Record<string, NavPoint[]> = {};
+  let usedFallback = false;
+  for (const group of chunk(codes, CHUNK_SIZE)) {
+    const part = await fetchTigZigChunk(group, since, to, fetchFn);
+    Object.assign(navs, part.navs);
+    if (part.usedFallback) usedFallback = true;
+  }
+  return { navs, usedFallback };
+}
+
 export async function fetchNav(
   codes: string[],
   since: string,
   to: string,
   fetchFn: typeof fetch = fetch,
 ): Promise<Record<string, NavPoint[]>> {
-  if (!codes.length) return {};
-
-  const result: Record<string, NavPoint[]> = {};
-  for (const group of chunk(codes, CHUNK_SIZE)) {
-    const part = await fetchTigZigChunk(group, since, to, fetchFn);
-    Object.assign(result, part);
-  }
-  return result;
+  const { navs } = await fetchNavWithStatus(codes, since, to, fetchFn);
+  return navs;
 }

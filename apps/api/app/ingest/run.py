@@ -11,6 +11,7 @@ from urllib.parse import urljoin, urlparse
 import httpx
 
 from app.db import init_db
+from app.ingest.excel import sheet_to_csv_rows
 from app.ingest.parse import load_holdings, parse_holdings_csv
 
 AMFI_PORTFOLIO_URL = "https://www.amfiindia.com/online-center/portfolio-disclosure"
@@ -35,8 +36,7 @@ def run_ingest(
 
     for path in files:
         try:
-            text = Path(path).read_text(encoding="utf-8")
-            rows = parse_holdings_csv(text)
+            rows = rows_from_path(Path(path))
             load_holdings(conn, rows)
             files_ok += 1
         except Exception:
@@ -106,8 +106,34 @@ def resolve_ingest_files(
         return paths, notes
 
     if dest.is_dir():
-        return sorted(dest.glob("*.csv")), None
+        found: list[Path] = []
+        for ext in ("*.csv", "*.xlsx", "*.xlsm"):
+            found.extend(dest.glob(ext))
+        return sorted(found), None
     return [], None
+
+
+def rows_from_path(path: Path) -> list[dict]:
+    suffix = path.suffix.lower()
+    if suffix == ".csv":
+        return parse_holdings_csv(path.read_text(encoding="utf-8"))
+    if suffix in {".xlsx", ".xlsm"}:
+        return _rows_from_excel(path)
+    raise ValueError(f"unsupported ingest file: {path.name}")
+
+
+def _rows_from_excel(path: Path) -> list[dict]:
+    from openpyxl import load_workbook
+
+    wb = load_workbook(path, data_only=True, read_only=True)
+    try:
+        for ws in wb.worksheets:
+            rows = sheet_to_csv_rows(ws)
+            if rows is not None:
+                return rows
+    finally:
+        wb.close()
+    raise ValueError(f"{path.name}: holdings headers not found")
 
 
 def _amfi_file_urls(html: str, *, month: str) -> list[str]:

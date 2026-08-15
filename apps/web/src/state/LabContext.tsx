@@ -33,6 +33,37 @@ const WEIGHT_TOLERANCE = 0.1;
 /** Last trading day before a weekend/holiday `to` still covers the range. */
 const RANGE_SLACK_DAYS = 4;
 
+export type LabStatusKind =
+  | "ready"
+  | "cached-nav"
+  | "no-nav"
+  | "search-down"
+  | "insights-down";
+
+export type LabStatus = { kind: LabStatusKind; detail?: string };
+
+export type StatusSource = "nav" | "search" | "insights";
+
+const READY_STATUS: LabStatus = { kind: "ready" };
+
+const STATUS_PRIORITY: Record<LabStatusKind, number> = {
+  "no-nav": 4,
+  "cached-nav": 3,
+  "search-down": 2,
+  "insights-down": 1,
+  ready: 0,
+};
+
+function pickStatus(parts: LabStatus[]): LabStatus {
+  return parts.reduce((best, cur) =>
+    STATUS_PRIORITY[cur.kind] > STATUS_PRIORITY[best.kind] ? cur : best,
+  );
+}
+
+function lastPointDate(points: NavPoint[]): string {
+  return points.reduce((a, p) => (p.date > a ? p.date : a), points[0].date);
+}
+
 type LabContextValue = {
   settings: LabSettings;
   setSettings: Dispatch<SetStateAction<LabSettings>>;
@@ -48,6 +79,8 @@ type LabContextValue = {
   runAnalysis: () => Promise<void>;
   /** True when `?s=` was present but could not be decoded. */
   shareHydrateError: boolean;
+  status: LabStatus;
+  reportStatus: (source: StatusSource, next: LabStatus) => void;
 };
 
 const LabContext = createContext<LabContextValue | null>(null);
@@ -203,6 +236,9 @@ export function LabProvider({ children }: { children: ReactNode }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editorSeed, setEditorSeed] = useState<Basket | null>(null);
   const [results, setResults] = useState<BacktestResult[]>([]);
+  const [navStatus, setNavStatus] = useState<LabStatus>(READY_STATUS);
+  const [searchStatus, setSearchStatus] = useState<LabStatus>(READY_STATUS);
+  const [insightsStatus, setInsightsStatus] = useState<LabStatus>(READY_STATUS);
   const runIdRef = useRef(0);
   /** After a failed `?s=` hydrate, keep session defaults without wiping storage until the user edits. */
   const blockPersistRef = useRef(initial.shareHydrateError);
@@ -250,6 +286,17 @@ export function LabProvider({ children }: { children: ReactNode }) {
     return true;
   }, []);
 
+  const reportStatus = useCallback((source: StatusSource, next: LabStatus) => {
+    if (source === "nav") setNavStatus(next);
+    else if (source === "search") setSearchStatus(next);
+    else setInsightsStatus(next);
+  }, []);
+
+  const status = useMemo(
+    () => pickStatus([navStatus, searchStatus, insightsStatus]),
+    [navStatus, searchStatus, insightsStatus],
+  );
+
   const runAnalysis = useCallback(async () => {
     const runId = ++runIdRef.current;
     if (settings.amount < 100) {
@@ -291,6 +338,7 @@ export function LabProvider({ children }: { children: ReactNode }) {
     const navs: Record<string, NavPoint[]> = {};
     const toFetch: string[] = [];
     const entries = new Map<string, NavCacheEntry | null>();
+    const staleCacheCodes = new Set<string>();
 
     await Promise.all(
       codes.map(async (code) => {
@@ -320,16 +368,33 @@ export function LabProvider({ children }: { children: ReactNode }) {
             navs[code] = merged;
           } else {
             // Failed fetch: reuse covering-but-stale cache only ("Using saved NAV").
-            navs[code] =
-              prev && cacheCoversRange(prev.points, start, end)
-                ? prev.points
-                : [];
+            if (prev && cacheCoversRange(prev.points, start, end)) {
+              navs[code] = prev.points;
+              staleCacheCodes.add(code);
+            } else {
+              navs[code] = [];
+            }
           }
         }),
       );
     }
 
     if (runId !== runIdRef.current) return;
+    const missing = codes.some((c) => !navs[c]?.length);
+    if (missing) {
+      setNavStatus({ kind: "no-nav" });
+    } else if (staleCacheCodes.size) {
+      let detail = "";
+      for (const code of staleCacheCodes) {
+        const pts = navs[code];
+        if (!pts?.length) continue;
+        const last = lastPointDate(pts);
+        if (last > detail) detail = last;
+      }
+      setNavStatus({ kind: "cached-nav", detail: detail || undefined });
+    } else {
+      setNavStatus(READY_STATUS);
+    }
     setResults(
       active.map((b) => backtestBasket(b, navsForBasket(b, navs), resolved)),
     );
@@ -350,6 +415,8 @@ export function LabProvider({ children }: { children: ReactNode }) {
       results,
       runAnalysis,
       shareHydrateError,
+      status,
+      reportStatus,
     }),
     [
       settings,
@@ -362,6 +429,8 @@ export function LabProvider({ children }: { children: ReactNode }) {
       results,
       runAnalysis,
       shareHydrateError,
+      status,
+      reportStatus,
     ],
   );
 

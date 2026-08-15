@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { searchFunds } from "../lib/api/search";
+import { useLab } from "../state/LabContext";
 import type { SearchHit } from "../types";
 
 type FundSearchProps = {
@@ -7,6 +8,7 @@ type FundSearchProps = {
 };
 
 export function FundSearch({ onSelect }: FundSearchProps) {
+  const { reportStatus } = useLab();
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [open, setOpen] = useState(false);
@@ -23,12 +25,14 @@ export function FundSearch({ onSelect }: FundSearchProps) {
       void searchFunds(query, fetch, controller.signal)
         .then((rows) => {
           if (controller.signal.aborted) return;
+          reportStatus("search", { kind: "ready" });
           setHits(rows);
           setOpen(true);
         })
         .catch((err: unknown) => {
           if (controller.signal.aborted) return;
           if (err instanceof DOMException && err.name === "AbortError") return;
+          reportStatus("search", { kind: "search-down" });
           setHits([]);
           setOpen(false);
         });
@@ -38,7 +42,7 @@ export function FundSearch({ onSelect }: FundSearchProps) {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [query]);
+  }, [query, reportStatus]);
 
   return (
     <div className="fund-search">

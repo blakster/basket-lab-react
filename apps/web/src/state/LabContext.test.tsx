@@ -295,6 +295,100 @@ describe("LabContext runAnalysis", () => {
     expect(api.current!.results[0].error).toBe("no-nav");
     expect(api.current!.results[0].stats.final).toBe(0);
     expect(api.current!.results[0].stats.abs).not.toBe(-100);
+    expect(api.current!.status).toEqual({ kind: "no-nav" });
+  });
+
+  it("sets cached-nav when fetch fails and covering cache is reused", async () => {
+    fetchNavMock.mockResolvedValue({ "118741": [] });
+    readNavCacheEntryMock.mockResolvedValue({
+      points: [
+        { date: "2023-01-01", nav: 10 },
+        { date: "2024-01-01", nav: 12 },
+      ],
+      writtenAt: Date.now(),
+    });
+
+    const api: { current: ReturnType<typeof useLab> | null } = { current: null };
+    render(
+      <LabProvider>
+        <Consumer api={api} />
+      </LabProvider>,
+    );
+
+    expect(api.current!.status.kind).toBe("ready");
+
+    act(() => {
+      api.current!.setBaskets([makeBasket(100)]);
+      api.current!.setSettings({
+        mode: "lumpsum",
+        amount: 1000,
+        period: "Custom",
+        customStart: "2023-01-01",
+        customEnd: "2024-01-01",
+      });
+    });
+    await act(async () => {
+      await api.current!.runAnalysis();
+    });
+
+    expect(api.current!.results[0].error).toBeUndefined();
+    expect(api.current!.results[0].stats.final).toBeGreaterThan(0);
+    expect(api.current!.status).toEqual({
+      kind: "cached-nav",
+      detail: "2024-01-01",
+    });
+  });
+
+  it("sets ready after a live NAV fetch and ranks nav over search/insights", async () => {
+    fetchNavMock.mockResolvedValue({
+      "118741": [
+        { date: "2023-01-01", nav: 10 },
+        { date: "2024-01-01", nav: 12 },
+      ],
+    });
+
+    const api: { current: ReturnType<typeof useLab> | null } = { current: null };
+    render(
+      <LabProvider>
+        <Consumer api={api} />
+      </LabProvider>,
+    );
+
+    act(() => {
+      api.current!.reportStatus("search", { kind: "search-down" });
+    });
+    expect(api.current!.status.kind).toBe("search-down");
+    act(() => {
+      api.current!.reportStatus("insights", { kind: "insights-down" });
+    });
+    expect(api.current!.status.kind).toBe("search-down");
+
+    act(() => {
+      api.current!.setBaskets([makeBasket(100)]);
+      api.current!.setSettings({
+        mode: "lumpsum",
+        amount: 1000,
+        period: "Custom",
+        customStart: "2023-01-01",
+        customEnd: "2024-01-01",
+      });
+    });
+    await act(async () => {
+      await api.current!.runAnalysis();
+    });
+
+    expect(api.current!.results[0].error).toBeUndefined();
+    // live NAV is ready; search/insights still down — search-down wins over insights
+    expect(api.current!.status.kind).toBe("search-down");
+
+    act(() => {
+      api.current!.reportStatus("search", { kind: "ready" });
+    });
+    expect(api.current!.status.kind).toBe("insights-down");
+    act(() => {
+      api.current!.reportStatus("insights", { kind: "ready" });
+    });
+    expect(api.current!.status.kind).toBe("ready");
   });
 
   it("does not zero sibling baskets when one scheme has an empty NAV series", async () => {

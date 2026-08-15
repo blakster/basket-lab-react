@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, type ReactNode } from "react";
 import {
   insightsBasketSignature,
   postInsights,
@@ -81,19 +81,24 @@ function basketName(id: string, labBaskets: Basket[]): string {
 }
 
 export function InsightsPanel() {
-  const { baskets, results } = useLab();
+  const { baskets, results, reportStatus } = useLab();
   const active = useMemo(() => baskets.filter((b) => b.active), [baskets]);
   const basketSignature = useMemo(
     () => insightsBasketSignature(active),
     [active],
   );
 
-  const { data, isError } = useQuery({
+  const { data, isError, isSuccess } = useQuery({
     queryKey: ["insights", basketSignature],
     queryFn: () => postInsights(active),
     retry: 1,
     enabled: active.length > 0,
   });
+
+  useEffect(() => {
+    if (isError) reportStatus("insights", { kind: "insights-down" });
+    else if (isSuccess) reportStatus("insights", { kind: "ready" });
+  }, [isError, isSuccess, reportStatus]);
 
   const sharpes = useMemo(() => {
     const rows: { id: string; name: string; value: number }[] = [];
