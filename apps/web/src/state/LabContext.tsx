@@ -197,21 +197,34 @@ function mergeNav(a: NavPoint[], b: NavPoint[]): NavPoint[] {
 
 export function LabProvider({ children }: { children: ReactNode }) {
   const initial = loadInitial();
-  const [settings, setSettings] = useState<LabSettings>(initial.settings);
-  const [baskets, setBaskets] = useState<Basket[]>(initial.baskets);
+  const [settings, setSettingsState] = useState<LabSettings>(initial.settings);
+  const [baskets, setBasketsState] = useState<Basket[]>(initial.baskets);
   const [shareHydrateError] = useState(initial.shareHydrateError);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editorSeed, setEditorSeed] = useState<Basket | null>(null);
   const [results, setResults] = useState<BacktestResult[]>([]);
   const runIdRef = useRef(0);
+  /** After a failed `?s=` hydrate, keep session defaults without wiping storage until the user edits. */
+  const blockPersistRef = useRef(initial.shareHydrateError);
 
   useEffect(() => {
+    if (blockPersistRef.current) return;
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ baskets, settings }));
     } catch {
       // Ignore quota / private-mode failures.
     }
   }, [baskets, settings]);
+
+  const setSettings = useCallback<Dispatch<SetStateAction<LabSettings>>>((action) => {
+    blockPersistRef.current = false;
+    setSettingsState(action);
+  }, []);
+
+  const setBaskets = useCallback<Dispatch<SetStateAction<Basket[]>>>((action) => {
+    blockPersistRef.current = false;
+    setBasketsState(action);
+  }, []);
 
   const openEditor = useCallback((id: string, seed?: Basket) => {
     setEditingId(id);
@@ -226,7 +239,8 @@ export function LabProvider({ children }: { children: ReactNode }) {
   const saveBasket = useCallback((basket: Basket): boolean => {
     const sum = weightSum(basket);
     if (Math.abs(sum - 100) >= WEIGHT_TOLERANCE) return false;
-    setBaskets((prev) => {
+    blockPersistRef.current = false;
+    setBasketsState((prev) => {
       const idx = prev.findIndex((b) => b.id === basket.id);
       if (idx === -1) return [...prev, basket];
       const next = [...prev];

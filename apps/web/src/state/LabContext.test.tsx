@@ -54,6 +54,48 @@ function clearShareQuery(): void {
   window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
 }
 
+describe("LabContext share hydrate", () => {
+  beforeEach(() => {
+    window.localStorage.removeItem("basket-lab-v1");
+    clearShareQuery();
+  });
+
+  it("corrupt ?s= shows defaults without wiping basket-lab-v1", () => {
+    const saved = {
+      settings: {
+        mode: "lumpsum" as const,
+        amount: 9999,
+        period: "1Y" as const,
+        customStart: "2020-01-01",
+        customEnd: "2021-01-01",
+      },
+      baskets: [makeBasket(100)],
+    };
+    window.localStorage.setItem("basket-lab-v1", JSON.stringify(saved));
+
+    const url = new URL(window.location.href);
+    url.searchParams.set("s", "%%%");
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+
+    const api: { current: ReturnType<typeof useLab> | null } = { current: null };
+    render(
+      <LabProvider>
+        <Consumer api={api} />
+      </LabProvider>,
+    );
+
+    expect(api.current!.shareHydrateError).toBe(true);
+    expect(api.current!.settings.amount).not.toBe(9999);
+
+    const raw = window.localStorage.getItem("basket-lab-v1");
+    expect(raw).toBeTruthy();
+    const persisted = JSON.parse(raw!) as typeof saved;
+    expect(persisted.settings.amount).toBe(9999);
+    expect(persisted.baskets).toHaveLength(1);
+    expect(persisted.baskets[0].id).toBe("test-1");
+  });
+});
+
 describe("LabContext saveBasket", () => {
   beforeEach(() => {
     window.localStorage.removeItem("basket-lab-v1");

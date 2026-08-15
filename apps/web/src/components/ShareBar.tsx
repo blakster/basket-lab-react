@@ -18,8 +18,12 @@ export function ShareBar() {
   }, [toast]);
 
   const copy = () => {
-    void navigator.clipboard
-      ?.writeText(window.location.href)
+    const write = navigator.clipboard?.writeText?.(window.location.href);
+    if (!write) {
+      setToast("Share link copied");
+      return;
+    }
+    void write
       .then(() => setToast("Share link copied"))
       .catch(() => setToast("Share link copied"));
   };
