@@ -370,6 +370,81 @@ button:disabled {
   color: #52525b;
 }
 
+.insights-panel {
+  background: #fff;
+  border: 1px solid #e4e4e7;
+  border-radius: 10px;
+  padding: 1rem;
+  margin-top: 1.25rem;
+}
+
+.insights-panel h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.05rem;
+}
+
+.insights-asof {
+  margin: -0.4rem 0 0.75rem;
+  font-size: 0.85rem;
+  color: #71717a;
+}
+
+.insights-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.insight-card {
+  border: 1px solid #f4f4f5;
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.insight-card h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+}
+
+.insight-card h4 {
+  margin: 0.65rem 0 0.25rem;
+  font-size: 0.8rem;
+  color: #52525b;
+}
+
+.insight-basket:first-child h4 {
+  margin-top: 0;
+}
+
+.insight-card ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.85rem;
+}
+
+.insight-card li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.12rem 0;
+}
+
+.insight-card p {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.insight-weight {
+  color: #52525b;
+  white-space: nowrap;
+}
+
+.insight-missing,
+.insight-empty {
+  color: #71717a;
+}
+
 .share-bar {
   background: #fff;
   border: 1px solid #e4e4e7;
