@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS fundamentals (
   scheme_code TEXT NOT NULL,
   expense_ratio REAL,
   pe REAL,
+  aum_cr REAL,
+  turnover REAL,
   PRIMARY KEY (as_of, scheme_code)
 );
 CREATE TABLE IF NOT EXISTS ingest_runs (
@@ -59,4 +61,10 @@ def init_db(path: str | Path) -> sqlite3.Connection:
     conn = sqlite3.connect(path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(fundamentals)")}
+    if "aum_cr" not in cols:
+        conn.execute("ALTER TABLE fundamentals ADD COLUMN aum_cr REAL")
+    if "turnover" not in cols:
+        conn.execute("ALTER TABLE fundamentals ADD COLUMN turnover REAL")
+    conn.commit()
     return conn

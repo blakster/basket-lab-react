@@ -1,8 +1,79 @@
 from openpyxl import Workbook
 
 from app.db import init_db
-from app.ingest.excel import sheet_to_csv_rows
+from app.ingest.excel import extract_sheet_metrics, sheet_to_csv_rows
 from app.ingest.run import run_ingest
+
+
+def _icici_like_book(path):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "FLEXCAP"
+    ws["A1"] = "ICICI Prudential Mutual Fund"
+    ws["A2"] = "ICICI Prudential Flexicap Fund"
+    ws["A3"] = "Portfolio as on Jul 31,2026"
+    headers = [
+        "Company/Issuer/Instrument Name", "ISIN", "Coupon", "Industry/Rating",
+        "Quantity", "Exposure/Market Value(Rs.Lakh)", "% to Nav",
+    ]
+    for col, h in enumerate(headers, start=1):
+        ws.cell(4, col, h)
+    ws["A5"] = "Equity & Equity Related Instruments"
+    ws["G5"] = 0.9677
+    ws["A8"] = "TVS Motor Company Ltd."
+    ws["B8"] = "INE494B01023"
+    ws["D8"] = "Automobiles"
+    ws["G8"] = 0.10057
+    ws["A9"] = "TREPS"
+    ws["F9"] = 63730.28
+    ws["G9"] = 0.02644
+    ws["A10"] = "Cash Margin - Derivatives"
+    ws["G10"] = 0.00189
+    ws["A11"] = "Total Net Assets"
+    ws["F11"] = 2409978.38
+    ws["G11"] = 1.0
+    ws["A12"] = "6. Portfolio turnover Ratio "
+    ws["B12"] = "0.26 times"
+    wb.save(path)
+    return path
+
+
+def test_icici_sheet_extracts_holdings_cash_and_metrics(tmp_path):
+    from openpyxl import load_workbook
+    path = _icici_like_book(tmp_path / "icici.xlsx")
+    ws = load_workbook(path, data_only=True)["FLEXCAP"]
+    rows = sheet_to_csv_rows(ws)
+    names = {r["instrument_name"] for r in rows}
+    assert "TVS Motor Company Ltd." in names
+    assert "Equity & Equity Related Instruments" not in names
+    treps = next(r for r in rows if r["instrument_name"] == "TREPS")
+    assert treps["asset_class"] == "treps"
+    assert 2.6 < treps["weight_pct"] < 2.7
+    cash = next(r for r in rows if "Cash Margin" in r["instrument_name"])
+    assert cash["asset_class"] == "cash"
+    metrics = extract_sheet_metrics(ws)
+    assert metrics["as_of"] == "2026-07-31"
+    assert 24099 < metrics["aum_cr"] < 24101
+    assert metrics["turnover"] == 0.26
+
+
+def test_sheet_to_csv_rows_reads_title_and_fractional_nav_weights():
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "PPFCF"
+    ws.append(["Parag Parikh Flexi Cap Fund (An open-ended dynamic equity scheme)"])
+    ws.append(["Monthly Portfolio Statement as on July 31, 2026"])
+    ws.append(["Name of the Instrument", "ISIN", "Industry / Rating", "% to Net Assets"])
+    ws.append(["HDFC Bank Limited", "INE040A01034", "Banks", 0.0755])
+    ws.append(["Sub Total", None, None, 0.0755])
+
+    rows = sheet_to_csv_rows(ws)
+    assert rows is not None
+    assert len(rows) == 1
+    assert rows[0]["isin"] == "INE040A01034"
+    assert rows[0]["weight_pct"] == 7.55
+    assert rows[0]["sector"] == "Banks"
+    assert "Parag Parikh Flexi Cap Fund" in (rows[0].get("scheme_name") or "")
 
 
 def test_sheet_to_csv_rows_maps_amc_headers():

@@ -71,6 +71,29 @@ def parse_holdings_csv(text: str) -> list[dict[str, Any]]:
     return rows
 
 
+def load_fundamentals(conn: sqlite3.Connection, as_of: str, scheme_code: str, **fields) -> None:
+    conn.execute(
+        """
+        INSERT INTO fundamentals (as_of, scheme_code, expense_ratio, pe, aum_cr, turnover)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(as_of, scheme_code) DO UPDATE SET
+          expense_ratio = COALESCE(excluded.expense_ratio, fundamentals.expense_ratio),
+          pe = COALESCE(excluded.pe, fundamentals.pe),
+          aum_cr = COALESCE(excluded.aum_cr, fundamentals.aum_cr),
+          turnover = COALESCE(excluded.turnover, fundamentals.turnover)
+        """,
+        (
+            as_of,
+            scheme_code,
+            fields.get("expense_ratio"),
+            fields.get("pe"),
+            fields.get("aum_cr"),
+            fields.get("turnover"),
+        ),
+    )
+    conn.commit()
+
+
 def load_holdings(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> int:
     seen: set[tuple[str, str]] = set()
     for r in rows:
@@ -82,6 +105,21 @@ def load_holdings(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> int:
             "DELETE FROM holdings WHERE as_of = ? AND scheme_code = ?",
             key,
         )
+    merged: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    for r in rows:
+        key = (
+            str(r["as_of"]),
+            str(r["scheme_code"]),
+            str(r.get("isin") or ""),
+            str(r.get("instrument_name") or ""),
+        )
+        if key not in merged:
+            merged[key] = dict(r)
+        else:
+            merged[key]["weight_pct"] = float(merged[key]["weight_pct"]) + float(
+                r["weight_pct"]
+            )
+    rows = list(merged.values())
     sql = """
     INSERT INTO holdings (
       as_of, scheme_code, isin, instrument_name,
