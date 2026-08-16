@@ -3,23 +3,44 @@ from __future__ import annotations
 import re
 import sqlite3
 from collections import defaultdict
+from datetime import datetime, timezone
 from typing import Any
+
+from app.filing_status import FilingStatus, filing_statuses
 
 CREDIT_NOTE_NO_DEBT = "N/A — no debt holdings"
 EQUITY_BUCKETS = ("large", "mid", "small", "unclassified")
 TOP_N = 10
+_COVERED_STATES = frozenset({"fresh", "stale"})
 
 
-def compute_insights(conn: sqlite3.Connection, body: dict[str, Any]) -> dict[str, Any]:
+def compute_insights(
+    conn: sqlite3.Connection,
+    body: dict[str, Any],
+    filings_by_code: dict[str, FilingStatus] | None = None,
+) -> dict[str, Any]:
     as_of = _latest_as_of(conn)
     out_baskets: list[dict[str, Any]] = []
     filing_weights: list[tuple[str, dict[str, float]]] = []
+
+    if filings_by_code is None:
+        codes: list[str] = []
+        seen: set[str] = set()
+        for raw in body.get("baskets") or []:
+            for fund in raw.get("funds") or []:
+                code = str(fund.get("schemeCode") or "").strip()
+                if code and code not in seen:
+                    seen.add(code)
+                    codes.append(code)
+        month = datetime.now(timezone.utc).strftime("%Y-%m")
+        filings_by_code = filing_statuses(conn, codes, month)
 
     for raw in body.get("baskets") or []:
         basket_id = str(raw.get("id", ""))
         funds = raw.get("funds") or []
         rolled, isin_weights, has_filing = _roll_basket(conn, as_of, funds)
-        out_baskets.append({"id": basket_id, **rolled})
+        coverage = _filing_coverage(funds, filings_by_code)
+        out_baskets.append({"id": basket_id, **rolled, **coverage})
         if has_filing:
             filing_weights.append((basket_id, isin_weights))
 
@@ -34,6 +55,57 @@ def compute_insights(conn: sqlite3.Connection, body: dict[str, Any]) -> dict[str
                 overlap[key] = sum(min(w_a.get(k, 0.0), w_b.get(k, 0.0)) for k in isins)
 
     return {"asOf": as_of, "baskets": out_baskets, "overlap": overlap}
+
+
+def _filing_coverage(
+    funds: list[dict[str, Any]],
+    filings_by_code: dict[str, FilingStatus],
+) -> dict[str, Any]:
+    filings: list[dict[str, object]] = []
+    covered = 0
+    latest_as_of: str | None = None
+    for fund in funds:
+        code = str(fund.get("schemeCode") or "").strip()
+        status = filings_by_code.get(code)
+        if status is None:
+            filings.append(
+                {
+                    "schemeCode": code,
+                    "state": "unmapped",
+                    "requestedMonth": "",
+                    "attemptedAt": "",
+                    "finishedAt": None,
+                    "asOf": None,
+                    "amc": None,
+                    "sourceUrl": None,
+                    "reason": None,
+                }
+            )
+            continue
+        filings.append(_serialize_status(status))
+        if status.state in _COVERED_STATES and status.as_of:
+            covered += 1
+            if latest_as_of is None or status.as_of > latest_as_of:
+                latest_as_of = status.as_of
+    return {
+        "filings": filings,
+        "filingCoverage": {"covered": covered, "total": len(funds)},
+        "filingAsOf": latest_as_of,
+    }
+
+
+def _serialize_status(status: FilingStatus) -> dict[str, object]:
+    return {
+        "schemeCode": status.scheme_code,
+        "state": status.state,
+        "requestedMonth": status.requested_month,
+        "attemptedAt": status.attempted_at,
+        "finishedAt": status.finished_at,
+        "asOf": status.as_of,
+        "amc": status.amc,
+        "sourceUrl": status.source_url,
+        "reason": status.reason,
+    }
 
 
 def _latest_as_of(conn: sqlite3.Connection) -> str | None:

@@ -6,7 +6,11 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.db import init_db
+from app.filing_status import filing_statuses
+from app.ingest.amc_fetch import missing_scheme_codes
+from app.ingest.ensure import ensure_filings, scheme_codes_from_body
 from app.ingest.run import resolve_ingest_files, run_ingest
+from app.ingest.scheme_master import SchemeMaster
 from app.insights import compute_insights
 
 # apps/api/app/main.py → repo root / data / basket.sqlite
@@ -52,7 +56,22 @@ async def post_insights(request: Request):
             status_code=422,
             content={"error": "bad_request", "message": "baskets required"},
         )
-    return compute_insights(request.app.state.db, body)
+    codes = scheme_codes_from_body(body)
+    month = datetime.now(timezone.utc).strftime("%Y-%m")
+    if missing_scheme_codes(request.app.state.db, codes):
+        try:
+            master = SchemeMaster.load_cached(DB_PATH.parent)
+            ensure_filings(
+                request.app.state.db,
+                codes,
+                month=month,
+                incoming=DB_PATH.parent / "incoming",
+                master=master,
+            )
+        except Exception:
+            pass
+    statuses = filing_statuses(request.app.state.db, codes, month)
+    return compute_insights(request.app.state.db, body, filings_by_code=statuses)
 
 
 @app.post("/api/ingest")
@@ -69,4 +88,48 @@ async def post_ingest(request: Request):
     source = body.get("source")
     source_s = source if isinstance(source, str) else None
     files, notes = resolve_ingest_files(month=month, source=source_s)
-    return run_ingest(request.app.state.db, month=month, files=files, notes=notes)
+    master = None
+    need_join = source_s == "amfi" or any(
+        Path(f).suffix.lower() in {".xlsx", ".xlsm"} for f in files
+    )
+    if need_join:
+        try:
+            master = SchemeMaster.load_cached(DB_PATH.parent)
+        except Exception:
+            master = None
+    return run_ingest(
+        request.app.state.db,
+        month=month,
+        files=files,
+        notes=notes,
+        master=master,
+    )
+
+
+@app.post("/api/ingest/ensure")
+async def post_ingest_ensure(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    codes = body.get("schemeCodes") or scheme_codes_from_body(body)
+    if not isinstance(codes, list):
+        return JSONResponse(
+            status_code=422,
+            content={"error": "bad_request", "message": "schemeCodes required"},
+        )
+    codes_s = [str(c) for c in codes]
+    if not missing_scheme_codes(request.app.state.db, codes_s):
+        return {"fetched": 0, "missing": [], "amcs": []}
+    try:
+        master = SchemeMaster.load_cached(DB_PATH.parent)
+    except Exception:
+        master = SchemeMaster.from_rows([])
+    return ensure_filings(
+        request.app.state.db,
+        codes_s,
+        incoming=DB_PATH.parent / "incoming",
+        master=master,
+    )
