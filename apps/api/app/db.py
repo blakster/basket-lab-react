@@ -38,6 +38,18 @@ CREATE TABLE IF NOT EXISTS ingest_runs (
   files_failed INTEGER NOT NULL,
   notes TEXT
 );
+CREATE TABLE IF NOT EXISTS filing_status (
+  scheme_code TEXT NOT NULL,
+  requested_month TEXT NOT NULL,
+  state TEXT NOT NULL,
+  attempted_at TEXT NOT NULL,
+  finished_at TEXT,
+  as_of TEXT,
+  amc TEXT,
+  source_url TEXT,
+  reason TEXT,
+  PRIMARY KEY (scheme_code, requested_month)
+);
 """
 
 
