@@ -86,13 +86,36 @@ def missing_scheme_codes(conn: sqlite3.Connection, codes: list[str]) -> list[str
     return [c for c in wanted if c not in have]
 
 
-def pick_latest_monthly_url(urls: list[str]) -> str | None:
+def pick_latest_monthly_url(urls: list[str], *, month: str | None = None) -> str | None:
     cands = [u for u in urls if _FILE.search(u) and not _SKIP.search(u)]
     if not cands:
         return None
     monthly = [u for u in cands if _MONTHLY.search(u)]
     pool = monthly or cands
+    if month:
+        requested = _requested_year_month(month)
+        if requested:
+            dated = [u for u in pool if _url_year_month(u) is not None]
+            matching = [u for u in dated if _url_year_month(u) == requested]
+            if dated and not matching:
+                return None
+            if matching:
+                pool = matching
     return max(pool, key=_url_recency)
+
+
+def _requested_year_month(month: str) -> tuple[int, int] | None:
+    try:
+        year_s, month_s = month.split("-", 1)
+        year, mon = int(year_s), int(month_s)
+    except (AttributeError, ValueError):
+        return None
+    return (year, mon) if 1 <= mon <= 12 else None
+
+
+def _url_year_month(url: str) -> tuple[int, int] | None:
+    year, month, _, _ = _url_recency(url)
+    return (year, month) if year and month else None
 
 
 def _url_recency(url: str) -> tuple[int, int, int, str]:
@@ -168,7 +191,7 @@ def fetch_amc_portfolio(amc: str, month: str, dest: Path) -> FetchResult:
         for href in _HREF.findall(resp.text):
             if _FILE.search(href):
                 found.append(urljoin(page, href))
-    url = pick_latest_monthly_url(found)
+    url = pick_latest_monthly_url(found, month=month)
     if not url:
         return FetchResult(
             [],
