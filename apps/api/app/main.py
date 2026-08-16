@@ -111,7 +111,7 @@ async def post_ingest_ensure(request: Request):
     try:
         master = SchemeMaster.load_cached(DB_PATH.parent)
     except Exception:
-        master = SchemeMaster.from_rows([])
+        master = None
     return ensure_filings(
         request.app.state.db,
         codes_s,

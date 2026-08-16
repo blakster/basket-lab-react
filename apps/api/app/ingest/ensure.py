@@ -28,7 +28,7 @@ def ensure_filings(
     *,
     month: str | None = None,
     incoming: Path,
-    master: SchemeMaster,
+    master: SchemeMaster | None,
 ) -> dict[str, Any]:
     month = month or datetime.now(timezone.utc).strftime("%Y-%m")
     codes = list(dict.fromkeys(str(code).strip() for code in scheme_codes if str(code).strip()))
@@ -38,6 +38,9 @@ def ensure_filings(
     outcomes: dict[str, tuple[str, str | None, str | None, str | None]] = {}
     by_amc: dict[str, list[str]] = {}
     for code in pending:
+        if master is None:
+            outcomes[code] = ("missing-source", None, None, "scheme master unavailable")
+            continue
         row = master.by_code(code)
         amc = (row.amc if row else "") or ""
         if not amc:
@@ -74,6 +77,9 @@ def ensure_filings(
     now = datetime.now(timezone.utc).isoformat()
     statuses: list[FilingStatus] = []
     for code in codes:
+        if code not in pending:
+            statuses.append(existing[code])
+            continue
         row = conn.execute(
             "SELECT MAX(as_of) AS as_of FROM holdings WHERE scheme_code = ?", (code,)
         ).fetchone()

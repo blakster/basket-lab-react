@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from app.filing_status import FilingStatus, record_filing_status
 from app.ingest.amc_fetch import FetchResult, missing_scheme_codes, pick_latest_monthly_url
 from app.ingest.ensure import ensure_filings
 from app.ingest.scheme_master import SchemeMaster
@@ -233,6 +234,72 @@ def test_post_ensure_refreshes_stale_schemes_and_returns_filings(client, monkeyp
     assert "filings" in data
     assert data["filings"][0]["schemeCode"] == "122639"
     assert data["filings"][0]["state"] == "stale"
+
+
+def test_post_ensure_records_missing_source_when_scheme_master_unavailable(
+    client, monkeypatch
+):
+    monkeypatch.setattr(
+        "app.main.SchemeMaster.load_cached",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("cache miss")),
+    )
+
+    res = client.post("/api/ingest/ensure", json={"schemeCodes": ["118741"]})
+
+    assert res.status_code == 200
+    filing = res.json()["filings"][0]
+    assert filing["schemeCode"] == "118741"
+    assert filing["state"] == "missing-source"
+    assert filing["reason"] == "scheme master unavailable"
+
+
+def test_ensure_mixed_codes_preserves_fresh_fund_provenance(db, tmp_path, monkeypatch):
+    db.execute(
+        """
+        INSERT INTO holdings (
+            as_of, scheme_code, isin, instrument_name, asset_class, sector, rating,
+            market_cap_bucket, weight_pct
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        ("2026-08-15", "111111", "INE000000111", "Fresh Holding", None, None, None, None, 10.0),
+    )
+    db.commit()
+    record_filing_status(
+        db,
+        FilingStatus(
+            scheme_code="111111",
+            state="fresh",
+            requested_month="2026-08",
+            attempted_at="2026-08-01T00:00:00+00:00",
+            finished_at="2026-08-01T00:00:01+00:00",
+            as_of="2026-08-15",
+            amc="PPFAS Mutual Fund",
+            source_url="https://amc.example/ppfas.xlsx",
+            reason="already current",
+        ),
+    )
+    master = SchemeMaster.from_rows(
+        [{"scheme_code": "111111", "amc": "PPFAS Mutual Fund"}]
+    )
+    monkeypatch.setattr(
+        "app.ingest.ensure.fetch_amc_portfolio",
+        lambda *_: (_ for _ in ()).throw(AssertionError("fresh scheme should not fetch")),
+    )
+
+    result = ensure_filings(
+        db,
+        ["111111", "999999"],
+        month="2026-08",
+        incoming=tmp_path,
+        master=master,
+    )
+
+    by_code = {filing["schemeCode"]: filing for filing in result["filings"]}
+    assert by_code["111111"]["state"] == "fresh"
+    assert by_code["111111"]["sourceUrl"] == "https://amc.example/ppfas.xlsx"
+    assert by_code["111111"]["reason"] == "already current"
+    assert by_code["111111"]["amc"] == "PPFAS Mutual Fund"
+    assert by_code["999999"]["state"] == "unmapped"
 
 
 def test_post_insights_does_not_call_ensure_filings(client, monkeypatch):
