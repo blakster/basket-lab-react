@@ -1,14 +1,22 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { InsightsResponse } from "../lib/api/insights";
 import type { Basket, BacktestResult, LabSettings, NavPoint } from "../types";
 import { ThemeProvider } from "../state/ThemeContext";
 import { InsightsPanel } from "./InsightsPanel";
 
-const { postInsightsMock, ensureFilingsMock, loadBeesMock, labState } = vi.hoisted(() => ({
+const userEvent = {
+  async upload(input: HTMLInputElement, file: File) {
+    fireEvent.change(input, { target: { files: [file] } });
+  },
+};
+
+const { postInsightsMock, ensureFilingsMock, uploadFilingMock, loadBeesMock, labState } =
+  vi.hoisted(() => ({
   postInsightsMock: vi.fn(),
   ensureFilingsMock: vi.fn(),
+  uploadFilingMock: vi.fn(),
   loadBeesMock: vi.fn(),
   labState: {
     baskets: [] as Basket[],
@@ -32,6 +40,7 @@ vi.mock("../lib/api/insights", () => ({
   insightsBasketSignature: () => "sig",
   postInsights: (...args: unknown[]) => postInsightsMock(...args),
   ensureFilings: (...args: unknown[]) => ensureFilingsMock(...args),
+  uploadFiling: (...args: unknown[]) => uploadFilingMock(...args),
 }));
 
 vi.mock("../lib/api/benchmarkNav", () => ({
@@ -121,6 +130,16 @@ const partialFiling: InsightsResponse = {
   ],
 };
 
+const partialFilingWithFilings: InsightsResponse = {
+  ...partialFiling,
+  baskets: [
+    {
+      ...partialFiling.baskets[0]!,
+      holdings: [{ isin: "INE1", name: "Reliance Industries", weight: 20 }],
+    },
+  ],
+};
+
 const failedFiling: InsightsResponse = {
   asOf: null,
   overlap: null,
@@ -178,6 +197,18 @@ describe("InsightsPanel", () => {
   beforeEach(() => {
     postInsightsMock.mockReset();
     ensureFilingsMock.mockReset();
+    uploadFilingMock.mockReset();
+    uploadFilingMock.mockResolvedValue({
+      schemeCode: "A",
+      state: "fresh",
+      requestedMonth: "2026-08",
+      attemptedAt: "2026-08-16T00:00:00Z",
+      finishedAt: "2026-08-16T00:00:01Z",
+      asOf: "2026-07-31",
+      amc: null,
+      sourceUrl: null,
+      reason: "user upload",
+    });
     ensureFilingsMock.mockResolvedValue({
       fetched: 0,
       missing: [],
@@ -387,5 +418,34 @@ describe("InsightsPanel", () => {
     renderPanel();
     expect(await screen.findByRole("button", { name: "Fetch latest filings" })).toBeInTheDocument();
     expect(screen.getByText("connection timed out")).toBeInTheDocument();
+  });
+
+  it("offers Add filing on every coverage fund", async () => {
+    postInsightsMock.mockResolvedValue(partialFilingWithFilings);
+    renderPanel();
+    expect(await screen.findAllByRole("button", { name: "Add filing" })).toHaveLength(2);
+  });
+
+  it("shows Reading filing then keeps holdings if upload fails", async () => {
+    postInsightsMock.mockResolvedValue(partialFilingWithFilings);
+    uploadFilingMock.mockRejectedValue(new Error("Upload failed."));
+    renderPanel();
+    const input = (await screen.findAllByLabelText("Add filing"))[0] as HTMLInputElement;
+    const file = new File([new Uint8Array([1, 2, 3])], "x.xlsx", {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    await userEvent.upload(input, file);
+    expect(await screen.findByText("Upload failed.")).toBeInTheDocument();
+    expect(screen.getByText("Reliance Industries")).toBeInTheDocument();
+  });
+
+  it("rejects a pdf on the client without calling upload", async () => {
+    postInsightsMock.mockResolvedValue(partialFilingWithFilings);
+    renderPanel();
+    const input = (await screen.findAllByLabelText("Add filing"))[0] as HTMLInputElement;
+    const file = new File([new Uint8Array([1])], "x.pdf", { type: "application/pdf" });
+    await userEvent.upload(input, file);
+    expect(await screen.findByText(/under 5 MB/)).toBeInTheDocument();
+    expect(uploadFilingMock).not.toHaveBeenCalled();
   });
 });

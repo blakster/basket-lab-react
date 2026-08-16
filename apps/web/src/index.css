@@ -1196,7 +1196,8 @@ button:disabled {
 
 .insight-filings-list li {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
   gap: 0.1rem 0.75rem;
   padding: 0.35rem 0;
   border-bottom: 1px solid var(--rule);
@@ -1219,7 +1220,8 @@ button:disabled {
 }
 
 .insight-filings-reason,
-.insight-filings-source {
+.insight-filings-source,
+.insight-filings-error {
   grid-column: 1 / -1;
   margin: 0;
   font-size: 0.85rem;
@@ -1234,8 +1236,29 @@ button:disabled {
   text-underline-offset: 0.15em;
 }
 
+.insight-filings-error {
+  color: var(--loss);
+}
+
 .insight-filings-action {
   margin-top: 0.65rem;
+}
+
+.insight-filings-list .insight-filings-action {
+  margin-top: 0;
+  justify-self: end;
+}
+
+.ds-btn-outlined {
+  border: 1px solid var(--ink);
+  background: transparent;
+  color: var(--ink);
+  border-radius: 0;
+}
+
+.ds-btn-outlined:hover:not(:disabled) {
+  background: var(--ink-wash);
+  color: var(--ink);
 }
 
 .insight-card {

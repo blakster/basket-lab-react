@@ -20,8 +20,11 @@ import {
   ensureFilings,
   insightsBasketSignature,
   postInsights,
+  uploadFiling,
   type FilingState,
+  type FundMetric,
   type InsightsBasket,
+  type OverlapName,
 } from "../lib/api/insights";
 import {
   alphaBeta,
@@ -350,16 +353,22 @@ function useInsightsDesk() {
 
   const focusedData = useMemo(() => {
     if (!data || !focusedId) return data;
+    const pairHasFocus = (key: string) => key.split("|").includes(focusedId);
     return {
       ...data,
       baskets: data.baskets.filter((ib) => ib.id === focusedId),
       overlap: data.overlap
         ? Object.fromEntries(
-            Object.entries(data.overlap).filter(([key]) =>
-              key.split("|").includes(focusedId),
-            ),
+            Object.entries(data.overlap).filter(([key]) => pairHasFocus(key)),
           )
         : data.overlap,
+      overlapHoldings: data.overlapHoldings
+        ? Object.fromEntries(
+            Object.entries(data.overlapHoldings).filter(([key]) =>
+              pairHasFocus(key),
+            ),
+          )
+        : data.overlapHoldings,
     };
   }, [data, focusedId]);
 
@@ -391,6 +400,7 @@ function useInsightsDesk() {
     focusedId,
     fetchingFilings: ensureQuery.isFetching || retryMutation.isPending,
     retryFilings: retryMutation.mutate,
+    refetchInsights: refetch,
   };
 }
 
@@ -424,6 +434,7 @@ function InsightsDesk({
   focusedId,
   fetchingFilings,
   retryFilings,
+  refetchInsights,
 }: ReturnType<typeof useInsightsDesk>) {
   const { openInsights } = useLab();
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -547,6 +558,9 @@ function InsightsDesk({
                   basket={baskets.find((b) => b.id === ib.id)}
                   fetching={fetchingFilings}
                   onRetry={() => retryFilings()}
+                  onUploaded={() => {
+                    void refetchInsights();
+                  }}
                 />
               ) : null,
             )}
@@ -621,7 +635,11 @@ function InsightsDesk({
                       Add another basket with holdings data
                     </p>
                   ) : (
-                    <OverlapBlock overlap={data.overlap} baskets={baskets} />
+                    <OverlapBlock
+                      overlap={data.overlap}
+                      overlapHoldings={data.overlapHoldings}
+                      baskets={baskets}
+                    />
                   )}
                 </InsightSection>
               </>
@@ -758,21 +776,64 @@ function InsightSection({
   );
 }
 
+const FILING_FILE_COPY =
+  "Use an AMC portfolio file under 5 MB (.xlsx, .xls, or .csv).";
+
+function clientRejectsFiling(file: File): boolean {
+  return file.size > 5 * 1024 * 1024 || !/\.(xlsx|xls|xlsm|csv)$/i.test(file.name);
+}
+
 function FilingCoverageBlock({
   ib,
   basket,
   fetching,
   onRetry,
+  onUploaded,
 }: {
   ib: InsightsBasket;
   basket: Basket | undefined;
   fetching: boolean;
   onRetry: () => void;
+  onUploaded: () => void;
 }) {
   const coverage = ib.filingCoverage;
+  const [busyCodes, setBusyCodes] = useState<Record<string, boolean>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const inflight = useRef(new Set<string>());
   if (!coverage) return null;
   const filings = ib.filings ?? [];
   const showRetry = needsFilingRetry(filings.map((f) => f.state));
+
+  async function handleFile(schemeCode: string, file: File | undefined) {
+    if (!file) return;
+    if (inflight.current.has(schemeCode)) return;
+    if (clientRejectsFiling(file)) {
+      setErrors((prev) => ({ ...prev, [schemeCode]: FILING_FILE_COPY }));
+      return;
+    }
+    inflight.current.add(schemeCode);
+    setBusyCodes((prev) => ({ ...prev, [schemeCode]: true }));
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next[schemeCode];
+      return next;
+    });
+    try {
+      await uploadFiling(schemeCode, file);
+      onUploaded();
+    } catch (err) {
+      const message =
+        err instanceof Error && err.message ? err.message : "Upload failed.";
+      setErrors((prev) => ({ ...prev, [schemeCode]: message }));
+    } finally {
+      inflight.current.delete(schemeCode);
+      setBusyCodes((prev) => {
+        const next = { ...prev };
+        delete next[schemeCode];
+        return next;
+      });
+    }
+  }
 
   return (
     <section className="insight-filings" aria-label="Filing coverage">
@@ -785,35 +846,70 @@ function FilingCoverageBlock({
       ) : null}
       {filings.length > 0 && (
         <ul className="insight-filings-list">
-          {filings.map((filing) => (
-            <li key={filing.schemeCode || filing.requestedMonth}>
-              <span className="insight-filings-name">
-                {fundName(basket, filing.schemeCode)}
-              </span>
-              <span
-                className="insight-filings-state"
-                data-state={filing.state}
-              >
-                {formatFilingState(filing.state)}
-              </span>
-              {filing.reason ? (
-                <p className="insight-filings-reason">{filing.reason}</p>
-              ) : null}
-              {filing.sourceUrl ? (
-                <p className="insight-filings-source">
-                  <a href={filing.sourceUrl} rel="noreferrer" target="_blank">
-                    {filing.sourceUrl}
-                  </a>
-                </p>
-              ) : null}
-            </li>
-          ))}
+          {filings.map((filing) => {
+            const code = filing.schemeCode;
+            const inputId = `add-filing-${code || filing.requestedMonth}`;
+            const busy = Boolean(busyCodes[code]);
+            return (
+              <li key={code || filing.requestedMonth}>
+                <span className="insight-filings-name">
+                  {fundName(basket, code)}
+                </span>
+                <span
+                  className="insight-filings-state"
+                  data-state={filing.state}
+                >
+                  {formatFilingState(filing.state)}
+                </span>
+                <div className="insight-filings-action">
+                  <input
+                    id={inputId}
+                    className="sr-only"
+                    type="file"
+                    accept=".xlsx,.xls,.xlsm,.csv"
+                    aria-label="Add filing"
+                    disabled={busy}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      event.target.value = "";
+                      void handleFile(code, file);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="ds-btn-outlined"
+                    disabled={busy}
+                    aria-busy={busy || undefined}
+                    onClick={() => {
+                      document.getElementById(inputId)?.click();
+                    }}
+                  >
+                    {busy ? "Reading filing" : "Add filing"}
+                  </button>
+                </div>
+                {filing.reason ? (
+                  <p className="insight-filings-reason">{filing.reason}</p>
+                ) : null}
+                {filing.sourceUrl ? (
+                  <p className="insight-filings-source">
+                    <a href={filing.sourceUrl} rel="noreferrer" target="_blank">
+                      {filing.sourceUrl}
+                    </a>
+                  </p>
+                ) : null}
+                {errors[code] ? (
+                  <p className="insight-filings-error">{errors[code]}</p>
+                ) : null}
+              </li>
+            );
+          })}
         </ul>
       )}
       {showRetry && (
         <div className="insight-filings-action">
           <button
             type="button"
+            className="ds-btn-outlined"
             disabled={fetching}
             aria-busy={fetching || undefined}
             onClick={onRetry}
@@ -824,6 +920,28 @@ function FilingCoverageBlock({
       )}
     </section>
   );
+}
+
+function formatAum(value: number | null | undefined): string {
+  if (value == null) return "—";
+  return `₹${value} Cr`;
+}
+
+function formatTurnover(value: number | null | undefined): string {
+  if (value == null) return "—";
+  return `${value}×`;
+}
+
+function snapshotFundMetric(
+  filing: InsightsBasket | undefined,
+  basket: Basket | undefined,
+): FundMetric | undefined {
+  const scheme = basket?.funds[0]?.schemeCode;
+  if (scheme) {
+    const match = filing?.fundMetrics?.find((m) => m.schemeCode === scheme);
+    if (match) return match;
+  }
+  return filing?.fundMetrics?.[0];
 }
 
 function SnapshotBlock({
@@ -845,6 +963,9 @@ function SnapshotBlock({
   const rows = [...ids].map((id) => {
     const filing = filingById.get(id);
     const risk = riskById.get(id);
+    const metric = snapshotFundMetric(filing, baskets.find((b) => b.id === id));
+    const aum = filing?.aumCr ?? metric?.aumCr ?? null;
+    const turnover = filing?.turnover ?? metric?.turnover ?? null;
     return {
       id,
       name: basketName(id, baskets),
@@ -858,6 +979,8 @@ function SnapshotBlock({
         : hasFilings
           ? "—"
           : "—",
+      aum: formatAum(aum),
+      turnover: formatTurnover(turnover),
       vol: risk?.vol,
       sharpe: risk?.sharpe,
       sortino: risk?.sortino,
@@ -877,6 +1000,8 @@ function SnapshotBlock({
             <TableHead>Basket</TableHead>
             <TableHead className="text-right">Expense</TableHead>
             <TableHead className="text-right">PE</TableHead>
+            <TableHead className="text-right">AUM</TableHead>
+            <TableHead className="text-right">Turnover</TableHead>
             <TableHead className="text-right">Vol</TableHead>
             <TableHead className="text-right">Sharpe</TableHead>
             <TableHead className="text-right">Sortino</TableHead>
@@ -892,6 +1017,12 @@ function SnapshotBlock({
               </TableCell>
               <TableCell className="text-right" data-label="PE">
                 {row.pe}
+              </TableCell>
+              <TableCell className="text-right" data-label="AUM">
+                {row.aum}
+              </TableCell>
+              <TableCell className="text-right" data-label="Turnover">
+                {row.turnover}
               </TableCell>
               <TableCell className="text-right" data-label="Vol">
                 {row.vol != null ? formatPct(row.vol) : "—"}
@@ -1086,9 +1217,11 @@ function equitySplitEmpty(
 
 function OverlapBlock({
   overlap,
+  overlapHoldings,
   baskets,
 }: {
   overlap: Record<string, number>;
+  overlapHoldings?: Record<string, OverlapName[]> | null;
   baskets: Basket[];
 }) {
   const rows = Object.entries(overlap)
@@ -1098,6 +1231,7 @@ function OverlapBlock({
       return {
         key,
         label: `${basketName(left ?? "", baskets)} × ${basketName(right ?? "", baskets)}`,
+        names: overlapHoldings?.[key] ?? [],
         weight,
       };
     });
@@ -1137,6 +1271,34 @@ function OverlapBlock({
           </TableBody>
         </Table>
       </div>
+      {rows.map((row) =>
+        row.names.length > 0 ? (
+          <div key={`${row.key}-names`} className="table-scroll">
+            <Table className="insight-table">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Holding</TableHead>
+                  <TableHead className="text-right">left %</TableHead>
+                  <TableHead className="text-right">right %</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {row.names.map((name, i) => (
+                  <TableRow key={name.isin || `${name.name}-${i}`}>
+                    <TableCell>{name.name}</TableCell>
+                    <TableCell className="text-right">
+                      {formatPct(name.weightA)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {formatPct(name.weightB)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        ) : null,
+      )}
     </>
   );
 }

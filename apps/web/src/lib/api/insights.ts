@@ -38,6 +38,20 @@ export type FilingCoverage = {
   total: number;
 };
 
+export type OverlapName = {
+  isin: string | null;
+  name: string;
+  weightA: number;
+  weightB: number;
+  minWeight: number;
+};
+
+export type FundMetric = {
+  schemeCode: string;
+  aumCr: number | null;
+  turnover: number | null;
+};
+
 export type InsightsBasket = {
   id: string;
   missingSchemes: string[];
@@ -51,6 +65,9 @@ export type InsightsBasket = {
   expenseIncomplete: boolean;
   pe: number | null;
   peIncomplete: boolean;
+  aumCr?: number | null;
+  turnover?: number | null;
+  fundMetrics?: FundMetric[];
   filings?: FilingStatus[];
   filingCoverage?: FilingCoverage;
   filingAsOf?: string | null;
@@ -67,6 +84,7 @@ export type InsightsResponse = {
   asOf: string | null;
   baskets: InsightsBasket[];
   overlap: Record<string, number> | null;
+  overlapHoldings?: Record<string, OverlapName[]> | null;
 };
 
 function insightsPayload(baskets: Basket[]) {
@@ -139,4 +157,30 @@ export async function ensureFilings(
   });
   inflightEnsure.set(key, request);
   return request;
+}
+
+const FILING_FILE_REJECT =
+  "Use an AMC portfolio file under 5 MB (.xlsx, .xls, or .csv).";
+
+export function filingFileRejected(file: File): boolean {
+  return file.size > 5 * 1024 * 1024 || !/\.(xlsx|xls|xlsm|csv)$/i.test(file.name);
+}
+
+export async function uploadFiling(schemeCode: string, file: File): Promise<FilingStatus> {
+  if (filingFileRejected(file)) {
+    throw new Error(FILING_FILE_REJECT);
+  }
+  const body = new FormData();
+  body.set("schemeCode", schemeCode);
+  body.set("file", file);
+  const res = await fetch("/api/ingest/upload", { method: "POST", body });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(
+      typeof json.message === "string" && json.message
+        ? json.message
+        : "Could not read this filing.",
+    );
+  }
+  return json as FilingStatus;
 }
