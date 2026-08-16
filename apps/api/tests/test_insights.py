@@ -94,3 +94,33 @@ def test_baskets_required_422(client):
     res = client.post("/api/insights", json={})
     assert res.status_code == 422
     assert res.json() == {"error": "bad_request", "message": "baskets required"}
+
+
+def test_insights_include_aum_and_overlap_names(db, client):
+    db.execute(
+        "INSERT INTO holdings (as_of, scheme_code, isin, instrument_name, asset_class, sector, rating, market_cap_bucket, weight_pct) VALUES (?,?,?,?,?,?,?,?,?)",
+        ("2026-07-31", "A", "INE1", "HDFC Bank", "equity", "Banks", None, None, 3.44),
+    )
+    db.execute(
+        "INSERT INTO holdings (as_of, scheme_code, isin, instrument_name, asset_class, sector, rating, market_cap_bucket, weight_pct) VALUES (?,?,?,?,?,?,?,?,?)",
+        ("2026-07-31", "B", "INE1", "HDFC Bank", "equity", "Banks", None, None, 0.94),
+    )
+    db.execute(
+        "INSERT INTO fundamentals (as_of, scheme_code, expense_ratio, pe, aum_cr, turnover) VALUES (?,?,?,?,?,?)",
+        ("2026-07-31", "A", None, None, 24100.0, 0.26),
+    )
+    db.commit()
+    res = client.post("/api/insights", json={
+        "baskets": [
+            {"id": "1", "funds": [{"schemeCode": "A", "weight": 100}]},
+            {"id": "2", "funds": [{"schemeCode": "B", "weight": 100}]},
+        ]
+    })
+    body = res.json()
+    one = next(b for b in body["baskets"] if b["id"] == "1")
+    assert one["aumCr"] == 24100.0
+    assert one["turnover"] == 0.26
+    assert one["fundMetrics"][0]["schemeCode"] == "A"
+    names = body["overlapHoldings"]["1|2"]
+    assert names[0]["isin"] == "INE1"
+    assert names[0]["minWeight"] == 0.94

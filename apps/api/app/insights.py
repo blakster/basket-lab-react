@@ -21,7 +21,7 @@ def compute_insights(
 ) -> dict[str, Any]:
     as_of = _latest_as_of(conn)
     out_baskets: list[dict[str, Any]] = []
-    filing_weights: list[tuple[str, dict[str, float]]] = []
+    filing_weights: list[tuple[str, dict[str, float], dict[str, str]]] = []
 
     if filings_by_code is None:
         codes: list[str] = []
@@ -38,24 +38,51 @@ def compute_insights(
     for raw in body.get("baskets") or []:
         basket_id = str(raw.get("id", ""))
         funds = raw.get("funds") or []
-        rolled, isin_weights, has_filing = _roll_basket(conn, as_of, funds)
+        rolled, isin_weights, isin_names, has_filing = _roll_basket(conn, funds)
         coverage = _filing_coverage(funds, filings_by_code)
         out_baskets.append({"id": basket_id, **rolled, **coverage})
         if has_filing:
-            filing_weights.append((basket_id, isin_weights))
+            filing_weights.append((basket_id, isin_weights, isin_names))
 
     overlap: dict[str, float] | None = None
+    overlap_holdings: dict[str, list[dict[str, Any]]] | None = None
     if len(filing_weights) >= 2:
         overlap = {}
-        for i, (id_a, w_a) in enumerate(filing_weights):
-            for id_b, w_b in filing_weights[i + 1 :]:
+        overlap_holdings = {}
+        for i, (id_a, w_a, names_a) in enumerate(filing_weights):
+            for id_b, w_b, names_b in filing_weights[i + 1 :]:
                 left, right = sorted((id_a, id_b))
                 key = f"{left}|{right}"
-                isins = set(w_a) | set(w_b)
-                overlap[key] = sum(min(w_a.get(k, 0.0), w_b.get(k, 0.0)) for k in isins)
+                if id_a == left:
+                    wa, wb, na, nb = w_a, w_b, names_a, names_b
+                else:
+                    wa, wb, na, nb = w_b, w_a, names_b, names_a
+                isins = set(wa) | set(wb)
+                overlap[key] = sum(min(wa.get(k, 0.0), wb.get(k, 0.0)) for k in isins)
+                shared = set(wa) & set(wb)
+                items: list[dict[str, Any]] = []
+                for isin in shared:
+                    min_w = min(wa[isin], wb[isin])
+                    if min_w <= 0:
+                        continue
+                    items.append(
+                        {
+                            "isin": isin,
+                            "name": na.get(isin) or nb.get(isin) or "",
+                            "weightA": wa[isin],
+                            "weightB": wb[isin],
+                            "minWeight": min_w,
+                        }
+                    )
+                items.sort(key=lambda h: (-h["minWeight"], h["isin"]))
+                overlap_holdings[key] = items[:15]
 
-    return {"asOf": as_of, "baskets": out_baskets, "overlap": overlap}
-
+    return {
+        "asOf": as_of,
+        "baskets": out_baskets,
+        "overlap": overlap,
+        "overlapHoldings": overlap_holdings,
+    }
 
 def _filing_coverage(
     funds: list[dict[str, Any]],
@@ -113,23 +140,38 @@ def _latest_as_of(conn: sqlite3.Connection) -> str | None:
     return row[0] if row is not None else None
 
 
+def _scheme_as_of(conn: sqlite3.Connection, scheme: str) -> str | None:
+    row = conn.execute(
+        "SELECT MAX(as_of) FROM holdings WHERE scheme_code = ?", (scheme,)
+    ).fetchone()
+    return row[0] if row is not None else None
+
+
 def _roll_basket(
     conn: sqlite3.Connection,
-    as_of: str | None,
     funds: list[dict[str, Any]],
-) -> tuple[dict[str, Any], dict[str, float], bool]:
+) -> tuple[dict[str, Any], dict[str, float], dict[str, str], bool]:
     missing: list[str] = []
     lines: list[dict[str, Any]] = []
     pe_pairs: list[tuple[float, float]] = []
     exp_pairs: list[tuple[float, float]] = []
+    aum_pairs: list[tuple[float, float]] = []
+    turn_pairs: list[tuple[float, float]] = []
+    fund_metrics: list[dict[str, Any]] = []
 
     for fund in funds:
         scheme = str(fund.get("schemeCode") or "")
         fund_w = float(fund.get("weight") or 0)
-        rows = _holdings_for(conn, scheme, as_of)
+        scheme_as_of = _scheme_as_of(conn, scheme) if scheme else None
+        rows = _holdings_for(conn, scheme, scheme_as_of)
+        aum_val: float | None = None
+        turn_val: float | None = None
         if not rows:
             if scheme:
                 missing.append(scheme)
+                fund_metrics.append(
+                    {"schemeCode": scheme, "aumCr": None, "turnover": None}
+                )
             continue
         scale = fund_w / 100.0
         for row in rows:
@@ -144,12 +186,22 @@ def _roll_basket(
                     "weight": scale * float(row["weight_pct"]),
                 }
             )
-        funda = _fundamentals_for(conn, scheme, as_of)
+        funda = _fundamentals_for(conn, scheme, scheme_as_of)
         if funda is not None:
             if funda["pe"] is not None:
                 pe_pairs.append((fund_w, float(funda["pe"])))
             if funda["expense_ratio"] is not None:
                 exp_pairs.append((fund_w, float(funda["expense_ratio"])))
+            if funda["aum_cr"] is not None:
+                aum_val = float(funda["aum_cr"])
+                aum_pairs.append((fund_w, aum_val))
+            if funda["turnover"] is not None:
+                turn_val = float(funda["turnover"])
+                turn_pairs.append((fund_w, turn_val))
+        if scheme:
+            fund_metrics.append(
+                {"schemeCode": scheme, "aumCr": aum_val, "turnover": turn_val}
+            )
 
     holdings = _top_holdings(lines)
     sector = _sum_by(lines, "sector", missing_label="Unclassified")
@@ -158,12 +210,17 @@ def _roll_basket(
     equity_split = _equity_split(lines)
     pe, pe_incomplete = _avg_known(pe_pairs, len(funds))
     expense, expense_incomplete = _avg_known(exp_pairs, len(funds))
+    aum_cr, _ = _avg_known(aum_pairs, len(funds))
+    turnover, _ = _avg_known(turn_pairs, len(funds))
 
     isin_weights: dict[str, float] = defaultdict(float)
+    isin_names: dict[str, str] = {}
     for line in lines:
         isin = line["isin"]
         if isin:
             isin_weights[isin] += line["weight"]
+            if isin not in isin_names:
+                isin_names[isin] = line["name"] or ""
 
     payload = {
         "missingSchemes": missing,
@@ -177,8 +234,11 @@ def _roll_basket(
         "expenseIncomplete": expense_incomplete,
         "pe": pe,
         "peIncomplete": pe_incomplete,
+        "aumCr": aum_cr,
+        "turnover": turnover,
+        "fundMetrics": fund_metrics,
     }
-    return payload, dict(isin_weights), bool(lines)
+    return payload, dict(isin_weights), isin_names, bool(lines)
 
 
 def _holdings_for(
@@ -204,7 +264,7 @@ def _fundamentals_for(
         return None
     return conn.execute(
         """
-        SELECT expense_ratio, pe FROM fundamentals
+        SELECT expense_ratio, pe, aum_cr, turnover FROM fundamentals
         WHERE scheme_code = ? AND as_of = ?
         """,
         (scheme, as_of),
