@@ -189,3 +189,72 @@ def test_ensure_keeps_existing_holding_when_download_fails(db, tmp_path, monkeyp
     assert db.execute(
         "SELECT COUNT(*) FROM holdings WHERE scheme_code = '118741' AND as_of = '2026-07-31'"
     ).fetchone()[0] == 1
+
+
+def test_post_ensure_refreshes_stale_schemes_and_returns_filings(client, monkeypatch):
+    """Schemes with cached holdings must still go through ensure and return filings."""
+    called: list[list[str]] = []
+
+    def fake_ensure(conn, codes, *, month=None, incoming, master):
+        called.append(list(codes))
+        return {
+            "fetched": 0,
+            "missing": [],
+            "amcs": [],
+            "filings": [
+                {
+                    "schemeCode": codes[0],
+                    "state": "stale",
+                    "requestedMonth": month or "2026-08",
+                    "attemptedAt": "2026-08-16T00:00:00+00:00",
+                    "finishedAt": "2026-08-16T00:00:01+00:00",
+                    "asOf": "2026-07-31",
+                    "amc": "Nippon India Mutual Fund",
+                    "sourceUrl": "https://amc.example/xls",
+                    "reason": "download-failed",
+                }
+            ],
+        }
+
+    monkeypatch.setattr("app.main.ensure_filings", fake_ensure)
+    monkeypatch.setattr(
+        "app.main.SchemeMaster.load_cached",
+        lambda *_: SchemeMaster.from_rows(
+            [{"scheme_code": "122639", "amc": "Nippon India Mutual Fund"}]
+        ),
+    )
+
+    # 122639 already has holdings in the sample fixture (not "missing").
+    res = client.post("/api/ingest/ensure", json={"schemeCodes": ["122639"]})
+
+    assert res.status_code == 200
+    data = res.json()
+    assert called == [["122639"]]
+    assert "filings" in data
+    assert data["filings"][0]["schemeCode"] == "122639"
+    assert data["filings"][0]["state"] == "stale"
+
+
+def test_post_insights_does_not_call_ensure_filings(client, monkeypatch):
+    called: list[object] = []
+    monkeypatch.setattr(
+        "app.main.ensure_filings",
+        lambda *a, **k: called.append(True) or {"fetched": 0, "missing": [], "amcs": [], "filings": []},
+    )
+
+    res = client.post(
+        "/api/insights",
+        json={
+            "baskets": [
+                {
+                    "id": "1",
+                    "funds": [{"schemeCode": "no-such-scheme", "weight": 100}],
+                }
+            ]
+        },
+    )
+
+    assert res.status_code == 200
+    assert called == []
+    basket = res.json()["baskets"][0]
+    assert basket["filingCoverage"] == {"covered": 0, "total": 1}
