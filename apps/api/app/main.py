@@ -1,3 +1,4 @@
+import tempfile
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -7,9 +8,10 @@ from fastapi.responses import JSONResponse
 
 from app.db import init_db
 from app.filing_status import filing_statuses
-from app.ingest.ensure import ensure_filings, scheme_codes_from_body
+from app.ingest.ensure import _serialize_status, ensure_filings, scheme_codes_from_body
 from app.ingest.run import resolve_ingest_files, run_ingest
 from app.ingest.scheme_master import SchemeMaster
+from app.ingest.upload import upload_filing
 from app.insights import compute_insights
 
 # apps/api/app/main.py → repo root / data / basket.sqlite
@@ -118,3 +120,35 @@ async def post_ingest_ensure(request: Request):
         incoming=DB_PATH.parent / "incoming",
         master=master,
     )
+
+
+@app.post("/api/ingest/upload")
+async def post_ingest_upload(request: Request):
+    form = await request.form()
+    scheme = str(form.get("schemeCode") or "").strip()
+    upload = form.get("file")
+    month = str(form.get("month") or datetime.now(timezone.utc).strftime("%Y-%m"))
+    if not scheme or upload is None or not hasattr(upload, "read"):
+        return JSONResponse(status_code=422, content={"error": "bad_request", "message": "schemeCode and file required"})
+    data = await upload.read()
+    name = getattr(upload, "filename", "") or "upload.bin"
+    suffix = Path(name).suffix.lower()
+    if suffix not in {".xlsx", ".xls", ".xlsm", ".csv"} or len(data) > 5 * 1024 * 1024:
+        return JSONResponse(
+            status_code=422,
+            content={"error": "bad_request", "message": "Use an AMC portfolio file under 5 MB (.xlsx, .xls, or .csv)."},
+        )
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+    try:
+        tmp.write(data)
+        tmp.close()
+        status = upload_filing(request.app.state.db, scheme, Path(tmp.name), month=month)
+    except FileNotFoundError as exc:
+        return JSONResponse(status_code=422, content={"error": "parse-failed", "message": str(exc)})
+    except ValueError as exc:
+        return JSONResponse(status_code=422, content={"error": "bad_request", "message": str(exc)})
+    except Exception:
+        return JSONResponse(status_code=422, content={"error": "parse-failed", "message": "Could not read this filing."})
+    finally:
+        Path(tmp.name).unlink(missing_ok=True)
+    return _serialize_status(status)

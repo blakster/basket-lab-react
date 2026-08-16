@@ -71,6 +71,11 @@ def parse_holdings_csv(text: str) -> list[dict[str, Any]]:
     return rows
 
 
+def replace_scheme_holdings(conn: sqlite3.Connection, scheme_code: str) -> None:
+    conn.execute("DELETE FROM holdings WHERE scheme_code = ?", (scheme_code,))
+    conn.commit()
+
+
 def load_fundamentals(conn: sqlite3.Connection, as_of: str, scheme_code: str, **fields) -> None:
     conn.execute(
         """
