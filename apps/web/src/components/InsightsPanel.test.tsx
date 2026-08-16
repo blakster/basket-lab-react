@@ -2,21 +2,41 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { InsightsResponse } from "../lib/api/insights";
-import type { Basket, BacktestResult } from "../types";
+import type { Basket, BacktestResult, LabSettings, NavPoint } from "../types";
+import { ThemeProvider } from "../state/ThemeContext";
 import { InsightsPanel } from "./InsightsPanel";
 
-const { postInsightsMock, labState } = vi.hoisted(() => ({
+const { postInsightsMock, ensureFilingsMock, loadBeesMock, labState } = vi.hoisted(() => ({
   postInsightsMock: vi.fn(),
+  ensureFilingsMock: vi.fn(),
+  loadBeesMock: vi.fn(),
   labState: {
     baskets: [] as Basket[],
     results: [] as BacktestResult[],
     reportStatus: vi.fn(),
+    insightsOpen: true,
+    insightsBasketId: "1" as string | null,
+    openInsights: vi.fn(),
+    closeInsights: vi.fn(),
+    settings: {
+      mode: "lumpsum",
+      amount: 100_000,
+      period: "Custom",
+      customStart: "2023-01-01",
+      customEnd: "2026-01-01",
+    } as LabSettings,
   },
 }));
 
 vi.mock("../lib/api/insights", () => ({
   insightsBasketSignature: () => "sig",
   postInsights: (...args: unknown[]) => postInsightsMock(...args),
+  ensureFilings: (...args: unknown[]) => ensureFilingsMock(...args),
+}));
+
+vi.mock("../lib/api/benchmarkNav", () => ({
+  NIFTY_BEES_CODE: "140084",
+  loadNiftyBeesNav: (...args: unknown[]) => loadBeesMock(...args),
 }));
 
 vi.mock("../state/LabContext", () => ({
@@ -54,14 +74,99 @@ const emptyFiling: InsightsResponse = {
   ],
 };
 
+const partialFiling: InsightsResponse = {
+  asOf: "2026-07-31",
+  overlap: null,
+  baskets: [
+    {
+      id: "1",
+      missingSchemes: ["B"],
+      holdings: [{ isin: "INE1", name: "Covered Holding", weight: 20 }],
+      sector: { Energy: 20 },
+      asset: { Equity: 20 },
+      credit: null,
+      creditNote: "N/A — no debt holdings",
+      equitySplit: { large: 20, mid: 0, small: 0, unclassified: 0 },
+      expenseRatio: 0.5,
+      expenseIncomplete: false,
+      pe: 18,
+      peIncomplete: false,
+      filings: [
+        {
+          schemeCode: "A",
+          state: "stale",
+          requestedMonth: "2026-08",
+          attemptedAt: "2026-08-16T00:00:00Z",
+          finishedAt: "2026-08-16T00:00:01Z",
+          asOf: "2026-07-31",
+          amc: "Example AMC",
+          sourceUrl: "https://amc.example/xls",
+          reason: null,
+        },
+        {
+          schemeCode: "B",
+          state: "unmapped",
+          requestedMonth: "2026-08",
+          attemptedAt: "2026-08-16T00:00:00Z",
+          finishedAt: "2026-08-16T00:00:01Z",
+          asOf: null,
+          amc: null,
+          sourceUrl: null,
+          reason: "scheme has no AMC mapping",
+        },
+      ],
+      filingCoverage: { covered: 1, total: 2 },
+      filingAsOf: "2026-07-31",
+    },
+  ],
+};
+
+const failedFiling: InsightsResponse = {
+  asOf: null,
+  overlap: null,
+  baskets: [
+    {
+      id: "1",
+      missingSchemes: ["A"],
+      holdings: [],
+      sector: {},
+      asset: {},
+      credit: null,
+      creditNote: "N/A — no debt holdings",
+      equitySplit: { large: 0, mid: 0, small: 0, unclassified: 0 },
+      expenseRatio: null,
+      expenseIncomplete: true,
+      pe: null,
+      peIncomplete: true,
+      filings: [
+        {
+          schemeCode: "A",
+          state: "download-failed",
+          requestedMonth: "2026-08",
+          attemptedAt: "2026-08-16T00:00:00Z",
+          finishedAt: "2026-08-16T00:00:01Z",
+          asOf: null,
+          amc: "Example AMC",
+          sourceUrl: null,
+          reason: "connection timed out",
+        },
+      ],
+      filingCoverage: { covered: 0, total: 1 },
+      filingAsOf: null,
+    },
+  ],
+};
+
 function renderPanel() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, retryDelay: 0 } },
   });
   return render(
-    <QueryClientProvider client={client}>
-      <InsightsPanel />
-    </QueryClientProvider>,
+    <ThemeProvider>
+      <QueryClientProvider client={client}>
+        <InsightsPanel />
+      </QueryClientProvider>
+    </ThemeProvider>,
   );
 }
 
@@ -72,22 +177,39 @@ describe("InsightsPanel", () => {
 
   beforeEach(() => {
     postInsightsMock.mockReset();
+    ensureFilingsMock.mockReset();
+    ensureFilingsMock.mockResolvedValue({
+      fetched: 0,
+      missing: [],
+      amcs: [],
+      filings: [],
+    });
+    loadBeesMock.mockReset();
+    loadBeesMock.mockResolvedValue([] as NavPoint[]);
     labState.reportStatus.mockReset();
+    labState.insightsBasketId = "1";
     labState.baskets = [basket];
     labState.results = [];
+    labState.settings = {
+      mode: "lumpsum",
+      amount: 100_000,
+      period: "Custom",
+      customStart: "2023-01-01",
+      customEnd: "2026-01-01",
+    };
   });
 
   it("does not render 0.00% equity buckets when filings are missing", async () => {
     postInsightsMock.mockResolvedValue(emptyFiling);
     renderPanel();
     await waitFor(() => {
-      expect(screen.getByText("No AMFI filing")).toBeInTheDocument();
+      expect(screen.getAllByText("No AMFI filing").length).toBeGreaterThan(0);
     });
     expect(screen.queryByText("0.00%")).toBeNull();
     expect(screen.queryByText("Large")).toBeNull();
   });
 
-  it("shows Sharpe from NAV series when insights fail", async () => {
+  it("shows Risk & skill from NAV series when insights fail", async () => {
     postInsightsMock.mockRejectedValue(new Error("down"));
     labState.results = [
       {
@@ -105,8 +227,165 @@ describe("InsightsPanel", () => {
     await waitFor(() => {
       expect(screen.getByText("Insights unavailable")).toBeInTheDocument();
     });
-    const sharpeCard = screen.getByText("Sharpe").closest("article");
-    expect(sharpeCard).toBeTruthy();
-    expect(sharpeCard!.textContent).toMatch(/-?\d+\.\d{2}/);
+    const card = screen.getByText("Risk & skill").closest("article");
+    expect(card).toBeTruthy();
+    expect(card!.textContent).toMatch(/Sharpe/);
+    expect(card!.textContent).toMatch(/-?\d+\.\d{2}/);
+    expect(card!.textContent).toMatch(/Nifty BeES NAV missing/);
+  });
+
+  it("does not print 0.00% volatility for a constant series", async () => {
+    postInsightsMock.mockRejectedValue(new Error("down"));
+    labState.results = [
+      {
+        basketId: "1",
+        series: [
+          { x: "2023-01-01", y: 100, drawdown: 0 },
+          { x: "2023-01-02", y: 100, drawdown: 0 },
+          { x: "2023-01-03", y: 100, drawdown: 0 },
+          { x: "2023-01-04", y: 100, drawdown: 0 },
+        ],
+        stats: { initial: 100, final: 100, abs: 0, cagr: 0, mdd: 0 },
+      },
+    ];
+    renderPanel();
+    await waitFor(() => {
+      expect(screen.getByText("Risk & skill")).toBeInTheDocument();
+    });
+    const card = screen.getByText("Risk & skill").closest("article")!;
+    expect(card.textContent).not.toMatch(/Vol\s*0\.00%/);
+  });
+
+  it("shows pairwise correlation when two baskets have series", async () => {
+    postInsightsMock.mockRejectedValue(new Error("down"));
+    const other: Basket = {
+      ...basket,
+      id: "2",
+      name: "Sat",
+      funds: [
+        {
+          schemeCode: "B",
+          schemeName: "Fund B",
+          isin: null,
+          weight: 100,
+          locked: false,
+        },
+      ],
+    };
+    labState.baskets = [basket, other];
+    labState.results = [
+      {
+        basketId: "1",
+        series: [
+          { x: "2023-01-01", y: 100, drawdown: 0 },
+          { x: "2023-01-02", y: 101, drawdown: 0 },
+          { x: "2023-01-03", y: 103, drawdown: 0 },
+        ],
+        stats: { initial: 100, final: 103, abs: 3, cagr: 3, mdd: 0 },
+      },
+      {
+        basketId: "2",
+        series: [
+          { x: "2023-01-01", y: 100, drawdown: 0 },
+          { x: "2023-01-02", y: 102, drawdown: 0 },
+          { x: "2023-01-03", y: 101, drawdown: 0 },
+        ],
+        stats: { initial: 100, final: 101, abs: 1, cagr: 1, mdd: 0 },
+      },
+    ];
+    renderPanel();
+    await waitFor(() => {
+      expect(screen.getByText(/Core × Sat/)).toBeInTheDocument();
+    });
+  });
+
+  it("shows only the focused basket's filings, not sibling baskets", async () => {
+    const other: Basket = {
+      ...basket,
+      id: "2",
+      name: "Sat",
+      funds: [
+        {
+          schemeCode: "B",
+          schemeName: "Fund B",
+          isin: null,
+          weight: 100,
+          locked: false,
+        },
+      ],
+    };
+    labState.baskets = [basket, other];
+    labState.insightsBasketId = "1";
+    postInsightsMock.mockResolvedValue({
+      asOf: "2026-07-31",
+      overlap: { "1|2": 12.5 },
+      baskets: [
+        {
+          id: "1",
+          missingSchemes: [],
+          holdings: [{ isin: "INE1", name: "Core Holding", weight: 20 }],
+          sector: { Energy: 20 },
+          asset: { Equity: 20 },
+          credit: null,
+          creditNote: "N/A — no debt holdings",
+          equitySplit: { large: 20, mid: 0, small: 0, unclassified: 0 },
+          expenseRatio: 0.5,
+          expenseIncomplete: false,
+          pe: 18,
+          peIncomplete: false,
+        },
+        {
+          id: "2",
+          missingSchemes: [],
+          holdings: [{ isin: "INE2", name: "Sat Holding", weight: 40 }],
+          sector: { Financial: 40 },
+          asset: { Equity: 40 },
+          credit: null,
+          creditNote: "N/A — no debt holdings",
+          equitySplit: { large: 40, mid: 0, small: 0, unclassified: 0 },
+          expenseRatio: 0.8,
+          expenseIncomplete: false,
+          pe: 22,
+          peIncomplete: false,
+        },
+      ],
+    });
+    renderPanel();
+    await waitFor(() => {
+      expect(screen.getByText("Core Holding")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Sat Holding")).toBeNull();
+    const holdings = screen.getByRole("heading", { name: "Holdings" }).closest("article")!;
+    expect(holdings.textContent).not.toMatch(/Sat/);
+    const mix = screen.getByRole("heading", { name: "Mix" }).closest("article")!;
+    expect(mix.textContent).not.toMatch(/Sat/);
+    expect(screen.queryByText("Financial")).toBeNull();
+  });
+
+  it("still renders holdings and mix empty states when AMFI filings are missing", async () => {
+    postInsightsMock.mockResolvedValue(emptyFiling);
+    renderPanel();
+    await waitFor(() => {
+      expect(screen.getByText("No AMFI filing for Fund A")).toBeInTheDocument();
+    });
+    const mix = screen.getByRole("heading", { name: "Mix" }).closest("article")!;
+    expect(mix.textContent).toMatch(/No AMFI filing/);
+    expect(mix.textContent).toMatch(/Sector/);
+    expect(mix.textContent).toMatch(/Asset/);
+    expect(screen.queryByText("0.00%")).toBeNull();
+  });
+
+  it("renders cached insights before the automatic filing refresh settles", async () => {
+    ensureFilingsMock.mockReturnValue(new Promise(() => {}));
+    postInsightsMock.mockResolvedValue(partialFiling);
+    renderPanel();
+    expect(await screen.findByText("1 of 2 funds covered")).toBeInTheDocument();
+  });
+
+  it("offers a retry with the stored failure reason", async () => {
+    postInsightsMock.mockResolvedValue(failedFiling);
+    renderPanel();
+    expect(await screen.findByRole("button", { name: "Fetch latest filings" })).toBeInTheDocument();
+    expect(screen.getByText("connection timed out")).toBeInTheDocument();
   });
 });

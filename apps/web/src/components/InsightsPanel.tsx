@@ -1,18 +1,66 @@
-import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, type ReactNode } from "react";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { loadNiftyBeesNav } from "../lib/api/benchmarkNav";
+import {
+  ensureFilings,
   insightsBasketSignature,
   postInsights,
+  type FilingState,
   type InsightsBasket,
 } from "../lib/api/insights";
-import { sharpeFromSeries } from "../lib/sharpe";
+import {
+  alphaBeta,
+  calmar,
+  correlation,
+  dailyTwrs,
+  navToTwrs,
+  rollingCagr,
+  sharpeFromTwrs,
+  sortinoFromTwrs,
+  volatilityFromTwrs,
+  type CashflowSpec,
+  type DatedReturn,
+} from "../lib/risk";
+import { resolveRange } from "../lib/resolveSettings";
+import { inkAlpha, tintTowardWell } from "../lib/theme";
 import { useLab } from "../state/LabContext";
-import type { Basket } from "../types";
+import { useTheme } from "../state/ThemeContext";
+import type { BacktestResult, Basket, LabSettings } from "../types";
+import {
+  AllocationStack,
+  MixCompareChart,
+  MetricCompareChart,
+  type MixSeries,
+} from "./LabCharts";
 
 const EQUITY_ORDER = ["large", "mid", "small", "unclassified"] as const;
 
+const SECTIONS = [
+  { id: "insight-snapshot", label: "Snapshot" },
+  { id: "insight-holdings", label: "Holdings" },
+  { id: "insight-mix", label: "Mix" },
+  { id: "insight-overlap", label: "Overlap" },
+  { id: "insight-risk", label: "Risk" },
+] as const;
+
 function formatPct(n: number): string {
-  return `${n.toFixed(2)}%`;
+  const text = n.toFixed(2);
+  return `${text === "-0.00" ? "0.00" : text}%`;
 }
 
 /** Never substitute 0 for a JSON-null PE / expense. */
@@ -37,62 +85,212 @@ function fundName(basket: Basket | undefined, schemeCode: string): string {
   );
 }
 
-function weightEntries(map: Record<string, number>): [string, number][] {
-  return Object.entries(map).sort(
-    (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
-  );
+const FILING_STATE_LABEL: Record<FilingState, string> = {
+  fresh: "Fresh",
+  stale: "Stale",
+  "missing-source": "Missing source",
+  "download-failed": "Download failed",
+  "parse-failed": "Parse failed",
+  unmapped: "Unmapped",
+};
+
+function formatFilingState(state: string): string {
+  return FILING_STATE_LABEL[state as FilingState] ?? state;
 }
 
-function WeightList({
-  rows,
-}: {
-  rows: { key: string; label: string; weight: number }[];
-}) {
-  if (!rows.length) return null;
-  return (
-    <ul>
-      {rows.map((row) => (
-        <li key={row.key}>
-          <span>{row.label}</span>
-          <span className="insight-weight">{formatPct(row.weight)}</span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function BasketSlice({
-  name,
-  children,
-}: {
-  name: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="insight-basket">
-      <h4>{name}</h4>
-      {children}
-    </div>
-  );
+function needsFilingRetry(states: Iterable<string> | undefined): boolean {
+  if (!states) return false;
+  for (const state of states) {
+    if (state !== "fresh") return true;
+  }
+  return false;
 }
 
 function basketName(id: string, labBaskets: Basket[]): string {
   return labBaskets.find((b) => b.id === id)?.name ?? id;
 }
 
-export function InsightsPanel() {
-  const { baskets, results, reportStatus } = useLab();
+function basketColor(id: string, labBaskets: Basket[]): string {
+  return labBaskets.find((b) => b.id === id)?.color ?? "#111111";
+}
+
+function cashflowOf(settings: LabSettings): CashflowSpec {
+  const { start } = resolveRange(
+    settings.period,
+    settings.customStart,
+    settings.customEnd,
+  );
+  return { mode: settings.mode, amount: settings.amount, startIso: start };
+}
+
+function formatFixed(n: number): string {
+  const text = n.toFixed(2);
+  return text === "-0.00" ? "0.00" : text;
+}
+
+function formatRolling(w: { min: number; median: number; max: number }): string {
+  return `${formatFixed(w.min)} / ${formatFixed(w.median)} / ${formatFixed(w.max)}%`;
+}
+
+function seriesKey(id: string): string {
+  return `b_${id.replace(/[^a-zA-Z0-9]/g, "")}`;
+}
+
+function topCategories(
+  maps: Record<string, number>[],
+  limit = 8,
+): string[] {
+  const totals = new Map<string, number>();
+  for (const map of maps) {
+    for (const [key, weight] of Object.entries(map)) {
+      if (weight <= 0) continue;
+      totals.set(key, (totals.get(key) ?? 0) + weight);
+    }
+  }
+  return [...totals.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, limit)
+    .map(([key]) => key);
+}
+
+function mixSeries(
+  baskets: InsightsBasket[],
+  labBaskets: Basket[],
+  pick: (ib: InsightsBasket) => Record<string, number> | null,
+  categories: string[],
+): MixSeries[] {
+  return baskets.flatMap((ib) => {
+    const map = pick(ib);
+    if (!map) return [];
+    const values: Record<string, number> = {};
+    for (const cat of categories) values[cat] = map[cat] ?? 0;
+    return [
+      {
+        key: seriesKey(ib.id),
+        label: basketName(ib.id, labBaskets),
+        color: basketColor(ib.id, labBaskets),
+        values,
+      },
+    ];
+  });
+}
+
+function scrollToSection(id: string) {
+  document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+type RiskRow = {
+  id: string;
+  name: string;
+  color: string;
+  vol: number | null;
+  sharpe: number | null;
+  sortino: number | null;
+  calmar: number | null;
+  rolling1y: ReturnType<typeof rollingCagr>;
+  rolling3y: ReturnType<typeof rollingCagr>;
+  alpha: number | null;
+  beta: number | null;
+  twrs: DatedReturn[];
+};
+
+function buildRiskRow(
+  result: BacktestResult,
+  basket: Basket | undefined,
+  cashflow: CashflowSpec,
+  benchTwrs: DatedReturn[] | null,
+): RiskRow {
+  const twrs = dailyTwrs(result.series, result.cashflow ?? cashflow);
+  const rs = twrs.map((d) => d.r);
+  const ab = benchTwrs && benchTwrs.length >= 2 ? alphaBeta(twrs, benchTwrs) : null;
+  return {
+    id: result.basketId,
+    name: basket?.name ?? result.basketId,
+    color: basket?.color ?? "#111111",
+    vol: volatilityFromTwrs(rs),
+    sharpe: sharpeFromTwrs(rs),
+    sortino: sortinoFromTwrs(rs),
+    calmar: calmar(result.stats.cagr, result.stats.mdd),
+    rolling1y: rollingCagr(result.series, twrs, 252),
+    rolling3y: rollingCagr(result.series, twrs, 756),
+    alpha: ab?.alpha ?? null,
+    beta: ab?.beta ?? null,
+    twrs,
+  };
+}
+
+function riskRowHasContent(row: RiskRow, beesMissing: boolean): boolean {
+  return (
+    row.vol != null ||
+    row.sharpe != null ||
+    row.sortino != null ||
+    row.calmar != null ||
+    row.rolling1y != null ||
+    row.rolling3y != null ||
+    row.alpha != null ||
+    row.beta != null ||
+    beesMissing ||
+    row.twrs.length > 0
+  );
+}
+
+function useInsightsDesk() {
+  const { baskets, results, reportStatus, settings, insightsBasketId, insightsOpen } =
+    useLab();
   const active = useMemo(() => baskets.filter((b) => b.active), [baskets]);
   const basketSignature = useMemo(
     () => insightsBasketSignature(active),
     [active],
   );
+  const range = useMemo(
+    () =>
+      resolveRange(settings.period, settings.customStart, settings.customEnd),
+    [settings.period, settings.customStart, settings.customEnd],
+  );
+  const cashflow = useMemo(() => cashflowOf(settings), [settings]);
+  const hasSeries = results.some((r) => r.series.length >= 2);
 
-  const { data, isError, isSuccess } = useQuery({
+  const schemeCodes = useMemo(
+    () => [
+      ...new Set(
+        active.flatMap((b) => b.funds.map((f) => f.schemeCode)).filter(Boolean),
+      ),
+    ],
+    [active],
+  );
+
+  const { data, isError, isSuccess, refetch } = useQuery({
     queryKey: ["insights", basketSignature],
     queryFn: () => postInsights(active),
     retry: 1,
     enabled: active.length > 0,
+    staleTime: 0,
+  });
+
+  const ensureQuery = useQuery({
+    queryKey: ["ensure-filings", schemeCodes],
+    queryFn: () => ensureFilings(schemeCodes),
+    enabled: insightsOpen && schemeCodes.length > 0,
+    staleTime: Infinity,
+    retry: false,
+  });
+
+  const retryMutation = useMutation({
+    mutationFn: () => ensureFilings(schemeCodes),
+    onSettled: () => {
+      void refetch();
+    },
+  });
+
+  useEffect(() => {
+    if (ensureQuery.isSuccess) void refetch();
+  }, [ensureQuery.dataUpdatedAt, ensureQuery.isSuccess, refetch]);
+
+  const benchQuery = useQuery({
+    queryKey: ["nav", "140084", range.start, range.end],
+    queryFn: () => loadNiftyBeesNav(range.start, range.end),
+    retry: 1,
+    enabled: hasSeries,
   });
 
   useEffect(() => {
@@ -100,147 +298,618 @@ export function InsightsPanel() {
     else if (isSuccess) reportStatus("insights", { kind: "ready" });
   }, [isError, isSuccess, reportStatus]);
 
-  const sharpes = useMemo(() => {
-    const rows: { id: string; name: string; value: number }[] = [];
+  useEffect(() => {
+    if (insightsOpen) void refetch();
+  }, [insightsOpen, refetch]);
+
+  const benchTwrs = useMemo(() => {
+    const pts = benchQuery.data;
+    if (!pts?.length) return null;
+    const twrs = navToTwrs(pts);
+    return twrs.length ? twrs : null;
+  }, [benchQuery.data]);
+
+  const beesMissing =
+    hasSeries &&
+    !benchQuery.isPending &&
+    (benchQuery.isError || benchTwrs == null);
+
+  const riskRows = useMemo(() => {
+    const byId = new Map(baskets.map((b) => [b.id, b]));
+    const rows: RiskRow[] = [];
     for (const r of results) {
-      const value = sharpeFromSeries(r.series);
-      if (value == null) continue;
-      rows.push({
-        id: r.basketId,
-        name: basketName(r.basketId, baskets),
-        value,
-      });
+      if (r.series.length < 2) continue;
+      rows.push(buildRiskRow(r, byId.get(r.basketId), cashflow, benchTwrs));
     }
     return rows;
-  }, [results, baskets]);
+  }, [results, baskets, cashflow, benchTwrs]);
+
+  const corrRows = useMemo(() => {
+    const out: { key: string; label: string; value: number }[] = [];
+    for (let i = 0; i < riskRows.length; i++) {
+      for (let j = i + 1; j < riskRows.length; j++) {
+        const left = riskRows[i]!;
+        const right = riskRows[j]!;
+        const value = correlation(left.twrs, right.twrs);
+        if (value == null) continue;
+        out.push({
+          key: `${left.id}|${right.id}`,
+          label: `${left.name} × ${right.name}`,
+          value,
+        });
+      }
+    }
+    return out;
+  }, [riskRows]);
+
+  const focusedId =
+    insightsBasketId ??
+    active[0]?.id ??
+    baskets[0]?.id ??
+    null;
+
+  const focusedData = useMemo(() => {
+    if (!data || !focusedId) return data;
+    return {
+      ...data,
+      baskets: data.baskets.filter((ib) => ib.id === focusedId),
+      overlap: data.overlap
+        ? Object.fromEntries(
+            Object.entries(data.overlap).filter(([key]) =>
+              key.split("|").includes(focusedId),
+            ),
+          )
+        : data.overlap,
+    };
+  }, [data, focusedId]);
+
+  const focusedRiskRows = useMemo(
+    () => (focusedId ? riskRows.filter((row) => row.id === focusedId) : riskRows),
+    [riskRows, focusedId],
+  );
+
+  const focusedCorrRows = useMemo(
+    () =>
+      focusedId
+        ? corrRows.filter((row) => row.key.split("|").includes(focusedId))
+        : corrRows,
+    [corrRows, focusedId],
+  );
+
+  const showRisk =
+    focusedRiskRows.some((row) => riskRowHasContent(row, beesMissing)) ||
+    focusedCorrRows.length > 0;
+
+  return {
+    baskets,
+    data: focusedData,
+    isError,
+    riskRows: focusedRiskRows,
+    corrRows: focusedCorrRows,
+    showRisk,
+    beesMissing,
+    focusedId,
+    fetchingFilings: ensureQuery.isFetching || retryMutation.isPending,
+    retryFilings: retryMutation.mutate,
+  };
+}
+
+export function InsightsPanel() {
+  const { insightsOpen, closeInsights, openInsights } = useLab();
+  const desk = useInsightsDesk();
 
   return (
-    <section className="insights-panel">
-      <h2>Insights</h2>
-      {isError && <p>Insights unavailable</p>}
-      {data?.asOf && <p className="insights-asof">As of {data.asOf}</p>}
-      {(data || sharpes.length > 0) && (
-        <div className="insights-grid">
-          {data && (
-            <>
-              <InsightCard title="Top holdings">
-                {data.baskets.map((ib) => (
-                  <HoldingsBlock
-                    key={ib.id}
-                    ib={ib}
-                    basket={baskets.find((b) => b.id === ib.id)}
+    <Sheet
+      open={insightsOpen}
+      onOpenChange={(open) => {
+        if (open) openInsights();
+        else closeInsights();
+      }}
+    >
+      <SheetContent aria-describedby="insights-desk-desc">
+        <InsightsDesk {...desk} />
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function InsightsDesk({
+  baskets,
+  data,
+  isError,
+  riskRows,
+  corrRows,
+  showRisk,
+  beesMissing,
+  focusedId,
+  fetchingFilings,
+  retryFilings,
+}: ReturnType<typeof useInsightsDesk>) {
+  const { openInsights } = useLab();
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [activeSection, setActiveSection] = useState<string>(SECTIONS[0].id);
+  const sectorCats = useMemo(
+    () => (data ? topCategories(data.baskets.map((b) => b.sector)) : []),
+    [data],
+  );
+  const assetCats = useMemo(
+    () => (data ? topCategories(data.baskets.map((b) => b.asset)) : []),
+    [data],
+  );
+  const creditCats = useMemo(
+    () =>
+      data
+        ? topCategories(data.baskets.map((b) => b.credit ?? {}))
+        : [],
+    [data],
+  );
+  const equityCats = useMemo(() => {
+    if (!data) return [];
+    const any = data.baskets.some((ib) =>
+      EQUITY_ORDER.some((key) => (ib.equitySplit[key] ?? 0) > 0),
+    );
+    return any ? [...EQUITY_ORDER] : [];
+  }, [data]);
+
+  const filingById = useMemo(() => {
+    const map = new Map<string, InsightsBasket>();
+    for (const ib of data?.baskets ?? []) map.set(ib.id, ib);
+    return map;
+  }, [data]);
+
+  useEffect(() => {
+    const root = bodyRef.current;
+    if (!root || typeof IntersectionObserver === "undefined") return;
+    const seen = new Map<string, number>();
+    const obs = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          seen.set(entry.target.id, entry.intersectionRatio);
+        }
+        let bestId = "";
+        let best = 0;
+        for (const [id, ratio] of seen) {
+          if (ratio > best) {
+            best = ratio;
+            bestId = id;
+          }
+        }
+        if (bestId) setActiveSection(bestId);
+      },
+      { root, rootMargin: "-10% 0px -55% 0px", threshold: [0, 0.15, 0.4, 0.7] },
+    );
+    for (const section of SECTIONS) {
+      const el = root.querySelector(`#${section.id}`);
+      if (el) obs.observe(el);
+    }
+    return () => obs.disconnect();
+  }, [data, showRisk]);
+
+  const focusedName = focusedId ? basketName(focusedId, baskets) : "Insights";
+  const switchable = baskets.filter((b) => b.active);
+  const showDesk = Boolean(data || showRisk || focusedId);
+
+  return (
+    <div className="insights-desk">
+      <div className="insights-chrome">
+        <SheetHeader>
+          <SheetTitle>Insights · {focusedName}</SheetTitle>
+          <SheetDescription id="insights-desk-desc">
+            {data?.asOf
+              ? `AMFI filings as of ${data.asOf}. Risk vs Nifty BeES, rf = 0.`
+              : "Filings, mix, overlap, and risk for this basket."}
+          </SheetDescription>
+        </SheetHeader>
+        {switchable.length > 1 && (
+          <div className="insights-switch" role="tablist" aria-label="Basket">
+            {switchable.map((basket) => (
+              <button
+                key={basket.id}
+                type="button"
+                role="tab"
+                aria-selected={basket.id === focusedId}
+                className="insights-switch-item"
+                onClick={() => openInsights(basket.id)}
+              >
+                {basket.name}
+              </button>
+            ))}
+          </div>
+        )}
+        {isError && <p className="insight-empty">Insights unavailable</p>}
+        {showDesk && (
+          <nav className="insights-nav" aria-label="Insights sections">
+            {SECTIONS.map((section) => (
+              <button
+                key={section.id}
+                type="button"
+                className="insights-nav-item"
+                aria-current={activeSection === section.id ? "true" : undefined}
+                onClick={() => {
+                  setActiveSection(section.id);
+                  scrollToSection(section.id);
+                }}
+              >
+                {section.label}
+              </button>
+            ))}
+          </nav>
+        )}
+      </div>
+      {showDesk && (
+        <>
+          <div className="insights-sections" ref={bodyRef}>
+            {data?.baskets.map((ib) =>
+              ib.filingCoverage ? (
+                <FilingCoverageBlock
+                  key={`coverage-${ib.id}`}
+                  ib={ib}
+                  basket={baskets.find((b) => b.id === ib.id)}
+                  fetching={fetchingFilings}
+                  onRetry={() => retryFilings()}
+                />
+              ) : null,
+            )}
+            <InsightSection id="insight-snapshot" title="Snapshot">
+              <SnapshotBlock
+                baskets={baskets}
+                filingById={filingById}
+                riskRows={riskRows}
+                hasFilings={Boolean(data)}
+              />
+            </InsightSection>
+            {data && (
+              <>
+                <InsightSection id="insight-holdings" title="Holdings">
+                  {data.baskets.map((ib) => (
+                    <HoldingsBlock
+                      key={ib.id}
+                      ib={ib}
+                      basket={baskets.find((b) => b.id === ib.id)}
+                    />
+                  ))}
+                </InsightSection>
+                <InsightSection id="insight-mix" title="Mix">
+                  <MixBlock
+                    title="Sector"
+                    series={mixSeries(
+                      data.baskets,
+                      baskets,
+                      (ib) => ib.sector,
+                      sectorCats,
+                    )}
+                    categories={sectorCats.map(formatLabel)}
+                    rawCategories={sectorCats}
                   />
-                ))}
-              </InsightCard>
-              <InsightCard title="Sector">
-                {data.baskets.map((ib) => (
-                  <BreakdownBlock
-                    key={ib.id}
-                    name={basketName(ib.id, baskets)}
-                    map={ib.sector}
+                  <MixBlock
+                    title="Asset"
+                    series={mixSeries(
+                      data.baskets,
+                      baskets,
+                      (ib) => ib.asset,
+                      assetCats,
+                    )}
+                    categories={assetCats.map(formatLabel)}
+                    rawCategories={assetCats}
                   />
-                ))}
-              </InsightCard>
-              <InsightCard title="Asset">
-                {data.baskets.map((ib) => (
-                  <BreakdownBlock
-                    key={ib.id}
-                    name={basketName(ib.id, baskets)}
-                    map={ib.asset}
+                  <MixBlock
+                    title="Credit"
+                    series={mixSeries(
+                      data.baskets,
+                      baskets,
+                      (ib) => ib.credit,
+                      creditCats,
+                    )}
+                    categories={creditCats}
+                    rawCategories={creditCats}
+                    empty={
+                      creditCats.length === 0
+                        ? (data.baskets.find((b) => b.creditNote)?.creditNote ??
+                          "N/A — no debt holdings")
+                        : null
+                    }
                   />
-                ))}
-              </InsightCard>
-              <InsightCard title="Credit">
-                {data.baskets.map((ib) => (
-                  <CreditBlock
-                    key={ib.id}
-                    name={basketName(ib.id, baskets)}
-                    ib={ib}
+                  <EquityMixBlock
+                    dataBaskets={data.baskets}
+                    labBaskets={baskets}
+                    categories={equityCats}
                   />
-                ))}
-              </InsightCard>
-              <InsightCard title="Equity split">
-                {data.baskets.map((ib) => (
-                  <EquitySplitBlock
-                    key={ib.id}
-                    name={basketName(ib.id, baskets)}
-                    ib={ib}
-                    basket={baskets.find((b) => b.id === ib.id)}
-                  />
-                ))}
-              </InsightCard>
-              <InsightCard title="Overlap">
-                {data.overlap == null ? (
-                  <p className="insight-empty">
-                    Add another basket with holdings data
-                  </p>
-                ) : (
-                  <ul>
-                    {Object.entries(data.overlap)
-                      .sort(([a], [b]) => a.localeCompare(b))
-                      .map(([key, weight]) => {
-                        const [left, right] = key.split("|");
-                        const label = `${basketName(left ?? "", baskets)} × ${basketName(right ?? "", baskets)}`;
-                        return (
-                          <li key={key}>
-                            <span>{label}</span>
-                            <span className="insight-weight">
-                              {formatPct(weight)}
-                            </span>
-                          </li>
-                        );
-                      })}
-                  </ul>
+                </InsightSection>
+                <InsightSection id="insight-overlap" title="Overlap">
+                  {data.overlap == null ? (
+                    <p className="insight-empty">
+                      Add another basket with holdings data
+                    </p>
+                  ) : (
+                    <OverlapBlock overlap={data.overlap} baskets={baskets} />
+                  )}
+                </InsightSection>
+              </>
+            )}
+            {showRisk && (
+              <InsightSection id="insight-risk" title="Risk & skill">
+                <p className="insight-empty">rf = 0 · vs Nifty BeES</p>
+                <MetricCompareChart
+                  metrics={[
+                    { key: "sharpe", label: "Sharpe" },
+                    { key: "sortino", label: "Sortino" },
+                    { key: "calmar", label: "Calmar" },
+                  ]}
+                  series={riskRows.map((row) => ({
+                    key: seriesKey(row.id),
+                    label: row.name,
+                    color: row.color,
+                    values: {
+                      sharpe: row.sharpe,
+                      sortino: row.sortino,
+                      calmar: row.calmar,
+                    },
+                  }))}
+                />
+                <div className="table-scroll">
+                  <Table className="insight-table risk-table">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Basket</TableHead>
+                        <TableHead className="text-right">Vol</TableHead>
+                        <TableHead className="text-right">Sharpe</TableHead>
+                        <TableHead className="text-right">Sortino</TableHead>
+                        <TableHead className="text-right">Calmar</TableHead>
+                        <TableHead className="text-right">Alpha</TableHead>
+                        <TableHead className="text-right">Beta</TableHead>
+                        <TableHead className="text-right">Roll 1Y</TableHead>
+                        <TableHead className="text-right">Roll 3Y</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {riskRows.map((row) => (
+                        <TableRow key={row.id}>
+                          <TableCell data-label="Basket">{row.name}</TableCell>
+                          <TableCell className="text-right" data-label="Vol">
+                            {row.vol != null ? formatPct(row.vol) : "—"}
+                          </TableCell>
+                          <TableCell className="text-right" data-label="Sharpe">
+                            {row.sharpe != null ? formatFixed(row.sharpe) : "—"}
+                          </TableCell>
+                          <TableCell className="text-right" data-label="Sortino">
+                            {row.sortino != null ? formatFixed(row.sortino) : "—"}
+                          </TableCell>
+                          <TableCell className="text-right" data-label="Calmar">
+                            {row.calmar != null ? formatFixed(row.calmar) : "—"}
+                          </TableCell>
+                          <TableCell className="text-right" data-label="Alpha">
+                            {row.alpha != null ? formatPct(row.alpha) : "—"}
+                          </TableCell>
+                          <TableCell className="text-right" data-label="Beta">
+                            {row.beta != null ? formatFixed(row.beta) : "—"}
+                          </TableCell>
+                          <TableCell className="text-right" data-label="Roll 1Y">
+                            {row.rolling1y
+                              ? formatRolling(row.rolling1y)
+                              : "need 1Y of NAV"}
+                          </TableCell>
+                          <TableCell className="text-right" data-label="Roll 3Y">
+                            {row.rolling3y
+                              ? formatRolling(row.rolling3y)
+                              : "need 3Y of NAV"}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                {beesMissing &&
+                  riskRows.some((row) => row.alpha == null) && (
+                    <p className="insight-empty">Nifty BeES NAV missing</p>
+                  )}
+                {corrRows.length > 0 && (
+                  <div className="insight-basket">
+                    <h4>Correlation</h4>
+                    <Table className="insight-table">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Pair</TableHead>
+                          <TableHead className="text-right">Corr</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {corrRows.map((row) => (
+                          <TableRow key={row.key}>
+                            <TableCell>{row.label}</TableCell>
+                            <TableCell className="text-right">
+                              <span
+                                className="corr-cell"
+                                style={{
+                                  background: inkAlpha(0.08 + Math.abs(row.value) * 0.28),
+                                }}
+                              >
+                                {formatFixed(row.value)}
+                              </span>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
                 )}
-              </InsightCard>
-              <InsightCard title="Expense">
-                {data.baskets.map((ib) => (
-                  <BasketSlice key={ib.id} name={basketName(ib.id, baskets)}>
-                    <p>{formatFilingMetric(ib.expenseRatio, ib.expenseIncomplete)}</p>
-                  </BasketSlice>
-                ))}
-              </InsightCard>
-              <InsightCard title="PE">
-                {data.baskets.map((ib) => (
-                  <BasketSlice key={ib.id} name={basketName(ib.id, baskets)}>
-                    <p>{formatFilingMetric(ib.pe, ib.peIncomplete)}</p>
-                  </BasketSlice>
-                ))}
-              </InsightCard>
-            </>
-          )}
-          {sharpes.length > 0 && (
-            <InsightCard title="Sharpe">
-              <ul>
-                {sharpes.map((row) => (
-                  <li key={row.id}>
-                    <span>{row.name}</span>
-                    <span className="insight-weight">
-                      {row.value.toFixed(2)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </InsightCard>
-          )}
+              </InsightSection>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function InsightSection({
+  id,
+  title,
+  children,
+}: {
+  id: string;
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <article className="insight-card insight-section" id={id}>
+      <h3>{title}</h3>
+      {children}
+    </article>
+  );
+}
+
+function FilingCoverageBlock({
+  ib,
+  basket,
+  fetching,
+  onRetry,
+}: {
+  ib: InsightsBasket;
+  basket: Basket | undefined;
+  fetching: boolean;
+  onRetry: () => void;
+}) {
+  const coverage = ib.filingCoverage;
+  if (!coverage) return null;
+  const filings = ib.filings ?? [];
+  const showRetry = needsFilingRetry(filings.map((f) => f.state));
+
+  return (
+    <section className="insight-filings" aria-label="Filing coverage">
+      <h3 className="insight-filings-flag">Filing coverage</h3>
+      <p className="insight-filings-count">
+        {coverage.covered} of {coverage.total} funds covered
+      </p>
+      {ib.filingAsOf ? (
+        <p className="insight-filings-asof">As of {ib.filingAsOf}</p>
+      ) : null}
+      {filings.length > 0 && (
+        <ul className="insight-filings-list">
+          {filings.map((filing) => (
+            <li key={filing.schemeCode || filing.requestedMonth}>
+              <span className="insight-filings-name">
+                {fundName(basket, filing.schemeCode)}
+              </span>
+              <span
+                className="insight-filings-state"
+                data-state={filing.state}
+              >
+                {formatFilingState(filing.state)}
+              </span>
+              {filing.reason ? (
+                <p className="insight-filings-reason">{filing.reason}</p>
+              ) : null}
+              {filing.sourceUrl ? (
+                <p className="insight-filings-source">
+                  <a href={filing.sourceUrl} rel="noreferrer" target="_blank">
+                    {filing.sourceUrl}
+                  </a>
+                </p>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      )}
+      {showRetry && (
+        <div className="insight-filings-action">
+          <button
+            type="button"
+            disabled={fetching}
+            aria-busy={fetching || undefined}
+            onClick={onRetry}
+          >
+            {fetching ? "Fetching latest filings" : "Fetch latest filings"}
+          </button>
         </div>
       )}
     </section>
   );
 }
 
-function InsightCard({
-  title,
-  children,
+function SnapshotBlock({
+  baskets,
+  filingById,
+  riskRows,
+  hasFilings,
 }: {
-  title: string;
-  children: ReactNode;
+  baskets: Basket[];
+  filingById: Map<string, InsightsBasket>;
+  riskRows: RiskRow[];
+  hasFilings: boolean;
 }) {
+  const ids = new Set([
+    ...filingById.keys(),
+    ...riskRows.map((r) => r.id),
+  ]);
+  const riskById = new Map(riskRows.map((r) => [r.id, r]));
+  const rows = [...ids].map((id) => {
+    const filing = filingById.get(id);
+    const risk = riskById.get(id);
+    return {
+      id,
+      name: basketName(id, baskets),
+      expense: filing
+        ? formatFilingMetric(filing.expenseRatio, filing.expenseIncomplete)
+        : hasFilings
+          ? "—"
+          : "—",
+      pe: filing
+        ? formatFilingMetric(filing.pe, filing.peIncomplete)
+        : hasFilings
+          ? "—"
+          : "—",
+      vol: risk?.vol,
+      sharpe: risk?.sharpe,
+      sortino: risk?.sortino,
+      calmar: risk?.calmar,
+    };
+  });
+
+  if (!rows.length) {
+    return <p className="insight-empty">No active baskets to score.</p>;
+  }
+
   return (
-    <article className="insight-card">
-      <h3>{title}</h3>
-      {children}
-    </article>
+    <div className="table-scroll">
+      <Table className="insight-table snapshot-table">
+        <TableHeader>
+          <TableRow>
+            <TableHead>Basket</TableHead>
+            <TableHead className="text-right">Expense</TableHead>
+            <TableHead className="text-right">PE</TableHead>
+            <TableHead className="text-right">Vol</TableHead>
+            <TableHead className="text-right">Sharpe</TableHead>
+            <TableHead className="text-right">Sortino</TableHead>
+            <TableHead className="text-right">Calmar</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow key={row.id}>
+              <TableCell data-label="Basket">{row.name}</TableCell>
+              <TableCell className="text-right" data-label="Expense">
+                {row.expense}
+              </TableCell>
+              <TableCell className="text-right" data-label="PE">
+                {row.pe}
+              </TableCell>
+              <TableCell className="text-right" data-label="Vol">
+                {row.vol != null ? formatPct(row.vol) : "—"}
+              </TableCell>
+              <TableCell className="text-right" data-label="Sharpe">
+                {row.sharpe != null ? formatFixed(row.sharpe) : "—"}
+              </TableCell>
+              <TableCell className="text-right" data-label="Sortino">
+                {row.sortino != null ? formatFixed(row.sortino) : "—"}
+              </TableCell>
+              <TableCell className="text-right" data-label="Calmar">
+                {row.calmar != null ? formatFixed(row.calmar) : "—"}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
   );
 }
 
@@ -251,41 +920,151 @@ function HoldingsBlock({
   ib: InsightsBasket;
   basket: Basket | undefined;
 }) {
+  const { theme } = useTheme();
+  const segments = ib.holdings.slice(0, 12).map((h, i) => ({
+    key: h.isin || `${h.name}-${i}`,
+    label: h.name,
+    weight: h.weight,
+    color: inkWash(i, basket?.color ?? "#111111", theme),
+  }));
+
   return (
-    <BasketSlice name={basket?.name ?? ib.id}>
+    <div className="insight-basket">
+      <h4>{basket?.name ?? ib.id}</h4>
       {ib.missingSchemes.map((code) => (
         <p key={code} className="insight-missing">
           No AMFI filing for {fundName(basket, code)}
         </p>
       ))}
-      <WeightList
-        rows={ib.holdings.map((h, i) => ({
-          key: h.isin || `${h.name}-${i}`,
-          label: h.name,
-          weight: h.weight,
-        }))}
-      />
-    </BasketSlice>
+      {segments.length > 0 && <AllocationStack segments={segments} />}
+      {ib.holdings.length > 0 && (
+        <div className="table-scroll">
+          <Table className="insight-table">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Holding</TableHead>
+                <TableHead className="text-right">Weight</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {ib.holdings.map((h, i) => (
+                <TableRow key={h.isin || `${h.name}-${h.weight}-${i}`}>
+                  <TableCell>{h.name}</TableCell>
+                  <TableCell className="text-right">
+                    {formatPct(h.weight)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </div>
   );
 }
 
-function BreakdownBlock({
-  name,
-  map,
+function inkWash(
+  index: number,
+  base: string,
+  theme: "light" | "dark",
+): string {
+  const steps = [1, 0.78, 0.58, 0.42, 0.28, 0.16];
+  const t = steps[index % steps.length] ?? 0.4;
+  return tintTowardWell(base, t, theme);
+}
+
+function MixBlock({
+  title,
+  series,
+  categories,
+  rawCategories,
+  empty,
 }: {
-  name: string;
-  map: Record<string, number>;
+  title: string;
+  series: MixSeries[];
+  categories: string[];
+  rawCategories: string[];
+  empty?: string | null;
+}) {
+  if (empty) {
+    return (
+      <div className="insight-basket">
+        <h4>{title}</h4>
+        <p className="insight-empty">{empty}</p>
+      </div>
+    );
+  }
+  if (!rawCategories.length) {
+    return (
+      <div className="insight-basket">
+        <h4>{title}</h4>
+        <p className="insight-empty">No AMFI filing</p>
+      </div>
+    );
+  }
+  const labeled = series.map((s) => ({
+    ...s,
+    values: Object.fromEntries(
+      rawCategories.map((raw, i) => [categories[i] ?? raw, s.values[raw] ?? 0]),
+    ),
+  }));
+  return (
+    <div className="insight-basket">
+      <h4>{title}</h4>
+      <figure className="insight-chart">
+        <MixCompareChart series={labeled} categories={categories} />
+      </figure>
+    </div>
+  );
+}
+
+function EquityMixBlock({
+  dataBaskets,
+  labBaskets,
+  categories,
+}: {
+  dataBaskets: InsightsBasket[];
+  labBaskets: Basket[];
+  categories: string[];
 }) {
   return (
-    <BasketSlice name={name}>
-      <WeightList
-        rows={weightEntries(map).map(([key, weight]) => ({
-          key,
-          label: formatLabel(key),
-          weight,
-        }))}
-      />
-    </BasketSlice>
+    <div className="insight-basket">
+      <h4>Equity split</h4>
+      {dataBaskets.map((ib) => {
+        const empty = equitySplitEmpty(
+          ib,
+          labBaskets.find((b) => b.id === ib.id),
+        );
+        if (empty) {
+          return (
+            <p key={ib.id} className="insight-empty">
+              {empty}
+            </p>
+          );
+        }
+        return null;
+      })}
+      {categories.length > 0 && (
+        <figure className="insight-chart">
+          <MixCompareChart
+            series={mixSeries(
+              dataBaskets.filter((ib) =>
+                EQUITY_ORDER.some((key) => (ib.equitySplit[key] ?? 0) > 0),
+              ),
+              labBaskets,
+              (ib) => ib.equitySplit,
+              categories,
+            ).map((s) => ({
+              ...s,
+              values: Object.fromEntries(
+                categories.map((raw) => [formatLabel(raw), s.values[raw] ?? 0]),
+              ),
+            }))}
+            categories={categories.map(formatLabel)}
+          />
+        </figure>
+      )}
+    </div>
   );
 }
 
@@ -293,58 +1072,71 @@ function equitySplitEmpty(
   ib: InsightsBasket,
   basket: Basket | undefined,
 ): string | null {
+  const missing = new Set(ib.missingSchemes);
   const codes = (basket?.funds ?? [])
     .filter((f) => f.weight > 0)
     .map((f) => f.schemeCode);
   const allMissing =
-    codes.length > 0 && codes.every((c) => ib.missingSchemes.includes(c));
+    codes.length > 0 && codes.every((c) => missing.has(c));
   if (allMissing) return "No AMFI filing";
   const hasEquity = EQUITY_ORDER.some((key) => (ib.equitySplit[key] ?? 0) > 0);
   if (!hasEquity) return "No equity holdings";
   return null;
 }
 
-function EquitySplitBlock({
-  name,
-  ib,
-  basket,
+function OverlapBlock({
+  overlap,
+  baskets,
 }: {
-  name: string;
-  ib: InsightsBasket;
-  basket: Basket | undefined;
+  overlap: Record<string, number>;
+  baskets: Basket[];
 }) {
-  const empty = equitySplitEmpty(ib, basket);
-  return (
-    <BasketSlice name={name}>
-      {empty ? (
-        <p className="insight-empty">{empty}</p>
-      ) : (
-        <WeightList
-          rows={EQUITY_ORDER.map((key) => ({
-            key,
-            label: formatLabel(key),
-            weight: ib.equitySplit[key],
-          }))}
-        />
-      )}
-    </BasketSlice>
-  );
-}
+  const rows = Object.entries(overlap)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, weight]) => {
+      const [left, right] = key.split("|");
+      return {
+        key,
+        label: `${basketName(left ?? "", baskets)} × ${basketName(right ?? "", baskets)}`,
+        weight,
+      };
+    });
 
-function CreditBlock({ name, ib }: { name: string; ib: InsightsBasket }) {
   return (
-    <BasketSlice name={name}>
-      {ib.credit == null ? (
-        <p className="insight-empty">{ib.creditNote ?? "N/A — no debt holdings"}</p>
-      ) : (
-        <WeightList
-          rows={weightEntries(ib.credit).map(([key, weight]) => ({
-            key,
-            label: key,
-            weight,
-          }))}
+    <>
+      <figure className="insight-chart">
+        <MixCompareChart
+          series={[
+            {
+              key: "overlap",
+              label: "Overlap",
+              color: "#111111",
+              values: Object.fromEntries(rows.map((r) => [r.label, r.weight])),
+            },
+          ]}
+          categories={rows.map((r) => r.label)}
         />
-      )}
-    </BasketSlice>
+      </figure>
+      <div className="table-scroll">
+        <Table className="insight-table">
+          <TableHeader>
+            <TableRow>
+              <TableHead>Pair</TableHead>
+              <TableHead className="text-right">Overlap</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((row) => (
+              <TableRow key={row.key}>
+                <TableCell>{row.label}</TableCell>
+                <TableCell className="text-right">
+                  {formatPct(row.weight)}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </>
   );
 }
