@@ -76,11 +76,11 @@ def extract_sheet_metrics(ws) -> dict[str, Any]:
         if row is None:
             continue
         cells = list(row)
-        first = _cell_text(cells[0] if cells else None)
-        first_l = first.lower()
+        nonempty = [_cell_text(c) for c in cells if _cell_text(c)]
+        label = nonempty[0].lower() if nonempty else ""
 
-        if aum_cr is None and first_l == "total net assets":
-            for cell in cells[1:]:
+        if aum_cr is None and label == "total net assets":
+            for cell in cells:
                 num = _as_number(cell)
                 if num is not None and num >= 1000:
                     aum_cr = num / 100.0

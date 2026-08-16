@@ -57,6 +57,45 @@ def test_icici_sheet_extracts_holdings_cash_and_metrics(tmp_path):
     assert metrics["turnover"] == 0.26
 
 
+def test_icici_metrics_when_labels_start_in_column_b(tmp_path):
+    """Official ICICI workbooks leave column A blank; labels start in B."""
+    from openpyxl import load_workbook
+
+    path = tmp_path / "icici-col-b.xlsx"
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "FLEXCAP"
+    ws["B1"] = "ICICI Prudential Mutual Fund"
+    ws["B2"] = "ICICI Prudential Flexicap Fund"
+    ws["B3"] = "Portfolio as on Jul 31,2026"
+    headers = [
+        "Company/Issuer/Instrument Name", "ISIN", "Coupon", "Industry/Rating",
+        "Quantity", "Exposure/Market Value(Rs.Lakh)", "% to Nav",
+    ]
+    for col, h in enumerate(headers, start=2):
+        ws.cell(4, col, h)
+    ws["B8"] = "TVS Motor Company Ltd."
+    ws["C8"] = "INE494B01023"
+    ws["H8"] = 0.10057
+    ws["B9"] = "TREPS"
+    ws["G9"] = 63730.28
+    ws["H9"] = 0.02644
+    ws["B11"] = "Total Net Assets"
+    ws["G11"] = 2409978.38
+    ws["H11"] = 1.0
+    ws["B12"] = "6. Portfolio turnover Ratio "
+    ws["C12"] = "0.26 times"
+    wb.save(path)
+
+    ws = load_workbook(path, data_only=True)["FLEXCAP"]
+    metrics = extract_sheet_metrics(ws)
+    assert metrics["as_of"] == "2026-07-31"
+    assert 24099 < metrics["aum_cr"] < 24101
+    assert metrics["turnover"] == 0.26
+    rows = sheet_to_csv_rows(ws)
+    assert any(r["instrument_name"] == "TREPS" for r in rows)
+
+
 def test_sheet_to_csv_rows_reads_title_and_fractional_nav_weights():
     wb = Workbook()
     ws = wb.active
