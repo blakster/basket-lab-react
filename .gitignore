@@ -1,5 +1,8 @@
 data/*.sqlite
 data/*.sqlite-journal
+data/incoming/*
+!data/incoming/.gitkeep
+data/scheme_master_latest.csv
 __pycache__/
 *.egg-info/
 .pytest_cache/
@@ -10,3 +13,7 @@ dist/
 .env
 *.pyc
 .worktrees/
+shots/
+.taste-skill/
+**/.taste-skill/
+*.tsbuildinfo
