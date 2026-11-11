@@ -143,7 +143,7 @@ async function postEnsure(codes: string[]): Promise<EnsureFilingsResponse> {
   }
 }
 
-/** Refresh missing or stale AMC filings; always returns the structured body. */
+/** Refresh missing or stale Foliyo fund details; always returns the structured body. */
 export async function ensureFilings(
   schemeCodes: string[],
 ): Promise<EnsureFilingsResponse> {

@@ -27,6 +27,10 @@ function navOnOrBefore(history: NavPoint[], day: Date): number | null {
   return hit ? hit.nav : null;
 }
 
+function firstIso(points: NavPoint[]): string {
+  return points.reduce((a, p) => (p.date < a ? p.date : a), points[0].date);
+}
+
 const emptyStats = { initial: 0, final: 0, abs: 0, cagr: 0, mdd: 0 };
 
 function noNav(basketId: string): BacktestResult {
@@ -44,21 +48,31 @@ export function backtestBasket(
   settings: LabSettings,
 ): BacktestResult {
   // Caller must resolve named periods via resolveRange and set customStart/customEnd.
-  const startDate = parseDay(settings.customStart!);
-  const endDate = parseDay(settings.customEnd!);
+  const requestedStartIso = settings.customStart!;
+  const endIso = settings.customEnd!;
+  const endDate = parseDay(endIso);
 
+  let startIso = requestedStartIso;
   for (const f of basket.funds) {
     if (f.weight <= 0) continue;
-    if (!navs[f.schemeCode]?.length) {
-      return noNav(basket.id);
-    }
+    const series = navs[f.schemeCode];
+    if (!series?.length) return noNav(basket.id);
+    const first = firstIso(series);
+    if (first > startIso) startIso = first;
   }
+  if (startIso > endIso) return noNav(basket.id);
+
+  const startDate = parseDay(startIso);
+
+  const inRange = Object.values(navs).some((series) =>
+    series.some((p) => p.date >= startIso && p.date <= endIso),
+  );
+  if (!inRange) return noNav(basket.id);
 
   const timeline = Object.values(navs)[0]
     .map((p) => p.date)
-    .filter((d) => parseDay(d) >= startDate && parseDay(d) <= endDate);
-
-  if (timeline.length === 0) return noNav(basket.id);
+    .filter((d) => d >= startIso && d <= endIso);
+  if (timeline[0] !== startIso) timeline.unshift(startIso);
 
   if (settings.mode === "lumpsum") {
     const holdings: Record<string, number> = {};
@@ -99,6 +113,12 @@ export function backtestBasket(
     return {
       basketId: basket.id,
       series,
+      cashflow: {
+        mode: settings.mode,
+        amount: settings.amount,
+        startIso,
+        requestedStartIso,
+      },
       stats: {
         initial: settings.amount,
         final,
@@ -172,6 +192,12 @@ export function backtestBasket(
   return {
     basketId: basket.id,
     series,
+    cashflow: {
+      mode: settings.mode,
+      amount: settings.amount,
+      startIso,
+      requestedStartIso,
+    },
     stats: {
       initial: totalInvested,
       final,

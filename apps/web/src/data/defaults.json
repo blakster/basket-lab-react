@@ -10,7 +10,7 @@
     {
       "id": "1",
       "name": "Nifty 50 Index",
-      "color": "#18181b",
+      "color": "#0D7480",
       "active": true,
       "funds": [
         { "schemeCode": "118741", "schemeName": "UTI Nifty 50 Index Fund", "isin": null, "weight": 100, "locked": false }
@@ -19,7 +19,7 @@
     {
       "id": "2",
       "name": "Flexi Cap",
-      "color": "#2563eb",
+      "color": "#3D6B8A",
       "active": true,
       "funds": [
         { "schemeCode": "122639", "schemeName": "Parag Parikh Flexi Cap Fund - Direct Plan - Growth", "isin": "INF879O01027", "weight": 100, "locked": false }
@@ -28,7 +28,7 @@
     {
       "id": "3",
       "name": "Nifty 50 ETF",
-      "color": "#16a34a",
+      "color": "#C4A35A",
       "active": true,
       "funds": [
         { "schemeCode": "140084", "schemeName": "Nippon India ETF Nifty 50 BeES", "isin": "INF204KB14I2", "weight": 100, "locked": false }

@@ -1,3 +1,4 @@
+import { Input } from "@/components/ui/input";
 import { useEffect, useState } from "react";
 import { searchFunds } from "../lib/api/search";
 import { useLab } from "../state/LabContext";
@@ -22,6 +23,7 @@ export function FundSearch({ onSelect }: FundSearchProps) {
     }
 
     const timer = window.setTimeout(() => {
+      reportStatus("search", { kind: "search-busy" });
       void searchFunds(query, fetch, controller.signal)
         .then((rows) => {
           if (controller.signal.aborted) return;
@@ -44,14 +46,21 @@ export function FundSearch({ onSelect }: FundSearchProps) {
     };
   }, [query, reportStatus]);
 
+  useEffect(() => {
+    return () => {
+      reportStatus("search", { kind: "ready" });
+    };
+  }, [reportStatus]);
+
   return (
     <div className="fund-search">
       <label className="field">
         <span>Search funds</span>
-        <input
+        <Input
           type="search"
           value={query}
           placeholder="Type a fund or ETF name"
+          className="rounded-md"
           onChange={(e) => setQuery(e.target.value)}
         />
       </label>
@@ -65,6 +74,7 @@ export function FundSearch({ onSelect }: FundSearchProps) {
                 <button
                   type="button"
                   role="option"
+                  aria-selected="false"
                   onClick={() => {
                     onSelect(hit);
                     setQuery("");

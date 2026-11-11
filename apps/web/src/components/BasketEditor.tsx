@@ -1,16 +1,34 @@
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { useEffect, useRef, useState } from "react";
 import { applyWeightChange } from "../lib/weights";
 import { useLab } from "../state/LabContext";
 import type { Basket, SearchHit } from "../types";
 import { FundSearch } from "./FundSearch";
+import { WeightField } from "./WeightField";
 
 const SWATCHES = [
-  "#18181b",
-  "#2563eb",
-  "#16a34a",
-  "#dc2626",
-  "#d97706",
-  "#7c3aed",
+  "#0D7480",
+  "#3D6B8A",
+  "#C4A35A",
+  "#B54A42",
+  "#5A8F8A",
+  "#8A6B4A",
 ];
 
 const WEIGHT_TOLERANCE = 0.1;
@@ -25,7 +43,6 @@ export function BasketEditor() {
   const basketsRef = useRef(baskets);
   basketsRef.current = baskets;
 
-  // Re-clone only when a different basket is opened, not on every list update.
   useEffect(() => {
     if (!editingId) {
       setDraft(null);
@@ -36,15 +53,13 @@ export function BasketEditor() {
       setDraft(cloneBasket(found));
       return;
     }
-    // Create-new path: seed is editor-only until saveBasket upserts it.
     setDraft(
       editorSeed && editorSeed.id === editingId ? cloneBasket(editorSeed) : null,
     );
   }, [editingId, editorSeed]);
 
-  if (!editingId || !draft) return null;
-
-  const sum = draft.funds.reduce((s, f) => s + f.weight, 0);
+  const open = Boolean(editingId && draft);
+  const sum = draft?.funds.reduce((s, f) => s + f.weight, 0) ?? 0;
   const balanced = Math.abs(sum - 100) < WEIGHT_TOLERANCE;
 
   function addFund(hit: SearchHit) {
@@ -101,90 +116,115 @@ export function BasketEditor() {
   }
 
   return (
-    <div className="modal-backdrop" onClick={closeEditor}>
-      <div
-        className="modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="basket-editor-title"
-        onClick={(e) => e.stopPropagation()}
+    <Dialog open={open} onOpenChange={(next) => { if (!next) closeEditor(); }}>
+      <DialogContent
+        className="max-h-[90vh] overflow-y-auto rounded-2xl bg-background sm:max-w-3xl"
+        aria-describedby={undefined}
       >
-        <h2 id="basket-editor-title">Edit basket</h2>
-        <label className="field">
-          <span>Name</span>
-          <input
-            type="text"
-            value={draft.name}
-            onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-          />
-        </label>
-        <fieldset className="swatches">
-          <legend>Color</legend>
-          {SWATCHES.map((color) => (
-            <button
-              key={color}
-              type="button"
-              className="swatch"
-              style={{ background: color }}
-              aria-label={color}
-              aria-pressed={draft.color === color}
-              onClick={() => setDraft({ ...draft, color })}
-            />
-          ))}
-        </fieldset>
-        <FundSearch onSelect={addFund} />
-        <table className="fund-table">
-          <thead>
-            <tr>
-              <th>Fund</th>
-              <th>Weight</th>
-              <th>Lock</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {draft.funds.map((fund) => (
-              <tr key={fund.schemeCode}>
-                <td>{fund.schemeName}</td>
-                <td>
-                  <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    step={0.01}
-                    value={fund.weight}
-                    disabled={fund.locked}
-                    onChange={(e) =>
-                      setWeight(fund.schemeCode, Number(e.target.value))
-                    }
-                  />
-                </td>
-                <td>
-                  <button type="button" onClick={() => toggleLock(fund.schemeCode)}>
-                    {fund.locked ? "Unlock" : "Lock"}
-                  </button>
-                </td>
-                <td>
-                  <button type="button" onClick={() => deleteRow(fund.schemeCode)}>
-                    Delete
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <p className={balanced ? "total-ok" : "total-bad"}>
-          Total: {sum.toFixed(2)}%
-        </p>
-        <div className="modal-actions">
-          <button type="button" onClick={closeEditor}>
-            Cancel
-          </button>
-          <button type="button" disabled={!balanced} onClick={onSave}>
-            Save
-          </button>
-        </div>
-      </div>
-    </div>
+        <DialogHeader>
+          <DialogTitle
+            id="basket-editor-title"
+            className="text-xl font-semibold tracking-[-0.02em]"
+          >
+            Edit basket
+          </DialogTitle>
+        </DialogHeader>
+        {draft && (
+          <>
+            <label className="field">
+              <span>Name</span>
+              <Input
+                type="text"
+                value={draft.name}
+                className="rounded-md"
+                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+              />
+            </label>
+            <fieldset className="swatches">
+              <legend>Color</legend>
+              {SWATCHES.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  className="swatch"
+                  style={{ background: color }}
+                  aria-label={color}
+                  aria-pressed={draft.color === color}
+                  onClick={() => setDraft({ ...draft, color })}
+                />
+              ))}
+            </fieldset>
+            <FundSearch onSelect={addFund} />
+            <Table className="fund-table">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Fund</TableHead>
+                  <TableHead>Weight</TableHead>
+                  <TableHead>Lock</TableHead>
+                  <TableHead />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {draft.funds.map((fund) => (
+                  <TableRow key={fund.schemeCode}>
+                    <TableCell>{fund.schemeName}</TableCell>
+                    <TableCell>
+                      <WeightField
+                        value={fund.weight}
+                        disabled={fund.locked}
+                        onCommit={(next) => setWeight(fund.schemeCode, next)}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="rounded-md"
+                        onClick={() => toggleLock(fund.schemeCode)}
+                      >
+                        {fund.locked ? "Unlock" : "Lock"}
+                      </Button>
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="rounded-md"
+                        onClick={() => deleteRow(fund.schemeCode)}
+                      >
+                        Delete
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            <p className={balanced ? "total-ok" : "total-bad"}>
+              Total: {sum.toFixed(2)}%
+            </p>
+            <DialogFooter className="modal-actions">
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-md"
+                onClick={closeEditor}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                className="rounded-md"
+                disabled={!balanced}
+                onClick={onSave}
+              >
+                Save
+              </Button>
+            </DialogFooter>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

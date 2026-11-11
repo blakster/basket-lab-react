@@ -234,7 +234,7 @@ describe("InsightsPanel", () => {
     postInsightsMock.mockResolvedValue(emptyFiling);
     renderPanel();
     await waitFor(() => {
-      expect(screen.getAllByText("No AMFI filing").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("No fund details").length).toBeGreaterThan(0);
     });
     expect(screen.queryByText("0.00%")).toBeNull();
     expect(screen.queryByText("Large")).toBeNull();
@@ -397,10 +397,10 @@ describe("InsightsPanel", () => {
     postInsightsMock.mockResolvedValue(emptyFiling);
     renderPanel();
     await waitFor(() => {
-      expect(screen.getByText("No AMFI filing for Fund A")).toBeInTheDocument();
+      expect(screen.getByText("No fund details for Fund A")).toBeInTheDocument();
     });
     const mix = screen.getByRole("heading", { name: "Mix" }).closest("article")!;
-    expect(mix.textContent).toMatch(/No AMFI filing/);
+    expect(mix.textContent).toMatch(/No fund details/);
     expect(mix.textContent).toMatch(/Sector/);
     expect(mix.textContent).toMatch(/Asset/);
     expect(screen.queryByText("0.00%")).toBeNull();
@@ -447,5 +447,32 @@ describe("InsightsPanel", () => {
     await userEvent.upload(input, file);
     expect(await screen.findByText(/under 5 MB/)).toBeInTheDocument();
     expect(uploadFilingMock).not.toHaveBeenCalled();
+  });
+
+  it("lets the user open the full holdings list", async () => {
+    const holdings = Array.from({ length: 12 }, (_, i) => ({
+      isin: `INE${i}`,
+      name: `Name ${i}`,
+      weight: 12 - i,
+    }));
+    postInsightsMock.mockResolvedValue({
+      ...partialFiling,
+      baskets: [
+        {
+          ...partialFiling.baskets[0]!,
+          missingSchemes: [],
+          holdings,
+        },
+      ],
+    });
+    renderPanel();
+    await waitFor(() => {
+      expect(screen.getByText("Name 0")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Name 10")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Show all 12 holdings" }));
+    expect(screen.getByText("Name 10")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show top 10" }));
+    expect(screen.queryByText("Name 10")).toBeNull();
   });
 });

@@ -56,6 +56,56 @@ describe("backtestBasket lumpsum", () => {
     expect(r.stats.final).toBe(0);
     expect(r.stats.abs).toBe(0);
   });
+
+  it("starts from first NAV when a fund launches after the requested start", () => {
+    const late: Basket = {
+      ...basket,
+      funds: [
+        { schemeCode: "N", schemeName: "New", isin: null, weight: 100, locked: false },
+      ],
+    };
+    const r = backtestBasket(
+      late,
+      {
+        N: [
+          { date: "2023-07-01", nav: 10 },
+          { date: "2024-01-01", nav: 12 },
+        ],
+      },
+      settings,
+    );
+    expect(r.error).toBeUndefined();
+    expect(r.stats.initial).toBe(1000);
+    expect(r.stats.final).toBeCloseTo(1200, 6);
+    expect(r.stats.abs).toBeCloseTo(20, 6);
+    const years =
+      (new Date("2024-01-01T00:00:00").getTime() -
+        new Date("2023-07-01T00:00:00").getTime()) /
+      (365 * 86400000);
+    expect(r.stats.cagr).toBeCloseTo(cagr(1000, 1200, years), 5);
+    expect(r.cashflow?.startIso).toBe("2023-07-01");
+    expect(r.series[0]?.x).toBe("2023-07-01");
+    expect(r.series[0]?.y).toBeCloseTo(1000, 6);
+  });
+
+  it("clips a mixed basket to the newest fund's first NAV", () => {
+    const r = backtestBasket(
+      basket,
+      {
+        A: NAV_A,
+        B: [
+          { date: "2023-07-01", nav: 20 },
+          { date: "2024-01-01", nav: 22 },
+        ],
+      },
+      settings,
+    );
+    expect(r.error).toBeUndefined();
+    expect(r.cashflow?.startIso).toBe("2023-07-01");
+    expect(r.stats.initial).toBe(1000);
+    expect(r.stats.final).toBeGreaterThan(0);
+    expect(r.series[0]?.x).toBe("2023-07-01");
+  });
 });
 
 describe("backtestBasket SIP", () => {
@@ -87,15 +137,26 @@ describe("backtestBasket SIP", () => {
     expect(r.stats.final).toBeCloseTo(2600, 6);
   });
 
-  it("marks no-nav when a weighted fund cannot be priced on a SIP day", () => {
+  it("starts SIP on the first day every weighted fund can be priced", () => {
     const r = backtestBasket(
       basket,
       {
         A: NAV_A,
-        B: [{ date: "2023-06-01", nav: 20 }],
+        B: [
+          { date: "2023-06-01", nav: 20 },
+          { date: "2024-01-01", nav: 22 },
+        ],
       },
       { ...settings, mode: "sip" },
     );
+    expect(r.error).toBeUndefined();
+    expect(r.cashflow?.startIso).toBe("2023-06-01");
+    expect(r.stats.initial).toBeGreaterThan(0);
+    expect(r.stats.final).toBeGreaterThan(0);
+  });
+
+  it("marks no-nav when a weighted fund has no series at all", () => {
+    const r = backtestBasket(sipBasket, {}, sipSettings);
     expect(r.error).toBe("no-nav");
     expect(r.series).toEqual([]);
     expect(r.stats.abs).toBe(0);

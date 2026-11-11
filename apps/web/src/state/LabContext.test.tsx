@@ -429,4 +429,78 @@ describe("LabContext runAnalysis", () => {
     // Header stays ready/cached-nav; only basket 1 shows No NAV
     expect(api.current!.status.kind).not.toBe("no-nav");
   });
+
+  it("backtests a fund whose NAV starts after the requested window", async () => {
+    fetchNavMock.mockResolvedValue({
+      "118741": [
+        { date: "2023-07-01", nav: 10 },
+        { date: "2024-01-01", nav: 12 },
+      ],
+    });
+
+    const api: { current: ReturnType<typeof useLab> | null } = { current: null };
+    render(
+      <LabProvider>
+        <Consumer api={api} />
+      </LabProvider>,
+    );
+
+    act(() => {
+      api.current!.setBaskets([makeBasket(100)]);
+      api.current!.setSettings({
+        mode: "lumpsum",
+        amount: 1000,
+        period: "Custom",
+        customStart: "2023-01-01",
+        customEnd: "2024-01-01",
+      });
+    });
+    await act(async () => {
+      await api.current!.runAnalysis();
+    });
+
+    expect(api.current!.results[0].error).toBeUndefined();
+    expect(api.current!.results[0].stats.final).toBeCloseTo(1200, 6);
+    expect(api.current!.results[0].cashflow?.startIso).toBe("2023-07-01");
+    expect(api.current!.status.kind).not.toBe("no-nav");
+  });
+
+  it("reuses a later-starting cache when the live fetch is empty", async () => {
+    fetchNavMock.mockResolvedValue({ "118741": [] });
+    readNavCacheEntryMock.mockResolvedValue({
+      points: [
+        { date: "2023-07-01", nav: 10 },
+        { date: "2024-01-01", nav: 12 },
+      ],
+      writtenAt: Date.now(),
+    });
+
+    const api: { current: ReturnType<typeof useLab> | null } = { current: null };
+    render(
+      <LabProvider>
+        <Consumer api={api} />
+      </LabProvider>,
+    );
+
+    act(() => {
+      api.current!.setBaskets([makeBasket(100)]);
+      api.current!.setSettings({
+        mode: "lumpsum",
+        amount: 1000,
+        period: "Custom",
+        customStart: "2023-01-01",
+        customEnd: "2024-01-01",
+      });
+    });
+    await act(async () => {
+      await api.current!.runAnalysis();
+    });
+
+    expect(api.current!.results[0].error).toBeUndefined();
+    expect(api.current!.results[0].stats.final).toBeCloseTo(1200, 6);
+    expect(api.current!.status).toEqual({
+      kind: "cached-nav",
+      detail: "2024-01-01",
+    });
+  });
 });

@@ -1,5 +1,33 @@
 import type { FundLine } from "../types";
 
+export type WeightDraft =
+  | { status: "empty" }
+  | { status: "partial"; text: string }
+  | { status: "value"; text: string; value: number }
+  | { status: "invalid" };
+
+/** Read a weight field without turning "" or "00" into a committed 0. */
+export function readWeightDraft(raw: string): WeightDraft {
+  if (raw === "") return { status: "empty" };
+  if (!/^\d{0,3}(?:\.\d{0,2})?$/.test(raw)) return { status: "invalid" };
+  if (raw === "." || raw.endsWith(".") || /^0\d/.test(raw)) {
+    return { status: "partial", text: raw };
+  }
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return { status: "invalid" };
+  return { status: "value", text: raw, value };
+}
+
+export function weightFromDraft(raw: string): number {
+  const draft = readWeightDraft(raw);
+  if (draft.status === "value") return draft.value;
+  if (draft.status === "partial") {
+    const value = Number(raw);
+    return Number.isFinite(value) ? value : 0;
+  }
+  return 0;
+}
+
 /** Round to 2 decimal places. */
 function round2(n: number): number {
   return parseFloat(n.toFixed(2));

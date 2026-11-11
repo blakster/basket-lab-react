@@ -6,13 +6,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { loadNiftyBeesNav } from "../lib/api/benchmarkNav";
@@ -24,7 +18,6 @@ import {
   type FilingState,
   type FundMetric,
   type InsightsBasket,
-  type OverlapName,
 } from "../lib/api/insights";
 import {
   alphaBeta,
@@ -45,11 +38,11 @@ import { useLab } from "../state/LabContext";
 import { useTheme } from "../state/ThemeContext";
 import type { BacktestResult, Basket, LabSettings } from "../types";
 import {
-  AllocationStack,
   MixCompareChart,
   MetricCompareChart,
   type MixSeries,
 } from "./LabCharts";
+import { HoldingsBarChart } from "./LabPlots";
 
 const EQUITY_ORDER = ["large", "mid", "small", "unclassified"] as const;
 
@@ -57,7 +50,6 @@ const SECTIONS = [
   { id: "insight-snapshot", label: "Snapshot" },
   { id: "insight-holdings", label: "Holdings" },
   { id: "insight-mix", label: "Mix" },
-  { id: "insight-overlap", label: "Overlap" },
   { id: "insight-risk", label: "Risk" },
 ] as const;
 
@@ -353,22 +345,9 @@ function useInsightsDesk() {
 
   const focusedData = useMemo(() => {
     if (!data || !focusedId) return data;
-    const pairHasFocus = (key: string) => key.split("|").includes(focusedId);
     return {
       ...data,
       baskets: data.baskets.filter((ib) => ib.id === focusedId),
-      overlap: data.overlap
-        ? Object.fromEntries(
-            Object.entries(data.overlap).filter(([key]) => pairHasFocus(key)),
-          )
-        : data.overlap,
-      overlapHoldings: data.overlapHoldings
-        ? Object.fromEntries(
-            Object.entries(data.overlapHoldings).filter(([key]) =>
-              pairHasFocus(key),
-            ),
-          )
-        : data.overlapHoldings,
     };
   }, [data, focusedId]);
 
@@ -405,21 +384,11 @@ function useInsightsDesk() {
 }
 
 export function InsightsPanel() {
-  const { insightsOpen, closeInsights, openInsights } = useLab();
   const desk = useInsightsDesk();
-
   return (
-    <Sheet
-      open={insightsOpen}
-      onOpenChange={(open) => {
-        if (open) openInsights();
-        else closeInsights();
-      }}
-    >
-      <SheetContent aria-describedby="insights-desk-desc">
-        <InsightsDesk {...desk} />
-      </SheetContent>
-    </Sheet>
+    <section className="insights-page" aria-label="Insights">
+      <InsightsDesk {...desk} />
+    </section>
   );
 }
 
@@ -487,7 +456,7 @@ function InsightsDesk({
         }
         if (bestId) setActiveSection(bestId);
       },
-      { root, rootMargin: "-10% 0px -55% 0px", threshold: [0, 0.15, 0.4, 0.7] },
+      { root: null, rootMargin: "-15% 0px -55% 0px", threshold: [0, 0.15, 0.4, 0.7] },
     );
     for (const section of SECTIONS) {
       const el = root.querySelector(`#${section.id}`);
@@ -503,14 +472,14 @@ function InsightsDesk({
   return (
     <div className="insights-desk">
       <div className="insights-chrome">
-        <SheetHeader>
-          <SheetTitle>Insights · {focusedName}</SheetTitle>
-          <SheetDescription id="insights-desk-desc">
+        <header className="insights-sheet-header">
+          <h2 className="insights-sheet-title">Insights · {focusedName}</h2>
+          <p id="insights-desk-desc" className="insights-sheet-desc">
             {data?.asOf
-              ? `AMFI filings as of ${data.asOf}. Risk vs Nifty BeES, rf = 0.`
-              : "Filings, mix, overlap, and risk for this basket."}
-          </SheetDescription>
-        </SheetHeader>
+              ? `Fund details as of ${data.asOf}. Risk vs Nifty BeES, rf = 0.`
+              : "Filings, mix, and risk for this basket."}
+          </p>
+        </header>
         {switchable.length > 1 && (
           <div className="insights-switch" role="tablist" aria-label="Basket">
             {switchable.map((basket) => (
@@ -628,19 +597,6 @@ function InsightsDesk({
                     labBaskets={baskets}
                     categories={equityCats}
                   />
-                </InsightSection>
-                <InsightSection id="insight-overlap" title="Overlap">
-                  {data.overlap == null ? (
-                    <p className="insight-empty">
-                      Add another basket with holdings data
-                    </p>
-                  ) : (
-                    <OverlapBlock
-                      overlap={data.overlap}
-                      overlapHoldings={data.overlapHoldings}
-                      baskets={baskets}
-                    />
-                  )}
                 </InsightSection>
               </>
             )}
@@ -1044,6 +1000,8 @@ function SnapshotBlock({
   );
 }
 
+const HOLDINGS_PREVIEW = 10;
+
 function HoldingsBlock({
   ib,
   basket,
@@ -1052,22 +1010,36 @@ function HoldingsBlock({
   basket: Basket | undefined;
 }) {
   const { theme } = useTheme();
-  const segments = ib.holdings.slice(0, 12).map((h, i) => ({
-    key: h.isin || `${h.name}-${i}`,
-    label: h.name,
-    weight: h.weight,
-    color: inkWash(i, basket?.color ?? "#111111", theme),
-  }));
+  const [showAll, setShowAll] = useState(false);
+  const chartItems = ib.holdings.slice(0, HOLDINGS_PREVIEW);
+  const rows = showAll ? ib.holdings : ib.holdings.slice(0, HOLDINGS_PREVIEW);
+  const extra = ib.holdings.length - HOLDINGS_PREVIEW;
 
   return (
     <div className="insight-basket">
-      <h4>{basket?.name ?? ib.id}</h4>
+      <h4>
+        {basket?.name ?? ib.id}
+        {ib.holdings.length > 0 ? (
+          <span className="holdings-count"> {ib.holdings.length} holdings</span>
+        ) : null}
+      </h4>
       {ib.missingSchemes.map((code) => (
         <p key={code} className="insight-missing">
-          No AMFI filing for {fundName(basket, code)}
+          No fund details for {fundName(basket, code)}
         </p>
       ))}
-      {segments.length > 0 && <AllocationStack segments={segments} />}
+      {chartItems.length > 0 && (
+        <HoldingsBarChart
+          items={chartItems.map((h, i) => ({
+            name: h.name,
+            weight: h.weight,
+            color: inkWash(i, basket?.color ?? "#111111", theme),
+          }))}
+        />
+      )}
+      {extra > 0 && !showAll && (
+        <p className="holdings-note">Chart shows the largest 10.</p>
+      )}
       {ib.holdings.length > 0 && (
         <div className="table-scroll">
           <Table className="insight-table">
@@ -1078,7 +1050,7 @@ function HoldingsBlock({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {ib.holdings.map((h, i) => (
+              {rows.map((h, i) => (
                 <TableRow key={h.isin || `${h.name}-${h.weight}-${i}`}>
                   <TableCell>{h.name}</TableCell>
                   <TableCell className="text-right">
@@ -1089,6 +1061,17 @@ function HoldingsBlock({
             </TableBody>
           </Table>
         </div>
+      )}
+      {extra > 0 && (
+        <button
+          type="button"
+          className="ds-btn-outlined holdings-more"
+          onClick={() => setShowAll((open) => !open)}
+        >
+          {showAll
+            ? "Show top 10"
+            : `Show all ${ib.holdings.length} holdings`}
+        </button>
       )}
     </div>
   );
@@ -1129,7 +1112,7 @@ function MixBlock({
     return (
       <div className="insight-basket">
         <h4>{title}</h4>
-        <p className="insight-empty">No AMFI filing</p>
+        <p className="insight-empty">No fund details</p>
       </div>
     );
   }
@@ -1209,96 +1192,8 @@ function equitySplitEmpty(
     .map((f) => f.schemeCode);
   const allMissing =
     codes.length > 0 && codes.every((c) => missing.has(c));
-  if (allMissing) return "No AMFI filing";
+  if (allMissing) return "No fund details";
   const hasEquity = EQUITY_ORDER.some((key) => (ib.equitySplit[key] ?? 0) > 0);
   if (!hasEquity) return "No equity holdings";
   return null;
-}
-
-function OverlapBlock({
-  overlap,
-  overlapHoldings,
-  baskets,
-}: {
-  overlap: Record<string, number>;
-  overlapHoldings?: Record<string, OverlapName[]> | null;
-  baskets: Basket[];
-}) {
-  const rows = Object.entries(overlap)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, weight]) => {
-      const [left, right] = key.split("|");
-      return {
-        key,
-        label: `${basketName(left ?? "", baskets)} × ${basketName(right ?? "", baskets)}`,
-        names: overlapHoldings?.[key] ?? [],
-        weight,
-      };
-    });
-
-  return (
-    <>
-      <figure className="insight-chart">
-        <MixCompareChart
-          series={[
-            {
-              key: "overlap",
-              label: "Overlap",
-              color: "#111111",
-              values: Object.fromEntries(rows.map((r) => [r.label, r.weight])),
-            },
-          ]}
-          categories={rows.map((r) => r.label)}
-        />
-      </figure>
-      <div className="table-scroll">
-        <Table className="insight-table">
-          <TableHeader>
-            <TableRow>
-              <TableHead>Pair</TableHead>
-              <TableHead className="text-right">Overlap</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((row) => (
-              <TableRow key={row.key}>
-                <TableCell>{row.label}</TableCell>
-                <TableCell className="text-right">
-                  {formatPct(row.weight)}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-      {rows.map((row) =>
-        row.names.length > 0 ? (
-          <div key={`${row.key}-names`} className="table-scroll">
-            <Table className="insight-table">
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Holding</TableHead>
-                  <TableHead className="text-right">left %</TableHead>
-                  <TableHead className="text-right">right %</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {row.names.map((name, i) => (
-                  <TableRow key={name.isin || `${name.name}-${i}`}>
-                    <TableCell>{name.name}</TableCell>
-                    <TableCell className="text-right">
-                      {formatPct(name.weightA)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatPct(name.weightB)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        ) : null,
-      )}
-    </>
-  );
 }

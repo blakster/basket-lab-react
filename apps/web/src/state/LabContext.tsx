@@ -11,6 +11,7 @@ import {
   type SetStateAction,
 } from "react";
 import defaults from "../data/defaults.json";
+import { ensureFilings } from "../lib/api/insights";
 import { fetchNav } from "../lib/api/nav";
 import { backtestBasket } from "../lib/backtest/performance";
 import {
@@ -37,6 +38,7 @@ export type LabStatusKind =
   | "ready"
   | "cached-nav"
   | "no-nav"
+  | "search-busy"
   | "search-down"
   | "insights-down";
 
@@ -47,9 +49,10 @@ export type StatusSource = "nav" | "search" | "insights";
 const READY_STATUS: LabStatus = { kind: "ready" };
 
 const STATUS_PRIORITY: Record<LabStatusKind, number> = {
-  "no-nav": 4,
-  "cached-nav": 3,
-  "search-down": 2,
+  "no-nav": 5,
+  "cached-nav": 4,
+  "search-down": 3,
+  "search-busy": 2,
   "insights-down": 1,
   ready: 0,
 };
@@ -64,6 +67,41 @@ function lastPointDate(points: NavPoint[]): string {
   return points.reduce((a, p) => (p.date > a ? p.date : a), points[0].date);
 }
 
+export type Workspace = "compare" | "baskets" | "insights";
+
+const INSIGHTS_HASH = "#insights";
+
+function workspaceFromHash(): Workspace {
+  const hash = window.location.hash;
+  if (hash === "#baskets") return "baskets";
+  if (hash === INSIGHTS_HASH || hash.startsWith(`${INSIGHTS_HASH}=`)) {
+    return "insights";
+  }
+  return "compare";
+}
+
+function readInsightsBasketId(): string | null {
+  const hash = window.location.hash;
+  if (!hash.startsWith(`${INSIGHTS_HASH}=`)) return null;
+  try {
+    return decodeURIComponent(hash.slice(`${INSIGHTS_HASH}=`.length)) || null;
+  } catch {
+    return null;
+  }
+}
+
+function writeWorkspaceHash(workspace: Workspace, basketId?: string | null): void {
+  const url = new URL(window.location.href);
+  if (workspace === "compare") url.hash = "";
+  else if (workspace === "baskets") url.hash = "baskets";
+  else if (basketId) url.hash = `insights=${encodeURIComponent(basketId)}`;
+  else url.hash = "insights";
+  const next = `${url.pathname}${url.search}${url.hash}`;
+  const here = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  if (next === here) return;
+  window.history.replaceState(null, "", next);
+}
+
 type LabContextValue = {
   settings: LabSettings;
   setSettings: Dispatch<SetStateAction<LabSettings>>;
@@ -76,11 +114,19 @@ type LabContextValue = {
   closeEditor: () => void;
   saveBasket: (basket: Basket) => boolean;
   results: BacktestResult[];
+  analyzing: boolean;
   runAnalysis: () => Promise<void>;
   /** True when `?s=` was present but could not be decoded. */
   shareHydrateError: boolean;
   status: LabStatus;
+  insightsStatus: LabStatus;
   reportStatus: (source: StatusSource, next: LabStatus) => void;
+  workspace: Workspace;
+  setWorkspace: (workspace: Workspace) => void;
+  insightsOpen: boolean;
+  insightsBasketId: string | null;
+  openInsights: (basketId?: string) => void;
+  closeInsights: () => void;
 };
 
 const LabContext = createContext<LabContextValue | null>(null);
@@ -166,6 +212,24 @@ function shiftIso(iso: string, days: number): string {
   return `${y}-${m}-${day}`;
 }
 
+function lastIso(points: NavPoint[]): string {
+  return points.reduce((a, p) => (p.date > a ? p.date : a), points[0].date);
+}
+
+function firstIso(points: NavPoint[]): string {
+  return points.reduce((a, p) => (p.date < a ? p.date : a), points[0].date);
+}
+
+function coversEnd(points: NavPoint[], to: string): boolean {
+  if (points.some((p) => p.date >= to)) return true;
+  const last = lastIso(points);
+  if (last > to) return false;
+  const gap =
+    (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${last}T00:00:00Z`)) /
+    86_400_000;
+  return gap <= RANGE_SLACK_DAYS;
+}
+
 function cacheCoversRange(
   points: NavPoint[],
   since: string,
@@ -174,16 +238,19 @@ function cacheCoversRange(
   if (!points.length) return false;
   const hasOnOrBeforeSince = points.some((p) => p.date <= since);
   if (!hasOnOrBeforeSince) return false;
-  if (points.some((p) => p.date >= to)) return true;
-  const last = points.reduce(
-    (a, p) => (p.date > a ? p.date : a),
-    points[0].date,
-  );
-  if (last > to) return false;
-  const gap =
-    (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${last}T00:00:00Z`)) /
-    86_400_000;
-  return gap <= RANGE_SLACK_DAYS;
+  return coversEnd(points, to);
+}
+
+/** Stale-cache reuse: series overlaps the window and reaches `to` (with slack). */
+function cacheOverlapsRange(
+  points: NavPoint[],
+  since: string,
+  to: string,
+): boolean {
+  if (!points.length) return false;
+  if (firstIso(points) > to) return false;
+  if (lastIso(points) < since) return false;
+  return coversEnd(points, to);
 }
 
 function cacheUsable(
@@ -236,9 +303,15 @@ export function LabProvider({ children }: { children: ReactNode }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editorSeed, setEditorSeed] = useState<Basket | null>(null);
   const [results, setResults] = useState<BacktestResult[]>([]);
+  const [analyzing, setAnalyzing] = useState(false);
   const [navStatus, setNavStatus] = useState<LabStatus>(READY_STATUS);
   const [searchStatus, setSearchStatus] = useState<LabStatus>(READY_STATUS);
   const [insightsStatus, setInsightsStatus] = useState<LabStatus>(READY_STATUS);
+  const [workspace, setWorkspaceState] = useState<Workspace>(workspaceFromHash);
+  const [insightsBasketId, setInsightsBasketId] = useState<string | null>(
+    readInsightsBasketId,
+  );
+  const insightsOpen = workspace === "insights";
   const runIdRef = useRef(0);
   /** After a failed `?s=` hydrate, keep session defaults without wiping storage until the user edits. */
   const blockPersistRef = useRef(initial.shareHydrateError);
@@ -251,6 +324,10 @@ export function LabProvider({ children }: { children: ReactNode }) {
       // Ignore quota / private-mode failures.
     }
   }, [baskets, settings]);
+
+  useEffect(() => {
+    ensureFilings(baskets.flatMap((b) => b.funds.map((f) => f.schemeCode)));
+  }, [baskets]);
 
   const setSettings = useCallback<Dispatch<SetStateAction<LabSettings>>>((action) => {
     blockPersistRef.current = false;
@@ -283,6 +360,7 @@ export function LabProvider({ children }: { children: ReactNode }) {
       next[idx] = basket;
       return next;
     });
+    ensureFilings(basket.funds.map((f) => f.schemeCode));
     return true;
   }, []);
 
@@ -292,6 +370,55 @@ export function LabProvider({ children }: { children: ReactNode }) {
     else setInsightsStatus(next);
   }, []);
 
+  useEffect(() => {
+    const sync = () => {
+      setWorkspaceState(workspaceFromHash());
+      setInsightsBasketId(readInsightsBasketId());
+    };
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
+  }, []);
+
+  const setWorkspace = useCallback(
+    (next: Workspace) => {
+      setWorkspaceState(next);
+      if (next !== "insights") {
+        writeWorkspaceHash(next);
+        return;
+      }
+      setInsightsBasketId((prev) => {
+        const id =
+          prev ??
+          baskets.find((b) => b.active)?.id ??
+          baskets[0]?.id ??
+          null;
+        writeWorkspaceHash("insights", id);
+        return id;
+      });
+    },
+    [baskets],
+  );
+
+  const openInsights = useCallback((basketId?: string) => {
+    setInsightsBasketId((prev) => {
+      const asked = typeof basketId === "string" && basketId ? basketId : undefined;
+      const next =
+        asked ??
+        prev ??
+        baskets.find((b) => b.active)?.id ??
+        baskets[0]?.id ??
+        null;
+      writeWorkspaceHash("insights", next);
+      return next;
+    });
+    setWorkspaceState("insights");
+  }, [baskets]);
+
+  const closeInsights = useCallback(() => {
+    writeWorkspaceHash("compare");
+    setWorkspaceState("compare");
+  }, []);
+
   const status = useMemo(
     () => pickStatus([navStatus, searchStatus, insightsStatus]),
     [navStatus, searchStatus, insightsStatus],
@@ -299,8 +426,14 @@ export function LabProvider({ children }: { children: ReactNode }) {
 
   const runAnalysis = useCallback(async () => {
     const runId = ++runIdRef.current;
+    setAnalyzing(true);
+    const finish = (apply?: () => void) => {
+      if (runId !== runIdRef.current) return;
+      apply?.();
+      setAnalyzing(false);
+    };
     if (settings.amount < 100) {
-      if (runId === runIdRef.current) setResults([]);
+      finish(() => setResults([]));
       return;
     }
 
@@ -308,11 +441,11 @@ export function LabProvider({ children }: { children: ReactNode }) {
     if (
       active.some((b) => Math.abs(weightSum(b) - 100) >= WEIGHT_TOLERANCE)
     ) {
-      if (runId === runIdRef.current) setResults([]);
+      finish(() => setResults([]));
       return;
     }
     if (!active.length) {
-      if (runId === runIdRef.current) setResults([]);
+      finish(() => setResults([]));
       return;
     }
 
@@ -340,15 +473,20 @@ export function LabProvider({ children }: { children: ReactNode }) {
     const entries = new Map<string, NavCacheEntry | null>();
     const staleCacheCodes = new Set<string>();
 
+    try {
     await Promise.all(
       codes.map(async (code) => {
-        const entry = await readNavCacheEntry(code);
-        entries.set(code, entry);
-        if (entry && cacheUsable(entry, start, end)) {
-          navs[code] = entry.points;
-        } else {
-          toFetch.push(code);
+        try {
+          const entry = await readNavCacheEntry(code);
+          entries.set(code, entry);
+          if (entry && cacheUsable(entry, start, end)) {
+            navs[code] = entry.points;
+            return;
+          }
+        } catch {
+          entries.set(code, null);
         }
+        toFetch.push(code);
       }),
     );
 
@@ -364,11 +502,16 @@ export function LabProvider({ children }: { children: ReactNode }) {
           const prev = entries.get(code);
           if (points.length) {
             const merged = mergeNav(prev?.points ?? [], points);
-            await writeNavCache(code, merged);
+            try {
+              await writeNavCache(code, merged);
+            } catch {
+              // Quota / private mode: still run on the live series.
+            }
             navs[code] = merged;
           } else {
-            // Failed fetch: reuse covering-but-stale cache only ("Using saved NAV").
-            if (prev && cacheCoversRange(prev.points, start, end)) {
+            // Failed fetch: reuse overlapping stale cache ("Using saved NAV"),
+            // including series that start after `start` (fund launched later).
+            if (prev && cacheOverlapsRange(prev.points, start, end)) {
               navs[code] = prev.points;
               staleCacheCodes.add(code);
             } else {
@@ -388,22 +531,27 @@ export function LabProvider({ children }: { children: ReactNode }) {
     const allNoNav =
       nextResults.length > 0 &&
       nextResults.every((r) => r.error === "no-nav");
-    if (allNoNav) {
-      setNavStatus({ kind: "no-nav" });
-    } else if (staleCacheCodes.size) {
-      let detail = "";
-      for (const code of staleCacheCodes) {
-        const pts = navs[code];
-        if (!pts?.length) continue;
-        const last = lastPointDate(pts);
-        if (last > detail) detail = last;
+    finish(() => {
+      if (allNoNav) {
+        setNavStatus({ kind: "no-nav" });
+      } else if (staleCacheCodes.size) {
+        let detail = "";
+        for (const code of staleCacheCodes) {
+          const pts = navs[code];
+          if (!pts?.length) continue;
+          const last = lastPointDate(pts);
+          if (last > detail) detail = last;
+        }
+        setNavStatus({ kind: "cached-nav", detail: detail || undefined });
+      } else {
+        setNavStatus(READY_STATUS);
       }
-      setNavStatus({ kind: "cached-nav", detail: detail || undefined });
-    } else {
-      setNavStatus(READY_STATUS);
+      setResults(nextResults);
+      writeShareQuery(settings, baskets);
+    });
+    } catch {
+      finish();
     }
-    setResults(nextResults);
-    writeShareQuery(settings, baskets);
   }, [settings, baskets]);
 
   const value = useMemo(
@@ -418,10 +566,18 @@ export function LabProvider({ children }: { children: ReactNode }) {
       closeEditor,
       saveBasket,
       results,
+      analyzing,
       runAnalysis,
       shareHydrateError,
       status,
+      insightsStatus,
       reportStatus,
+      workspace,
+      setWorkspace,
+      insightsOpen,
+      insightsBasketId,
+      openInsights,
+      closeInsights,
     }),
     [
       settings,
@@ -432,10 +588,18 @@ export function LabProvider({ children }: { children: ReactNode }) {
       closeEditor,
       saveBasket,
       results,
+      analyzing,
       runAnalysis,
       shareHydrateError,
       status,
+      insightsStatus,
       reportStatus,
+      workspace,
+      setWorkspace,
+      insightsOpen,
+      insightsBasketId,
+      openInsights,
+      closeInsights,
     ],
   );
 

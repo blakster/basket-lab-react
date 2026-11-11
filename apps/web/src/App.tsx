@@ -5,19 +5,30 @@ import { BasketList } from "./components/BasketList";
 import { InsightsPanel } from "./components/InsightsPanel";
 import { InvestmentSettings } from "./components/InvestmentSettings";
 import { ShareBar } from "./components/ShareBar";
+import { useLab } from "./state/LabContext";
 
 export default function App() {
+  const { workspace } = useLab();
+
   return (
     <div className="app">
       <AppHeader />
-      <div className="lab-row">
-        <InvestmentSettings />
-        <BasketList />
-      </div>
+      <main id="top" className="app-body">
+        {workspace === "compare" && (
+          <>
+            <InvestmentSettings />
+            <BacktestView />
+          </>
+        )}
+        {workspace === "baskets" && (
+          <>
+            <BasketList />
+            <ShareBar />
+          </>
+        )}
+        {workspace === "insights" && <InsightsPanel />}
+      </main>
       <BasketEditor />
-      <BacktestView />
-      <InsightsPanel />
-      <ShareBar />
     </div>
   );
 }

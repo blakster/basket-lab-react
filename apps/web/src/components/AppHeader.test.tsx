@@ -1,29 +1,58 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
 import { LabProvider } from "../state/LabContext";
+import { ThemeProvider } from "../state/ThemeContext";
+import { THEME_STORAGE_KEY } from "../lib/theme";
 import { AppHeader, statusLabel } from "./AppHeader";
+
+function renderHeader() {
+  return render(
+    <ThemeProvider>
+      <LabProvider>
+        <AppHeader />
+      </LabProvider>
+    </ThemeProvider>,
+  );
+}
 
 describe("statusLabel", () => {
   it("maps each kind to banner copy", () => {
-    expect(statusLabel({ kind: "ready" })).toBe("ready");
+    expect(statusLabel({ kind: "ready" })).toBe("LIVE");
     expect(statusLabel({ kind: "cached-nav", detail: "2024-01-15" })).toBe(
-      "Using saved NAV (2024-01-15)",
+      "SAVED NAV 2024-01-15",
     );
-    expect(statusLabel({ kind: "no-nav" })).toBe("Can't load NAV");
+    expect(statusLabel({ kind: "cached-nav" })).toBe("SAVED NAV");
+    expect(statusLabel({ kind: "no-nav" })).toBe("BLACKOUT");
+    expect(statusLabel({ kind: "search-busy" })).toBe("Search busy…");
     expect(statusLabel({ kind: "search-down" })).toBe("Search unavailable");
     expect(statusLabel({ kind: "insights-down" })).toBe("Insights unavailable");
   });
 });
 
 describe("AppHeader", () => {
-  it("shows ready on the status line and does not render a blocking dialog", () => {
-    render(
-      <LabProvider>
-        <AppHeader />
-      </LabProvider>,
-    );
-    expect(screen.getByText("ready")).toBeInTheDocument();
+  afterEach(() => {
+    cleanup();
+    localStorage.clear();
+    document.documentElement.classList.remove("dark");
+    document.documentElement.style.colorScheme = "";
+  });
+
+  it("shows LIVE on the status line and does not render a blocking dialog", () => {
+    renderHeader();
+    expect(screen.getByText("LIVE")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Basket Lab" })).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("toggles night edition on the root and remembers the choice", () => {
+    renderHeader();
+    const toggle = screen.getByRole("button", { name: "Night edition" });
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(toggle);
+
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    expect(document.documentElement.classList.contains("dark")).toBe(true);
+    expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe("dark");
   });
 });

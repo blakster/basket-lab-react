@@ -39,10 +39,19 @@ export type BasketStats = {
   mdd: number;
 };
 
+export type BacktestCashflow = {
+  mode: "lumpsum" | "sip";
+  amount: number;
+  startIso: string;
+  /** Window the user asked for; may be earlier than `startIso` when a fund is newer. */
+  requestedStartIso?: string;
+};
+
 export type BacktestResult = {
   basketId: string;
   series: TimePoint[];
   stats: BasketStats;
+  cashflow?: BacktestCashflow;
   error?: "no-nav";
 };
 

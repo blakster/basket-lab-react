@@ -1,6 +1,28 @@
 import { describe, expect, it } from "vitest";
-import { applyWeightChange } from "./weights";
+import { applyWeightChange, readWeightDraft } from "./weights";
 import type { FundLine } from "../types";
+
+describe("readWeightDraft", () => {
+  it("treats a cleared field as empty, not zero", () => {
+    expect(readWeightDraft("")).toEqual({ status: "empty" });
+  });
+
+  it("keeps leftover zeros from 100 as text instead of snapping to 0", () => {
+    expect(readWeightDraft("00")).toEqual({ status: "partial", text: "00" });
+  });
+
+  it("keeps a trailing decimal while typing 10.5", () => {
+    expect(readWeightDraft("10.")).toEqual({ status: "partial", text: "10." });
+  });
+
+  it("parses a finished number", () => {
+    expect(readWeightDraft("40")).toEqual({
+      status: "value",
+      text: "40",
+      value: 40,
+    });
+  });
+});
 
 const funds: FundLine[] = [
   { schemeCode: "A", schemeName: "A", isin: null, weight: 50, locked: false },

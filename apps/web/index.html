@@ -1,11 +1,38 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-type="software" data-radius="sharp" data-buttons="tonal" data-motion data-ground="sage">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f7f9fa" />
+    <meta name="page-type" content="software" />
+    <meta name="site-kind" content="software" />
+    <meta name="description" content="Indian MF and ETF basket backtest for DIY investors. CAGR for lumpsum, XIRR for SIP." />
     <title>Basket Lab</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700&family=Geist+Mono:wght@400..500&display=swap" rel="stylesheet" />
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem("basket-lab-theme");
+          var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          var dark = stored === "dark" || (stored !== "light" && prefersDark);
+          document.documentElement.classList.toggle("dark", dark);
+          document.documentElement.style.colorScheme = dark ? "dark" : "light";
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute("content", dark ? "#1f3038" : "#f7f9fa");
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
+    <!--
+      kind: software / fintech
+      deal: palette cool-white-slate (frost field, teal accent for a numbers desk);
+            type geist; radius sharp; buttons tonal; mark ring; nav-centre (nav-cards needs photos);
+            footer-dark; close-type; rhythm space; hero centred; ground sage unused (space = one ground);
+            moment pinned-chapters not mounted (this is the lab, not a marketing tour)
+    -->
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
