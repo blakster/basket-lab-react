@@ -99,6 +99,29 @@ def load_fundamentals(conn: sqlite3.Connection, as_of: str, scheme_code: str, **
     conn.commit()
 
 
+def load_mixes(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> int:
+    seen: set[tuple[str, str]] = set()
+    for r in rows:
+        key = (str(r["as_of"]), str(r["scheme_code"]))
+        if key in seen:
+            continue
+        seen.add(key)
+        conn.execute(
+            "DELETE FROM mixes WHERE as_of = ? AND scheme_code = ?",
+            key,
+        )
+    params = [
+        (r["as_of"], r["scheme_code"], r["kind"], r["label"], r["weight_pct"])
+        for r in rows
+    ]
+    conn.executemany(
+        "INSERT INTO mixes (as_of, scheme_code, kind, label, weight_pct) VALUES (?, ?, ?, ?, ?)",
+        params,
+    )
+    conn.commit()
+    return len(params)
+
+
 def load_holdings(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> int:
     seen: set[tuple[str, str]] = set()
     for r in rows:

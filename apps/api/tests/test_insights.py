@@ -124,3 +124,78 @@ def test_insights_include_aum_and_overlap_names(db, client):
     names = body["overlapHoldings"]["1|2"]
     assert names[0]["isin"] == "INE1"
     assert names[0]["minWeight"] == 0.94
+
+
+def test_insights_use_foliyo_mixes_and_name_overlap(db, client):
+    db.execute(
+        "INSERT INTO holdings (as_of, scheme_code, isin, instrument_name, asset_class, sector, rating, market_cap_bucket, weight_pct) VALUES (?,?,?,?,?,?,?,?,?)",
+        ("2026-09-30", "F1", None, "HDFC Bank Ltd", None, "Financial Services", None, None, 7.75),
+    )
+    db.execute(
+        "INSERT INTO holdings (as_of, scheme_code, isin, instrument_name, asset_class, sector, rating, market_cap_bucket, weight_pct) VALUES (?,?,?,?,?,?,?,?,?)",
+        ("2026-09-30", "F2", None, "HDFC Bank Ltd", None, "Financial Services", None, None, 4.0),
+    )
+    db.execute(
+        "INSERT INTO mixes (as_of, scheme_code, kind, label, weight_pct) VALUES (?,?,?,?,?)",
+        ("2026-09-30", "F1", "asset", "equity", 90.23),
+    )
+    db.execute(
+        "INSERT INTO mixes (as_of, scheme_code, kind, label, weight_pct) VALUES (?,?,?,?,?)",
+        ("2026-09-30", "F1", "sector", "Financial Services", 26.71),
+    )
+    db.execute(
+        "INSERT INTO mixes (as_of, scheme_code, kind, label, weight_pct) VALUES (?,?,?,?,?)",
+        ("2026-09-30", "F1", "mcap", "large", 65.25),
+    )
+    db.execute(
+        "INSERT INTO fundamentals (as_of, scheme_code, expense_ratio, pe, aum_cr, turnover) VALUES (?,?,?,?,?,?)",
+        ("2026-09-30", "F1", 0.69, 17.56, 145070.0, None),
+    )
+    db.commit()
+    res = client.post(
+        "/api/insights",
+        json={
+            "baskets": [
+                {"id": "1", "funds": [{"schemeCode": "F1", "weight": 100}]},
+                {"id": "2", "funds": [{"schemeCode": "F2", "weight": 100}]},
+            ]
+        },
+    )
+    body = res.json()
+    one = next(b for b in body["baskets"] if b["id"] == "1")
+    assert one["asset"]["equity"] == 90.23
+    assert one["sector"]["Financial Services"] == 26.71
+    assert one["equitySplit"]["large"] == 65.25
+    assert one["pe"] == 17.56
+    assert one["expenseRatio"] == 0.69
+    shared = body["overlapHoldings"]["1|2"][0]
+    assert shared["isin"] is None
+    assert shared["name"] == "HDFC Bank Ltd"
+    assert shared["minWeight"] == 4.0
+
+
+def test_insights_return_every_holding(db, client):
+    for i in range(12):
+        db.execute(
+            "INSERT INTO holdings (as_of, scheme_code, isin, instrument_name, asset_class, sector, rating, market_cap_bucket, weight_pct) VALUES (?,?,?,?,?,?,?,?,?)",
+            (
+                "2026-09-30",
+                "FULL",
+                f"INE{i:03d}",
+                f"Name {i}",
+                "equity",
+                "Banks",
+                None,
+                "large",
+                1.0 + i,
+            ),
+        )
+    db.commit()
+    res = client.post(
+        "/api/insights",
+        json={"baskets": [{"id": "1", "funds": [{"schemeCode": "FULL", "weight": 100}]}]}
+    )
+    names = [h["name"] for h in res.json()["baskets"][0]["holdings"]]
+    assert len(names) == 12
+    assert names[0] == "Name 11"
+    assert "Name 0" in names

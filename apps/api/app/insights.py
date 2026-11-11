@@ -10,7 +10,6 @@ from app.filing_status import FilingStatus, filing_statuses
 
 CREDIT_NOTE_NO_DEBT = "N/A — no debt holdings"
 EQUITY_BUCKETS = ("large", "mid", "small", "unclassified")
-TOP_N = 10
 _COVERED_STATES = frozenset({"fresh", "stale"})
 
 
@@ -67,14 +66,14 @@ def compute_insights(
                         continue
                     items.append(
                         {
-                            "isin": isin,
+                            "isin": None if isin.startswith("n:") else isin,
                             "name": na.get(isin) or nb.get(isin) or "",
                             "weightA": wa[isin],
                             "weightB": wb[isin],
                             "minWeight": min_w,
                         }
                     )
-                items.sort(key=lambda h: (-h["minWeight"], h["isin"]))
+                items.sort(key=lambda h: (-h["minWeight"], h["isin"] or "", h["name"]))
                 overlap_holdings[key] = items[:15]
 
     return {
@@ -136,7 +135,9 @@ def _serialize_status(status: FilingStatus) -> dict[str, object]:
 
 
 def _latest_as_of(conn: sqlite3.Connection) -> str | None:
-    row = conn.execute("SELECT MAX(as_of) FROM holdings").fetchone()
+    row = conn.execute(
+        "SELECT MAX(as_of) FROM (SELECT MAX(as_of) AS as_of FROM holdings UNION ALL SELECT MAX(as_of) AS as_of FROM mixes)"
+    ).fetchone()
     return row[0] if row is not None else None
 
 
@@ -144,7 +145,12 @@ def _scheme_as_of(conn: sqlite3.Connection, scheme: str) -> str | None:
     row = conn.execute(
         "SELECT MAX(as_of) FROM holdings WHERE scheme_code = ?", (scheme,)
     ).fetchone()
-    return row[0] if row is not None else None
+    if row is not None and row[0]:
+        return row[0]
+    mix = conn.execute(
+        "SELECT MAX(as_of) FROM mixes WHERE scheme_code = ?", (scheme,)
+    ).fetchone()
+    return mix[0] if mix is not None else None
 
 
 def _roll_basket(
@@ -158,15 +164,23 @@ def _roll_basket(
     aum_pairs: list[tuple[float, float]] = []
     turn_pairs: list[tuple[float, float]] = []
     fund_metrics: list[dict[str, Any]] = []
+    sector_acc: dict[str, float] = defaultdict(float)
+    asset_acc: dict[str, float] = defaultdict(float)
+    credit_acc: dict[str, float] = defaultdict(float)
+    equity_acc = {bucket: 0.0 for bucket in EQUITY_BUCKETS}
 
     for fund in funds:
         scheme = str(fund.get("schemeCode") or "")
         fund_w = float(fund.get("weight") or 0)
         scheme_as_of = _scheme_as_of(conn, scheme) if scheme else None
         rows = _holdings_for(conn, scheme, scheme_as_of)
+        mix_sector = _mixes_for(conn, scheme, scheme_as_of, "sector")
+        mix_asset = _mixes_for(conn, scheme, scheme_as_of, "asset")
+        mix_mcap = _mixes_for(conn, scheme, scheme_as_of, "mcap")
+        mix_credit = _mixes_for(conn, scheme, scheme_as_of, "credit")
         aum_val: float | None = None
         turn_val: float | None = None
-        if not rows:
+        if not rows and not mix_sector and not mix_asset:
             if scheme:
                 missing.append(scheme)
                 fund_metrics.append(
@@ -174,18 +188,35 @@ def _roll_basket(
                 )
             continue
         scale = fund_w / 100.0
+        fund_lines: list[dict[str, Any]] = []
         for row in rows:
-            lines.append(
-                {
-                    "isin": row["isin"],
-                    "name": row["instrument_name"],
-                    "asset_class": row["asset_class"],
-                    "sector": row["sector"],
-                    "rating": row["rating"],
-                    "market_cap_bucket": row["market_cap_bucket"],
-                    "weight": scale * float(row["weight_pct"]),
-                }
-            )
+            line = {
+                "isin": row["isin"],
+                "name": row["instrument_name"],
+                "asset_class": row["asset_class"],
+                "sector": row["sector"],
+                "rating": row["rating"],
+                "market_cap_bucket": row["market_cap_bucket"],
+                "weight": scale * float(row["weight_pct"]),
+            }
+            lines.append(line)
+            fund_lines.append(line)
+        _blend_mix(sector_acc, mix_sector, scale, fund_lines, "sector", "Unclassified")
+        _blend_mix(asset_acc, mix_asset, scale, fund_lines, "asset_class", "Unclassified")
+        if mix_mcap:
+            for bucket in EQUITY_BUCKETS:
+                equity_acc[bucket] += scale * mix_mcap.get(bucket, 0.0)
+        else:
+            for line in fund_lines:
+                if line["asset_class"] != "equity":
+                    continue
+                bucket = (line["market_cap_bucket"] or "unclassified").lower()
+                if bucket not in equity_acc:
+                    bucket = "unclassified"
+                equity_acc[bucket] += line["weight"]
+        if mix_credit:
+            for label, weight in mix_credit.items():
+                credit_acc[label] += scale * weight
         funda = _fundamentals_for(conn, scheme, scheme_as_of)
         if funda is not None:
             if funda["pe"] is not None:
@@ -204,10 +235,13 @@ def _roll_basket(
             )
 
     holdings = _top_holdings(lines)
-    sector = _sum_by(lines, "sector", missing_label="Unclassified")
-    asset = _sum_by(lines, "asset_class", missing_label="Unclassified")
-    credit, credit_note = _credit(lines)
-    equity_split = _equity_split(lines)
+    sector = dict(sector_acc) if sector_acc else _sum_by(lines, "sector", missing_label="Unclassified")
+    asset = dict(asset_acc) if asset_acc else _sum_by(lines, "asset_class", missing_label="Unclassified")
+    if credit_acc:
+        credit, credit_note = dict(credit_acc), None
+    else:
+        credit, credit_note = _credit(lines)
+    equity_split = equity_acc if any(equity_acc.values()) else _equity_split(lines)
     pe, pe_incomplete = _avg_known(pe_pairs, len(funds))
     expense, expense_incomplete = _avg_known(exp_pairs, len(funds))
     aum_cr, _ = _avg_known(aum_pairs, len(funds))
@@ -216,11 +250,12 @@ def _roll_basket(
     isin_weights: dict[str, float] = defaultdict(float)
     isin_names: dict[str, str] = {}
     for line in lines:
-        isin = line["isin"]
-        if isin:
-            isin_weights[isin] += line["weight"]
-            if isin not in isin_names:
-                isin_names[isin] = line["name"] or ""
+        key = _overlap_id(line["isin"], line["name"])
+        if not key:
+            continue
+        isin_weights[key] += line["weight"]
+        if key not in isin_names:
+            isin_names[key] = line["name"] or ""
 
     payload = {
         "missingSchemes": missing,
@@ -257,6 +292,44 @@ def _holdings_for(
     ).fetchall()
 
 
+def _mixes_for(
+    conn: sqlite3.Connection, scheme: str, as_of: str | None, kind: str
+) -> dict[str, float]:
+    if not scheme or not as_of:
+        return {}
+    rows = conn.execute(
+        """
+        SELECT label, weight_pct FROM mixes
+        WHERE scheme_code = ? AND as_of = ? AND kind = ?
+        """,
+        (scheme, as_of, kind),
+    ).fetchall()
+    return {row["label"]: float(row["weight_pct"]) for row in rows}
+
+
+def _blend_mix(
+    acc: dict[str, float],
+    mix: dict[str, float],
+    scale: float,
+    lines: list[dict[str, Any]],
+    field: str,
+    missing_label: str,
+) -> None:
+    if mix:
+        for label, weight in mix.items():
+            acc[label] += scale * weight
+        return
+    for line in lines:
+        acc[line[field] or missing_label] += line["weight"]
+
+
+def _overlap_id(isin: str | None, name: str | None) -> str | None:
+    if isin:
+        return str(isin)
+    label = (name or "").strip().casefold()
+    return f"n:{label}" if label else None
+
+
 def _fundamentals_for(
     conn: sqlite3.Connection, scheme: str, as_of: str | None
 ) -> sqlite3.Row | None:
@@ -281,7 +354,7 @@ def _top_holdings(lines: list[dict[str, Any]]) -> list[dict[str, Any]]:
             merged[key] = {"isin": isin, "name": name, "weight": 0.0}
         merged[key]["weight"] += line["weight"]
     ranked = sorted(merged.values(), key=lambda h: (-h["weight"], h["name"] or ""))
-    return ranked[:TOP_N]
+    return ranked
 
 
 def _sum_by(

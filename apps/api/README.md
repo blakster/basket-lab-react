@@ -19,15 +19,24 @@ python3.11 -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 ## Ingest (v1)
 
-The v1 persist path is **normalized CSV**. `scheme_code` is required on every row (see `fixtures/holdings/sample.csv`).
+Opening Insights calls Foliyo Markets (`get_fund_details` by AMFI code) and caches the snapshot in SQLite. Manual AMC Excel upload still works. Do not scrape Groww / Rupeevest / Tickertape.
+
+Persist path:
+
+1. Drop AMC `.xlsx` / `.csv` in `data/incoming/` **or** `POST /api/ingest {"source":"amfi"}` to try AMFI’s listing.
+2. Ingest reads every sheet (one scheme per sheet).
+3. Missing `scheme_code` is filled from the TigZig scheme master (`/mf/v1/download?format=latest`) by **scheme name** (sheet title), never by holding ISIN.
+4. Rows land in SQLite. Insights look up by AMFI scheme code.
 
 ```
-POST /api/ingest  {"source":"fixture"}   # loads fixtures/holdings/sample.csv
-POST /api/ingest                         # reads data/incoming/*.csv
+POST /api/ingest  {"source":"fixture"}   # fixtures/holdings/sample.csv (2 schemes)
+POST /api/ingest                         # data/incoming/*.{csv,xlsx}
+POST /api/ingest  {"source":"amfi"}      # try AMFI listing + name join
 python -m app.ingest.run --month 2026-07 --source fixture
-python -m app.ingest.run --month 2026-07
 ```
 
-AMC Excel mapping (`sheet_to_csv_rows`) can detect common holdings headers, but those rows **cannot persist** without a scheme-code join. Excel files that omit `scheme_code` fail ingest.
+AMFI’s website is a file index, not an API. If `source=amfi` returns `amfi-listing-unparsed`, download the AMC workbook yourself (same files AMFI hosts) and drop it in `data/incoming/`.
 
-`AMFI_INGEST=1` only attempts to download files listed on the AMFI portfolio page. It is not a working AMC holdings pipeline — downloaded spreadsheets still need scheme codes before they can be stored.
+Opening Insights (or saving a basket) calls `POST /api/ingest/ensure`, which asks Foliyo for holdings, mixes, PE and expense. AMC website downloads are no longer on this path.
+
+`AMFI_INGEST=1` also enables AMFI’s listing download. Do not scrape Groww / Rupeevest / Tickertape.

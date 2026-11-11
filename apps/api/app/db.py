@@ -52,6 +52,14 @@ CREATE TABLE IF NOT EXISTS filing_status (
   reason TEXT,
   PRIMARY KEY (scheme_code, requested_month)
 );
+CREATE TABLE IF NOT EXISTS mixes (
+  as_of TEXT NOT NULL,
+  scheme_code TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  label TEXT NOT NULL,
+  weight_pct REAL NOT NULL,
+  PRIMARY KEY (as_of, scheme_code, kind, label)
+);
 """
 
 
