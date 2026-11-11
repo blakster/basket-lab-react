@@ -1,0 +1,42 @@
+apps/api/tests/test_insights.py
+  s_9d2b3dd9bc5cb4::t_7728158154a6f2 127-174
+  s_9d2b3dd9bc5cb4::t_3a795765fdad5d 175-201
+apps/api/tests/test_foliyo.py
+  s_9d2b3dd9bc5cb4::t_86c6dfda1b5049 76
+  s_9d2b3dd9bc5cb4::t_3169c61db58d85 1-75,77-96
+apps/api/app/ingest/foliyo.py
+  s_9d2b3dd9bc5cb4::t_b3cbff96cfb8f2 1-308
+apps/api/app/db.py
+  s_9d2b3dd9bc5cb4::t_f5fbdd4ebc62af 55-62
+apps/api/app/ingest/ensure.py
+  s_9d2b3dd9bc5cb4::t_3df2d9459a0ad7 9
+  s_9d2b3dd9bc5cb4::t_9753116b188eb3 5,8,30-32,34,39,42,44-48,50-53,61-62,67,72-101
+apps/api/app/insights.py
+  s_9d2b3dd9bc5cb4::t_6fa7d4b553f7ee 148-153,167-170,177-180,183,191,193-219
+  s_9d2b3dd9bc5cb4::t_f8691f5ec3e36d 76,138-140,295-330
+  s_9d2b3dd9bc5cb4::t_484cb72dca9a3d 69,238-244,253-258
+  s_9d2b3dd9bc5cb4::t_244ebd14958536 357
+apps/api/tests/test_ensure_filings.py
+  s_9d2b3dd9bc5cb4::t_a2773cd1210e2d 2,4,29,33-34,38-39,43-44,47-49,51,54,57-59,61,63,66-68,70,75-76,78-80,82,84,86-87,91,103-106,117,131-132,149,170,175-180,184
+  s_9d2b3dd9bc5cb4::t_021f10989921aa 5
+apps/api/README.md
+  s_9d2b3dd9bc5cb4::t_22c5ed36d13625 22-29,32-34,38-40
+apps/api/app/ingest/parse.py
+  s_9d2b3dd9bc5cb4::t_911d5a48a73d5f 102-124
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "c561586380b1cc765ccfbc1eccf991e0b8a71909",
+  "prompts": {},
+  "sessions": {
+    "s_9d2b3dd9bc5cb4": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a1c96f-7c46-7010-abad-edff36c6c923",
+        "model": "grok-4.6"
+      },
+      "human_author": "Vansh Aggarwal <vanshaggarwal2004@gmail.com>"
+    }
+  }
+}
