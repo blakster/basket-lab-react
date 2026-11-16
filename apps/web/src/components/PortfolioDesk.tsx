@@ -186,9 +186,13 @@ export function PortfolioDesk({
           ))}
         </ul>
       )}
-      <MixMeters title="Asset" meters={asset} />
-      <MixMeters title="Equity split" meters={equity} />
-      <MixMeters title="Sectors" meters={sectors} />
+      {asset?.length || equity?.length || sectors?.length ? (
+        <div className="desk-mix">
+          <MixMeters title="Asset" meters={asset} />
+          <MixMeters title="Equity split" meters={equity} />
+          <MixMeters title="Sectors" meters={sectors} />
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -42,7 +42,12 @@ export function ShareBar() {
             value={href}
             aria-labelledby="share-url-label"
           />
-          <Button type="button" onClick={copy}>
+          <Button
+            type="button"
+            variant="outline"
+            className="share-copy"
+            onClick={copy}
+          >
             Copy
           </Button>
         </div>

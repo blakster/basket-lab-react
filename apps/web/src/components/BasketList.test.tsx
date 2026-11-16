@@ -19,13 +19,13 @@ function renderBasketList() {
 }
 
 describe("BasketList", () => {
-  it("renders the Baskets section with create button and active count badge", () => {
+  it("renders the Baskets section with new basket button and active count badge", () => {
     renderBasketList();
     expect(
       screen.getByRole("heading", { name: /^baskets/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /\+ create new basket/i }),
+      screen.getByRole("button", { name: /new basket/i }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /reset defaults/i }),
