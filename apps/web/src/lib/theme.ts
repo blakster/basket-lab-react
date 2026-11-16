@@ -2,21 +2,21 @@ export const THEME_STORAGE_KEY = "basket-lab-theme";
 
 export type Theme = "light" | "dark";
 
-export const PAPER_LIGHT = "#F7F9FA";
-export const PAPER_DEEP_LIGHT = "#ECF0F2";
+export const PAPER_LIGHT = "#FFFFFF";
+export const PAPER_DEEP_LIGHT = "#F3F3F3";
 export const PAPER_WELL_LIGHT = "#FFFFFF";
-export const INK_LIGHT = "#1F3038";
-export const INK_SOFT_LIGHT = "#5D6B72";
-export const GAIN_LIGHT = "#0D7480";
-export const LOSS_LIGHT = "#B54A42";
+export const INK_LIGHT = "#121212";
+export const INK_SOFT_LIGHT = "#5E5E5E";
+export const GAIN_LIGHT = "#121212";
+export const LOSS_LIGHT = "#B33A2B";
 
-export const PAPER_DARK = "#1F3038";
-export const PAPER_DEEP_DARK = "#16252C";
-export const PAPER_WELL_DARK = "#2C3C44";
-export const INK_DARK = "#F7F9FA";
-export const INK_SOFT_DARK = "#9EA7AB";
-export const GAIN_DARK = "#8EC9CE";
-export const LOSS_DARK = "#E8A39C";
+export const PAPER_DARK = "#121212";
+export const PAPER_DEEP_DARK = "#0A0A0A";
+export const PAPER_WELL_DARK = "#1C1C1C";
+export const INK_DARK = "#F5F5F5";
+export const INK_SOFT_DARK = "#9A9A9A";
+export const GAIN_DARK = "#F5F5F5";
+export const LOSS_DARK = "#E07064";
 
 const MIN_SERIES_CONTRAST = 4.5;
 

@@ -21,6 +21,7 @@ const { postInsightsMock, ensureFilingsMock, uploadFilingMock, loadBeesMock, lab
   labState: {
     baskets: [] as Basket[],
     results: [] as BacktestResult[],
+    analyzing: false,
     reportStatus: vi.fn(),
     insightsOpen: true,
     insightsBasketId: "1" as string | null,
@@ -221,6 +222,7 @@ describe("InsightsPanel", () => {
     labState.insightsBasketId = "1";
     labState.baskets = [basket];
     labState.results = [];
+    labState.analyzing = false;
     labState.settings = {
       mode: "lumpsum",
       amount: 100_000,
@@ -447,6 +449,128 @@ describe("InsightsPanel", () => {
     await userEvent.upload(input, file);
     expect(await screen.findByText(/under 5 MB/)).toBeInTheDocument();
     expect(uploadFilingMock).not.toHaveBeenCalled();
+  });
+
+  it("shows invested, current, and overlap for the focused basket", async () => {
+    const other: Basket = {
+      ...basket,
+      id: "2",
+      name: "Sat",
+      funds: [
+        {
+          schemeCode: "B",
+          schemeName: "Fund B",
+          isin: null,
+          weight: 100,
+          locked: false,
+        },
+      ],
+    };
+    labState.baskets = [basket, other];
+    labState.insightsBasketId = "1";
+    labState.results = [
+      {
+        basketId: "1",
+        series: [
+          { x: "2023-01-01", y: 100_000, drawdown: 0 },
+          { x: "2024-01-01", y: 118_000, drawdown: 0 },
+        ],
+        stats: { initial: 100_000, final: 118_000, abs: 18, cagr: 12.4, mdd: -8 },
+      },
+    ];
+    postInsightsMock.mockResolvedValue({
+      asOf: "2026-07-31",
+      overlap: { "1|2": 12.5 },
+      overlapHoldings: {
+        "1|2": [
+          {
+            isin: "INE1",
+            name: "Reliance Industries",
+            weightA: 10,
+            weightB: 8,
+            minWeight: 8,
+          },
+        ],
+      },
+      baskets: [
+        {
+          id: "1",
+          missingSchemes: [],
+          holdings: [
+            { isin: "INE1", name: "Reliance Industries", weight: 22 },
+            { isin: "INE2", name: "HDFC Bank", weight: 18 },
+          ],
+          sector: { Financials: 48, Energy: 12 },
+          asset: { Equity: 92, Debt: 8 },
+          credit: null,
+          creditNote: "N/A — no debt holdings",
+          equitySplit: { large: 55, mid: 10, small: 35, unclassified: 0 },
+          expenseRatio: 0.5,
+          expenseIncomplete: false,
+          pe: 18,
+          peIncomplete: false,
+        },
+        {
+          id: "2",
+          missingSchemes: [],
+          holdings: [{ isin: "INE1", name: "Reliance Industries", weight: 8 }],
+          sector: { Energy: 8 },
+          asset: { Equity: 8 },
+          credit: null,
+          creditNote: "N/A — no debt holdings",
+          equitySplit: { large: 8, mid: 0, small: 0, unclassified: 0 },
+          expenseRatio: 0.8,
+          expenseIncomplete: false,
+          pe: 22,
+          peIncomplete: false,
+        },
+      ],
+    });
+    renderPanel();
+    expect(await screen.findByText("12.50%")).toBeInTheDocument();
+    expect(screen.getByText("Invested")).toBeInTheDocument();
+    expect(screen.getByText("₹1,00,000")).toBeInTheDocument();
+    expect(screen.getByText("₹1,18,000")).toBeInTheDocument();
+    expect(screen.getAllByText("Reliance Industries").length).toBeGreaterThan(0);
+    expect(screen.getByText("Financials is 48.0% of this basket")).toBeInTheDocument();
+    expect(screen.getByText("Small-cap is 35.0% of this basket")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Overlap" })).toBeInTheDocument();
+  });
+
+  it("hides desk invested/current while a run is in flight", async () => {
+    labState.results = [
+      {
+        basketId: "1",
+        series: [
+          { x: "2023-01-01", y: 100_000, drawdown: 0 },
+          { x: "2024-01-01", y: 118_000, drawdown: 0 },
+        ],
+        stats: { initial: 100_000, final: 118_000, abs: 18, cagr: 12.4, mdd: -8 },
+      },
+    ];
+    labState.analyzing = true;
+    postInsightsMock.mockResolvedValue(emptyFiling);
+    renderPanel();
+    expect(await screen.findByText("Recalculating…")).toBeInTheDocument();
+    expect(screen.queryByText("₹1,18,000")).toBeNull();
+  });
+
+  it("hides desk metrics from a run for other settings", async () => {
+    labState.results = [
+      {
+        basketId: "1",
+        series: [
+          { x: "2023-01-01", y: 1_000, drawdown: 0 },
+          { x: "2024-01-01", y: 14_000, drawdown: 0 },
+        ],
+        cashflow: { mode: "sip", amount: 1000, startIso: "2023-01-01" },
+        stats: { initial: 13_000, final: 14_000, abs: 7.7, cagr: 14, mdd: -2 },
+      },
+    ];
+    postInsightsMock.mockResolvedValue(emptyFiling);
+    renderPanel();
+    expect(await screen.findByText("Recalculating…")).toBeInTheDocument();
+    expect(screen.queryByText("₹14,000")).toBeNull();
   });
 
   it("lets the user open the full holdings list", async () => {

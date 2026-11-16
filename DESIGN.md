@@ -1,113 +1,107 @@
 ---
 name: Basket Lab
-description: Frost desk, teal accent, Geist. Comparing baskets is the first viewport.
+description: Signage desk. Ink, enamel yellow, IBM Plex. Comparing baskets is the first viewport.
 colors:
-  paper: "#F7F9FA"
-  paper-deep: "#ECF0F2"
+  paper: "#FFFFFF"
+  paper-deep: "#F3F3F3"
   paper-well: "#FFFFFF"
-  ink: "#1F3038"
-  ink-soft: "#5D6B72"
-  primary: "#0D7480"
-  primary-ink: "#FFFFFF"
-  loss: "#B54A42"
-  rule: "color-mix(in srgb, #1F3038 12%, transparent)"
-  overlay: "rgb(31 48 56 / 0.42)"
-  paper-night: "#1F3038"
-  paper-deep-night: "#16252C"
-  paper-well-night: "#2C3C44"
-  ink-night: "#F7F9FA"
-  ink-soft-night: "#9EA7AB"
-  gain-night: "#8EC9CE"
-  loss-night: "#E8A39C"
-  overlay-night: "rgb(0 0 0 / 0.62)"
+  ink: "#121212"
+  ink-soft: "#5E5E5E"
+  steel: "#6B6B6B"
+  primary: "#F5C400"
+  primary-ink: "#121212"
+  loss: "#B33A2B"
+  rule: "#E8E8E8"
+  overlay: "rgb(18 18 18 / 0.6)"
+  paper-night: "#121212"
+  paper-deep-night: "#0A0A0A"
+  paper-well-night: "#1C1C1C"
+  ink-night: "#F5F5F5"
+  ink-soft-night: "#9A9A9A"
+  gain-night: "#F5F5F5"
+  loss-night: "#E07064"
+  overlay-night: "rgb(0 0 0 / 0.72)"
 typography:
   display:
-    fontFamily: "Geist, system-ui, sans-serif"
-    fontSize: "1.45rem"
-    fontWeight: 500
-    lineHeight: 1.15
-    letterSpacing: "-0.035em"
-    fontFeature: '"tnum" 1, "lnum" 1'
+    fontFamily: "IBM Plex Sans, system-ui, sans-serif"
+    fontSize: "1.375rem"
+    fontWeight: 400
+    lineHeight: 1.35
+    letterSpacing: "-0.02em"
   headline:
-    fontFamily: "Geist, system-ui, sans-serif"
+    fontFamily: "IBM Plex Sans, system-ui, sans-serif"
     fontSize: "1.25rem"
     fontWeight: 500
     lineHeight: 1.2
-    letterSpacing: "-0.035em"
+    letterSpacing: "-0.02em"
   body:
-    fontFamily: "Geist, system-ui, sans-serif"
+    fontFamily: "IBM Plex Sans, system-ui, sans-serif"
     fontSize: "16px"
     fontWeight: 400
     lineHeight: 1.5
   amount:
-    fontFamily: "Geist Mono, ui-monospace, monospace"
-    fontSize: "1.45rem"
+    fontFamily: "IBM Plex Mono, ui-monospace, monospace"
+    fontSize: "2.5rem"
     fontWeight: 500
-    letterSpacing: "-0.035em"
+    letterSpacing: "-0.03em"
 rounded:
-  sm: "4px"
-  md: "6px"
-  lg: "8px"
-  btn: "4px"
+  sm: "0px"
+  md: "2px"
+  lg: "2px"
+  btn: "2px"
 ---
 
 # Design System: Basket Lab
 
 ## Overview
 
-**Creative north star: frost desk, teal tape**
+**Creative north star: enamel signage**
 
-Basket Lab is a local Indian MF and ETF lab. The field is frost `#F7F9FA`. Content sits on white wells with 8px corners and a 12% ink hairline. One accent: teal `#0D7480` on Share, LIVE, focus, and signed gains. Geist 400–500 carries the UI; Geist Mono carries amounts. Night is the same slate ink, inverted.
+Basket Lab is a local Indian MF and ETF lab. The field is white `#FFFFFF`. Type is carbon ink. The only accent is enamel yellow `#F5C400` on LIVE, the active lumpsum plate, and the leader tick. IBM Plex Sans carries the UI; IBM Plex Mono carries rupees, rates, and AMFI codes. Night inverts the plate: black field, frost ink, the same yellow.
 
-The first viewport is comparison. A sticky opaque bar holds the ring mark, Insights, teal Share, and LIVE. Under it: settings, four KPIs, the performance table, two chart cards.
+The first viewport is a league: one lead sentence, baskets as columns (BeES as a ghost reference), one growth chart. Settings are a thin instrument strip, not a card.
 
-This look was dealt for fintech (tasteskill cool-white-slate, Geist, sharp, tonal). It replaces the Groww mint/green/Inter desk. The information set and one-route lab stay.
+This look replaces the frost/teal/Geist desk. The information set and one-route lab stay.
 
 ## Colors
 
-The interface is 90%+ neutral. Teal is the only accent.
+The interface is 90%+ ink on white. Yellow is not a series color and not a gain color.
 
-- **Frost field** `paper`: page, header, input wells.
-- **Slate ink** `ink`: type, hairlines, the ring mark.
-- **Teal** `primary` / `gain`: Share, LIVE, focus, positive CAGR/XIRR/totals.
-- **Brick** `loss`: negative returns, drawdown, alerts.
-- **White well**: cards, table, charts, modal, sheet.
+- **Plate** `paper`: page, header.
+- **Carbon ink** `ink`: type, hairlines, the ring mark, signed gains.
+- **Enamel yellow** `primary`: LIVE, active lumpsum, leader tick.
+- **Rust** `loss`: drawdown, BLACKOUT, trailing vs BeES.
+- **Steel**: BeES reference and secondary series.
 
-Night uses inverse tokens: field `#1F3038`, well `#2C3C44`, ink frost, gain lifted to `#8EC9CE`. Primary chrome stays teal.
-
-Series swatches are teal, slate, gold, brick, sage, clay. No violet.
+Night uses inverse tokens: field `#121212`, well `#1C1C1C`, ink frost. Yellow chrome stays.
 
 ## Typography
 
-Geist is the only sans. Display weight is 500, tracking −0.035em. Sentence case. Labels are 13px/500, not tracked capitals. Numeric UI uses lining tabular figures; KPI values and the amount use Geist Mono.
+IBM Plex Sans is the only sans. Display weight is 400–500, tracking −0.02em. Sentence case. Labels are 13px, not tracked capitals. Numeric UI uses IBM Plex Mono: league CAGR, rupees, AMFI codes. The rupee sign sits in ink-soft.
 
 ## Layout
 
-One centered column: `min(1120px, calc(100% - 2.5rem))`. Header is sticky, full bleed, opaque frost with a 1px hairline, padded so its content lines up with the column. No blur, no floating pill.
+One centered column: `min(1360px, calc(100% - 5rem))`. Header is sticky, full bleed, white, 1px rule. No blur. Workspace nav is quiet text, not a well.
 
-Three workspaces in the header: Compare, Baskets, Insights. Compare is settings, KPIs, table, charts, yearly ranking. Baskets is the list plus share URL. Insights is a page, not a sheet. The editor is a modal.
+Compare is an instrument strip, a lead sentence, the league, then charts. Baskets and Insights remain reachable. The editor is a modal.
 
 ## Elevation
 
-Hairline only on wells. Overlay umbra on the modal and insights sheet. No card drop shadow.
+Hairline only. Overlay umbra on the modal. No card drop shadow.
 
 ## Shapes
 
-Sharp scale: 4 / 6 / 8. Buttons 4px. Allocation meters and color dots stay circular. Focus is a 2px teal ring, offset 2px.
-
-## Motion
-
-Hover (fine pointer only): controls step 1px up; filled teal steps 14% toward ink. Press: 1px down, scale 0.985, 90ms. Header name enters once on load. `prefers-reduced-motion` kills animation and transition.
+Sharp: 0 / 2. Buttons 2px. Focus is a 2px ink ring, offset 2px.
 
 ## Do
 
-- Keep teal for Share, LIVE, focus, and signed gains.
-- Keep the ring mark in ink, not a filled badge.
-- Keep comparison in the first viewport.
+- Keep yellow for LIVE, the active mode plate, and the leader tick.
+- Keep comparison as columns on the first viewport.
+- Keep missing NAV as empty copy, never zero.
 
 ## Don't
 
-- Don't restore Groww green, mint field, Inter, or 16px cards.
-- Don't use violet in chrome or series swatches.
+- Don't restore Groww green, frost teal, Geist, or 8px cards.
+- Don't color signed gains teal or green.
 - Don't add a marketing hero in front of the lab.
 - Don't blur the header.
