@@ -27,7 +27,8 @@ The API binds to loopback only. Do not expose port 8000.
 - Node.js 20 or newer with npm. Verified with Node 24.22.2 and npm 11.19.1.
 - Python 3.11 or newer with venv support. Verified with Python 3.12.3.
 - Network access for the first `npm ci` and `pip install`. At runtime, search
-  and NAV call TigZig and MFAPI. The test suites do not use the network.
+  and NAV call TigZig and MFAPI, and Insights calls Foliyo Markets through the
+  API. The test suites do not use the network.
 
 ## Setup
 
@@ -67,10 +68,16 @@ If port 8000 is busy, use another port and change the proxy target in
 
 ## Test
 
+Web tests, from the repo root:
+
 ```
 cd apps/web
 npm test        # Vitest, single run; npm run test:watch for watch mode
+```
 
+API tests, from the repo root:
+
+```
 cd apps/api
 .venv/bin/python -m pytest -q
 ```
@@ -102,4 +109,4 @@ and writes `apps/web/dist/`.
 - One route `/`. Shared links are the same page with an `s=` query.
 - No accounts, no cloud baskets. Baskets live in `localStorage`.
 - Missing insight values stay empty. Never substitute zero.
-- Do not scrape Groww, Rupeevest, or Tickertape.
+- Do not scrape Groww, Kuvera, or Tickertape.

@@ -30,11 +30,11 @@ First startup creates `data/basket.sqlite` at the repo root and seeds it from `f
 
 ## Ingest (v1)
 
-Opening Insights calls Foliyo Markets (`get_fund_details` by AMFI code) and caches the snapshot in SQLite. Manual AMC Excel upload still works. Do not scrape Groww / Rupeevest / Tickertape.
+Opening Insights calls Foliyo Markets (`get_fund_details` by AMFI code) and caches the snapshot in SQLite. Manual AMC Excel upload still works. Do not scrape Groww / Kuvera / Tickertape.
 
 Persist path:
 
-1. Create the drop directory first: `mkdir -p data/incoming`. The repo does not track it, and ingest returns `files_ok: 0` with no error when no files exist. Then drop AMC `.xlsx` / `.csv` in `data/incoming/` **or** `POST /api/ingest {"source":"amfi"}` to try AMFI’s listing.
+1. Create the drop directory first, from the repo root: `mkdir -p data/incoming`. The repo does not track it, and ingest returns `files_ok: 0` with no error when no files exist. Then drop AMC `.xlsx` / `.csv` in `data/incoming/` **or** `POST /api/ingest {"source":"amfi"}` to try AMFI’s listing.
 2. Ingest reads every sheet (one scheme per sheet).
 3. Missing `scheme_code` is filled from the TigZig scheme master (`/mf/v1/download?format=latest`) by **scheme name** (sheet title), never by holding ISIN.
 4. Rows land in SQLite. Insights look up by AMFI scheme code.
@@ -46,8 +46,8 @@ POST /api/ingest  {"source":"amfi"}      # try AMFI listing + name join
 .venv/bin/python -m app.ingest.run --month 2026-07 --source fixture
 ```
 
-AMFI’s website is a file index, not an API. If `source=amfi` returns `amfi-listing-unparsed`, download the AMC workbook yourself (same files AMFI hosts) and drop it in `data/incoming/`.
+AMFI’s website is a file index, not an API. If `source=amfi` returns `amfi-listing-unparsed`, download the AMC workbook yourself (same files AMFI hosts) and drop it in the repo-root `data/incoming/`.
 
 Opening Insights (or saving a basket) calls `POST /api/ingest/ensure`, which asks Foliyo for holdings, mixes, PE and expense. AMC website downloads are no longer on this path.
 
-`AMFI_INGEST=1` also enables AMFI’s listing download. Do not scrape Groww / Rupeevest / Tickertape.
+`AMFI_INGEST=1` also enables AMFI’s listing download. Do not scrape Groww / Kuvera / Tickertape.
