@@ -1,12 +1,14 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Basket, LabSettings, NavPoint } from "../types";
+import type { BacktestResult, Basket, LabSettings, NavPoint } from "../types";
 import { CashflowCompare } from "./CashflowCompare";
 
 const { labState } = vi.hoisted(() => ({
   labState: {
     baskets: [] as Basket[],
     navByCode: {} as Record<string, NavPoint[]>,
+    results: [] as BacktestResult[],
+    analyzing: false,
     settings: {
       mode: "lumpsum" as const,
       amount: 1000,
@@ -58,6 +60,8 @@ describe("CashflowCompare", () => {
     };
     labState.navByCode = {};
     labState.baskets = [];
+    labState.results = [];
+    labState.analyzing = false;
   });
 
   it("asks to run Compare when NAV is missing", () => {
@@ -78,6 +82,58 @@ describe("CashflowCompare", () => {
     expect(screen.getByText("Step-up 10%")).toBeInTheDocument();
     expect(screen.getByText("Skip year 2")).toBeInTheDocument();
     expect(screen.queryByText("Need a window past year two")).toBeNull();
+  });
+
+  it("anchors Skip year 2 to the SIP's first date when the fund is newer", () => {
+    // Fund starts 2025-03-01, after year two of the requested window, which
+    // would otherwise make Skip year 2 identical to Monthly SIP.
+    const late: NavPoint[] = Array.from({ length: 25 }, (_, i) => {
+      const d = new Date("2025-03-01T00:00:00");
+      d.setMonth(d.getMonth() + i);
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      return { date: `${d.getFullYear()}-${m}-01`, nav: 10 };
+    });
+    labState.baskets = [basket];
+    labState.settings = {
+      ...labState.settings,
+      customStart: "2023-01-01",
+      customEnd: "2027-03-01",
+    };
+    labState.navByCode = { S: late };
+    render(<CashflowCompare />);
+    expect(
+      screen.getByText("No SIP 2026-03-01–2027-03-01"),
+    ).toBeInTheDocument();
+    const skipRow = screen.getByText("Skip year 2").closest("tr")!;
+    const sipRow = screen.getByText("Monthly SIP").closest("tr")!;
+    // 12 SIPs in year one + the 2027-03-01 SIP, vs 25 monthly SIPs.
+    expect(skipRow.textContent).toContain("₹13,000");
+    expect(sipRow.textContent).toContain("₹25,000");
+  });
+
+  it("does not pair old NAV with new settings while a run is in flight", () => {
+    labState.baskets = [basket];
+    labState.navByCode = { S: nav };
+    labState.analyzing = true;
+    render(<CashflowCompare />);
+    expect(screen.getByText("Recalculating lumpsum…")).toBeInTheDocument();
+    expect(screen.queryByText("Monthly SIP")).toBeNull();
+  });
+
+  it("treats a run for other settings as stale", () => {
+    labState.baskets = [basket];
+    labState.navByCode = { S: nav };
+    labState.results = [
+      {
+        basketId: "1",
+        series: [],
+        cashflow: { mode: "sip", amount: 1000, startIso: "2023-01-01" },
+        stats: { initial: 0, final: 0, abs: 0, cagr: 0, mdd: 0 },
+      },
+    ];
+    render(<CashflowCompare />);
+    expect(screen.getByText("Recalculating lumpsum…")).toBeInTheDocument();
+    expect(screen.queryByText("Lumpsum")).toBeNull();
   });
 
   it("does not invent a skip year on a short window", () => {

@@ -2,14 +2,12 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef } from "react";
 import { loadNiftyBeesNav, NIFTY_BEES_CODE } from "../lib/api/benchmarkNav";
 import { formatInr } from "../lib/format";
-import {
-  beesCagrFromNavs,
-  scaleNavToAmount,
-} from "../lib/portfolioDetails";
+import { benchmarkForResult } from "../lib/portfolioDetails";
 import { yearlyRanking } from "../lib/ranking";
 import { resolveRange } from "../lib/resolveSettings";
+import { runIsStale } from "../lib/runFreshness";
 import { useLab } from "../state/LabContext";
-import type { BacktestResult, Basket, LabSettings, TimePoint } from "../types";
+import type { BacktestResult, Basket, TimePoint } from "../types";
 import { CashflowCompare } from "./CashflowCompare";
 import { DrawdownChart, GrowthChart, YearlyRankingChart } from "./LabCharts";
 
@@ -77,24 +75,11 @@ function unionLabels(results: BacktestResult[]): string[] {
   return [...dates].sort();
 }
 
-function runIsStale(
-  results: BacktestResult[],
-  settings: LabSettings,
-  start: string,
-): boolean {
-  return results.some((r) => {
-    const cf = r.cashflow;
-    if (!cf) return false;
-    const runStart = cf.requestedStartIso ?? cf.startIso;
-    return (
-      cf.mode !== settings.mode ||
-      cf.amount !== settings.amount ||
-      runStart !== start
-    );
-  });
-}
-
-function LeadStory({ beesCagr }: { beesCagr: number | null }) {
+function LeadStory({
+  beesRateById,
+}: {
+  beesRateById: Map<string, number>;
+}) {
   const { results, baskets, settings } = useLab();
   const scored = results.filter((r) => r.error !== "no-nav");
   const runMode = scored[0]?.cashflow?.mode ?? settings.mode;
@@ -129,7 +114,10 @@ function LeadStory({ beesCagr }: { beesCagr: number | null }) {
   const fromNote = fromIso ? ` from ${formatAsOf(fromIso)}` : "";
 
   const laggards = scored
-    .filter((r) => beesCagr != null && r.stats.cagr < beesCagr)
+    .filter((r) => {
+      const bees = beesRateById.get(r.basketId);
+      return bees != null && r.stats.cagr < bees;
+    })
     .map((r) => baskets.find((b) => b.id === r.basketId)?.name ?? r.basketId);
 
   return (
@@ -187,29 +175,48 @@ export function BacktestView() {
     retry: 1,
     enabled: hasSeries,
   });
-  const beesCagr = useMemo(
-    () => beesCagrFromNavs(benchQuery.data),
-    [benchQuery.data],
+  const benchRun = useMemo(
+    () => ({
+      mode: settings.mode,
+      amount: settings.amount,
+      startIso: range.start,
+      endIso: range.end,
+    }),
+    [settings.mode, settings.amount, range.start, range.end],
   );
+  // BeES on each basket's own cashflow: same start, same mode (XIRR vs XIRR
+  // in SIP mode, CAGR vs CAGR in lumpsum).
+  const beesRateById = useMemo(() => {
+    const out = new Map<string, number>();
+    for (const r of results) {
+      const bench = benchmarkForResult(r, benchQuery.data, benchRun);
+      if (bench) out.set(r.basketId, bench.stats.cagr);
+    }
+    return out;
+  }, [results, benchQuery.data, benchRun]);
   const showBeesOverlay =
     settings.mode === "lumpsum" &&
     !baskets.some((b) => b.active && isBeesOnly(b));
   const beesResult = useMemo((): BacktestResult | null => {
     if (!showBeesOverlay) return null;
-    const series = scaleNavToAmount(benchQuery.data, settings.amount);
-    if (series.length < 2) return null;
-    return {
-      basketId: BEES_ID,
-      series,
-      stats: {
-        initial: settings.amount,
-        final: series[series.length - 1]!.y,
-        abs: 0,
-        cagr: beesCagr ?? 0,
-        mdd: 0,
-      },
-    };
-  }, [showBeesOverlay, benchQuery.data, settings.amount, beesCagr]);
+    // One overlay line: start it with the earliest basket so it shares that
+    // basket's first priced day and amount.
+    const anchor = results
+      .filter((r) => r.error !== "no-nav" && r.series.length >= 2)
+      .reduce<BacktestResult | null>(
+        (first, r) =>
+          !first ||
+          (r.cashflow?.startIso ?? range.start) <
+            (first.cashflow?.startIso ?? range.start)
+            ? r
+            : first,
+        null,
+      );
+    if (!anchor) return null;
+    const bench = benchmarkForResult(anchor, benchQuery.data, benchRun);
+    if (!bench) return null;
+    return { ...bench, basketId: BEES_ID };
+  }, [showBeesOverlay, results, benchQuery.data, benchRun, range.start]);
   const growthResults = beesResult ? [...results, beesResult] : results;
   const growthBaskets = beesResult ? [...baskets, BEES_BASKET] : baskets;
   const ranked = [...results].sort((a, b) => {
@@ -232,7 +239,7 @@ export function BacktestView() {
           Recalculating {settings.mode}…
         </p>
       ) : null}
-      <LeadStory beesCagr={beesCagr} />
+      <LeadStory beesRateById={beesRateById} />
       <ul className="league">
         {ranked.map((r) => {
           const basket = baskets.find((b) => b.id === r.basketId);
@@ -256,8 +263,8 @@ export function BacktestView() {
             );
           }
           const vol = volFromSeries(r.series);
-          const vs =
-            beesCagr == null ? null : r.stats.cagr - beesCagr;
+          const bees = beesRateById.get(r.basketId);
+          const vs = bees == null ? null : r.stats.cagr - bees;
           return (
             <li
               key={r.basketId}
@@ -301,11 +308,13 @@ export function BacktestView() {
             </li>
           );
         })}
-        {beesResult && beesCagr != null ? (
+        {beesResult ? (
           <li className="league-col is-ref">
             <span className="league-tick" aria-hidden="true" />
             <p className="league-name">Nifty BeES · reference</p>
-            <p className="league-rate">{formatPct(beesCagr)}</p>
+            <p className="league-rate">
+              {formatPct(beesResult.stats.cagr)}
+            </p>
             <p className="league-value">
               {formatInr(beesResult.stats.final)}
             </p>

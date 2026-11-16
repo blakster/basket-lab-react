@@ -1,10 +1,10 @@
-import type { BacktestResult, Basket, NavPoint, TimePoint } from "../types";
+import type { BacktestResult, Basket, NavPoint } from "../types";
 import type {
   EquitySplit,
   InsightHolding,
   OverlapName,
 } from "./api/insights";
-import { cagr } from "./backtest/performance";
+import { backtestPlan } from "./backtest/performance";
 
 export type GrowthSplit = {
   invested: number;
@@ -35,32 +35,81 @@ export function growthFromResult(
   };
 }
 
-export function scaleNavToAmount(
-  navs: NavPoint[] | undefined,
-  amount: number,
-): TimePoint[] {
-  if (!navs || navs.length < 2 || !(amount > 0)) return [];
-  const first = navs[0]!;
-  if (!(first.nav > 0)) return [];
-  return navs.map((p) => ({
-    x: p.date,
-    y: (p.nav / first.nav) * amount,
-    drawdown: 0,
-  }));
+const BENCH_CODE = "__bench";
+
+const BENCH_BASKET: Basket = {
+  id: "__bench",
+  name: "Benchmark",
+  color: "#000000",
+  active: true,
+  funds: [
+    {
+      schemeCode: BENCH_CODE,
+      schemeName: "Benchmark",
+      isin: null,
+      weight: 100,
+      locked: false,
+    },
+  ],
+};
+
+/** Benchmark NAV may start a few days late (weekend / holiday start). */
+const BENCH_START_SLACK_DAYS = 7;
+
+function shiftIso(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
-export function beesCagrFromNavs(navs: NavPoint[] | undefined): number | null {
-  if (!navs || navs.length < 2) return null;
-  const first = navs[0]!;
-  const last = navs[navs.length - 1]!;
-  if (!(first.nav > 0) || !(last.nav > 0) || last.date <= first.date) return null;
-  const years =
-    (new Date(`${last.date}T00:00:00`).getTime() -
-      new Date(`${first.date}T00:00:00`).getTime()) /
-    (365 * 86400000);
-  if (years <= 0) return null;
-  const value = cagr(first.nav, last.nav, years);
-  return Number.isFinite(value) ? value : null;
+export type BenchmarkRun = {
+  mode: "lumpsum" | "sip";
+  amount: number;
+  /** Used when `result` carries no cashflow (start falls back to the window). */
+  startIso: string;
+  endIso: string;
+};
+
+/**
+ * Runs the benchmark (e.g. Nifty BeES) on the same cashflow as `result`:
+ * same mode, amount, effective start date, and end. SIP results get a
+ * benchmark XIRR on the same monthly schedule; lumpsum results get a CAGR
+ * from the basket's first priced day. Returns null when the benchmark has
+ * no NAV for that window.
+ */
+export function benchmarkForResult(
+  result: BacktestResult | undefined,
+  navs: NavPoint[] | undefined,
+  run: BenchmarkRun,
+): BacktestResult | null {
+  if (!result || result.error === "no-nav" || !navs || navs.length < 2) {
+    return null;
+  }
+  const cf = result.cashflow;
+  const mode = cf?.mode ?? run.mode;
+  const amount = cf?.amount ?? run.amount;
+  const startIso = cf?.startIso ?? run.startIso;
+  if (!(amount > 0) || startIso >= run.endIso) return null;
+  const bench = backtestPlan(
+    BENCH_BASKET,
+    { [BENCH_CODE]: navs },
+    {
+      mode,
+      amount,
+      period: "Custom",
+      customStart: startIso,
+      customEnd: run.endIso,
+    },
+    mode === "lumpsum" ? { kind: "lumpsum" } : { kind: "sip", stepUp: 0 },
+  );
+  if (bench.error === "no-nav" || bench.series.length < 2) return null;
+  const benchStart = bench.cashflow?.startIso ?? startIso;
+  if (benchStart > shiftIso(startIso, BENCH_START_SLACK_DAYS)) return null;
+  if (!Number.isFinite(bench.stats.cagr)) return null;
+  return bench;
 }
 
 export type Concentration = {

@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
+import { cagr } from "./backtest/performance";
 import type { BacktestResult, Basket } from "../types";
 import {
   assetMeters,
-  beesCagrFromNavs,
+  benchmarkForResult,
   concentrationFromHoldings,
   equityMeters,
   growthFromResult,
   overlapForBasket,
   redFlags,
-  scaleNavToAmount,
   topSectorMeters,
 } from "./portfolioDetails";
 
@@ -62,45 +62,98 @@ describe("growthFromResult", () => {
   });
 });
 
-describe("beesCagrFromNavs", () => {
-  it("returns null without two priced points", () => {
-    expect(beesCagrFromNavs(undefined)).toBeNull();
-    expect(beesCagrFromNavs([{ date: "2023-01-01", nav: 100 }])).toBeNull();
+describe("benchmarkForResult", () => {
+  const bees = [
+    { date: "2023-01-01", nav: 100 },
+    { date: "2023-07-01", nav: 100 },
+    { date: "2024-01-01", nav: 150 },
+  ];
+  const run = {
+    mode: "lumpsum" as const,
+    amount: 1000,
+    startIso: "2023-01-01",
+    endIso: "2024-01-01",
+  };
+  const lateLumpsum: BacktestResult = {
+    basketId: "1",
+    series: [
+      { x: "2023-07-01", y: 1000, drawdown: 0 },
+      { x: "2024-01-01", y: 1100, drawdown: 0 },
+    ],
+    cashflow: {
+      mode: "lumpsum",
+      amount: 1000,
+      startIso: "2023-07-01",
+      requestedStartIso: "2023-01-01",
+    },
+    stats: { initial: 1000, final: 1100, abs: 10, cagr: 20, mdd: 0 },
+  };
+
+  it("starts BeES on the basket's effective start, not the window start", () => {
+    const bench = benchmarkForResult(lateLumpsum, bees, run);
+    expect(bench).not.toBeNull();
+    expect(bench!.cashflow?.startIso).toBe("2023-07-01");
+    expect(bench!.series[0]).toMatchObject({ x: "2023-07-01", y: 1000 });
+    expect(bench!.series.at(-1)?.y).toBeCloseTo(1500, 6);
+    const years =
+      (new Date("2024-01-01T00:00:00").getTime() -
+        new Date("2023-07-01T00:00:00").getTime()) /
+      (365 * 86400000);
+    expect(bench!.stats.cagr).toBeCloseTo(cagr(1000, 1500, years), 5);
+    // Window-start CAGR would have been 50%.
+    expect(bench!.stats.cagr).not.toBeCloseTo(50, 1);
+  });
+
+  it("runs BeES on the same SIP schedule (XIRR, not lumpsum CAGR)", () => {
+    const monthly = Array.from({ length: 13 }, (_, i) => {
+      const d = new Date("2023-01-01T00:00:00");
+      d.setMonth(d.getMonth() + i);
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      return { date: `${d.getFullYear()}-${m}-01`, nav: 100 + i * 5 };
+    });
+    const sip: BacktestResult = {
+      basketId: "1",
+      series: [
+        { x: "2023-01-01", y: 1000, drawdown: 0 },
+        { x: "2024-01-01", y: 14000, drawdown: 0 },
+      ],
+      cashflow: { mode: "sip", amount: 1000, startIso: "2023-01-01" },
+      stats: { initial: 13000, final: 14000, abs: 7.7, cagr: 14, mdd: 0 },
+    };
+    const bench = benchmarkForResult(sip, monthly, { ...run, mode: "sip" });
+    expect(bench).not.toBeNull();
+    expect(bench!.cashflow?.mode).toBe("sip");
+    expect(bench!.stats.initial).toBe(13 * 1000);
+    const lumpsumCagr = benchmarkForResult(
+      { ...sip, cashflow: { ...sip.cashflow!, mode: "lumpsum" } },
+      monthly,
+      run,
+    )!.stats.cagr;
+    expect(lumpsumCagr).toBeCloseTo(60, 1);
+    expect(Math.abs(bench!.stats.cagr - lumpsumCagr)).toBeGreaterThan(5);
+  });
+
+  it("returns null when BeES starts well after the basket", () => {
     expect(
-      beesCagrFromNavs([
-        { date: "2023-01-01", nav: 0 },
-        { date: "2024-01-01", nav: 110 },
-      ]),
+      benchmarkForResult(
+        lateLumpsum,
+        [
+          { date: "2023-09-01", nav: 100 },
+          { date: "2024-01-01", nav: 120 },
+        ],
+        run,
+      ),
     ).toBeNull();
   });
 
-  it("is 100% when NAV doubles in one year", () => {
+  it("returns null without a run or two BeES points", () => {
+    expect(benchmarkForResult(undefined, bees, run)).toBeNull();
     expect(
-      beesCagrFromNavs([
-        { date: "2023-01-01", nav: 100 },
-        { date: "2024-01-01", nav: 200 },
-      ]),
-    ).toBeCloseTo(100, 5);
-  });
-});
-
-describe("scaleNavToAmount", () => {
-  it("maps the first NAV to the invested amount", () => {
-    const series = scaleNavToAmount(
-      [
-        { date: "2023-01-01", nav: 100 },
-        { date: "2024-01-01", nav: 120 },
-      ],
-      50_000,
-    );
-    expect(series[0]).toMatchObject({ x: "2023-01-01", y: 50_000 });
-    expect(series[1]).toMatchObject({ x: "2024-01-01", y: 60_000 });
-  });
-
-  it("returns [] without two priced points", () => {
-    expect(scaleNavToAmount([{ date: "2023-01-01", nav: 100 }], 1000)).toEqual(
-      [],
-    );
+      benchmarkForResult(lateLumpsum, [{ date: "2023-07-01", nav: 100 }], run),
+    ).toBeNull();
+    expect(
+      benchmarkForResult({ ...lateLumpsum, error: "no-nav" }, bees, run),
+    ).toBeNull();
   });
 });
 

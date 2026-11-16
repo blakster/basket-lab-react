@@ -212,6 +212,41 @@ describe("step-up and skip-year SIP", () => {
     expect(r.stats.initial).toBeGreaterThan(12 * 1000);
   });
 
+  it("skips the clipped last day when year two runs past the end", () => {
+    const end = nav[17]!.date; // 2024-06-01, inside year two
+    const skip = skipYearWindow(nav[0]!.date, end);
+    expect(skip).toEqual({
+      skipStartIso: "2024-01-01",
+      skipEndIso: end,
+      skipEndInclusive: true,
+    });
+    const r = backtestPlan(
+      fund,
+      { S: nav },
+      { ...windowSettings, customEnd: end },
+      { kind: "sip", stepUp: 0, ...skip! },
+    );
+    expect(r.error).toBeUndefined();
+    // Year one only; no SIP on 2024-01-01 … 2024-06-01 (inclusive).
+    expect(r.stats.initial).toBe(12 * 1000);
+  });
+
+  it("keeps the second anniversary exclusive when year two fits", () => {
+    const skip = skipYearWindow(nav[0]!.date, nav[24]!.date);
+    expect(skip).toEqual({
+      skipStartIso: "2024-01-01",
+      skipEndIso: "2025-01-01",
+      skipEndInclusive: false,
+    });
+    const r = backtestPlan(fund, { S: nav }, windowSettings, {
+      kind: "sip",
+      stepUp: 0,
+      ...skip!,
+    });
+    // 12 in year one + the 2025-01-01 SIP.
+    expect(r.stats.initial).toBe(13 * 1000);
+  });
+
   it("has no skip window inside one year", () => {
     expect(skipYearWindow("2023-01-01", "2023-12-01")).toBeNull();
   });

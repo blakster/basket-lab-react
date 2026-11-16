@@ -503,4 +503,98 @@ describe("LabContext runAnalysis", () => {
       detail: "2024-01-01",
     });
   });
+  it("clears navByCode when a later run's fetch throws", async () => {
+    fetchNavMock.mockResolvedValueOnce({
+      "118741": [
+        { date: "2023-01-01", nav: 10 },
+        { date: "2024-01-01", nav: 12 },
+      ],
+    });
+
+    const api: { current: ReturnType<typeof useLab> | null } = { current: null };
+    render(
+      <LabProvider>
+        <Consumer api={api} />
+      </LabProvider>,
+    );
+
+    act(() => {
+      api.current!.setBaskets([makeBasket(100)]);
+      api.current!.setSettings({
+        mode: "lumpsum",
+        amount: 1000,
+        period: "Custom",
+        customStart: "2023-01-01",
+        customEnd: "2024-01-01",
+      });
+    });
+    await act(async () => {
+      await api.current!.runAnalysis();
+    });
+    expect(api.current!.navByCode["118741"]).toHaveLength(2);
+
+    fetchNavMock.mockRejectedValueOnce(new Error("network down"));
+    act(() => {
+      api.current!.setSettings({
+        ...api.current!.settings,
+        customStart: "2021-01-01",
+      });
+    });
+    await act(async () => {
+      await api.current!.runAnalysis();
+    });
+    expect(api.current!.navByCode).toEqual({});
+    expect(api.current!.analyzing).toBe(false);
+  });
+
+  it("replaces navByCode with the expanded window after a successful refetch", async () => {
+    fetchNavMock.mockResolvedValueOnce({
+      "118741": [
+        { date: "2023-01-01", nav: 10 },
+        { date: "2024-01-01", nav: 12 },
+      ],
+    });
+
+    const api: { current: ReturnType<typeof useLab> | null } = { current: null };
+    render(
+      <LabProvider>
+        <Consumer api={api} />
+      </LabProvider>,
+    );
+
+    act(() => {
+      api.current!.setBaskets([makeBasket(100)]);
+      api.current!.setSettings({
+        mode: "lumpsum",
+        amount: 1000,
+        period: "Custom",
+        customStart: "2023-01-01",
+        customEnd: "2024-01-01",
+      });
+    });
+    await act(async () => {
+      await api.current!.runAnalysis();
+    });
+
+    fetchNavMock.mockResolvedValueOnce({
+      "118741": [
+        { date: "2021-01-01", nav: 8 },
+        { date: "2022-01-01", nav: 9 },
+        { date: "2023-01-01", nav: 10 },
+        { date: "2024-01-01", nav: 12 },
+      ],
+    });
+    act(() => {
+      api.current!.setSettings({
+        ...api.current!.settings,
+        customStart: "2021-01-01",
+      });
+    });
+    await act(async () => {
+      await api.current!.runAnalysis();
+    });
+    const pts = api.current!.navByCode["118741"]!;
+    expect(pts[0]?.date).toBe("2021-01-01");
+    expect(api.current!.results[0]?.cashflow?.startIso).toBe("2021-01-01");
+  });
 });

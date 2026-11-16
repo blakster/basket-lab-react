@@ -562,7 +562,10 @@ export function LabProvider({ children }: { children: ReactNode }) {
       writeShareQuery(settings, baskets);
     });
     } catch {
-      finish();
+      // Don't leave the previous run's NAV paired with the new settings.
+      finish(() => {
+        setNavByCode({});
+      });
     }
   }, [settings, baskets]);
 

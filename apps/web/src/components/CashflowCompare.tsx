@@ -14,6 +14,7 @@ import {
 } from "../lib/backtest/performance";
 import { formatInr, formatInrGroup } from "../lib/format";
 import { resolveRange } from "../lib/resolveSettings";
+import { runIsStale } from "../lib/runFreshness";
 import { useLab } from "../state/LabContext";
 import type { BacktestResult, Basket, NavPoint } from "../types";
 
@@ -60,7 +61,7 @@ function runPlan(
 }
 
 export function CashflowCompare() {
-  const { baskets, settings, navByCode } = useLab();
+  const { baskets, settings, navByCode, results, analyzing } = useLab();
   const active = useMemo(() => baskets.filter((b) => b.active), [baskets]);
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const basket =
@@ -72,8 +73,23 @@ export function CashflowCompare() {
     [settings.period, settings.customStart, settings.customEnd],
   );
 
+  // navByCode belongs to the last finished run; don't pair it with newer
+  // settings while a run is in flight or after the settings moved on.
+  const stale = analyzing || runIsStale(results, settings, range.start);
+
   const rows = useMemo((): Row[] => {
     if (!basket) return [];
+    if (stale) {
+      return [
+        {
+          id: "stale",
+          label: "Cashflows",
+          note: "",
+          result: null,
+          empty: `Recalculating ${settings.mode}…`,
+        },
+      ];
+    }
     const navs = navsForBasket(basket, navByCode);
     const missing = basket.funds.some(
       (f) => f.weight > 0 && !(navs[f.schemeCode]?.length),
@@ -89,7 +105,6 @@ export function CashflowCompare() {
         },
       ];
     }
-    const skip = skipYearWindow(range.start, range.end);
     const lumpsum = runPlan(basket, navs, settings, range.start, range.end, {
       kind: "lumpsum",
     });
@@ -97,6 +112,11 @@ export function CashflowCompare() {
       kind: "sip",
       stepUp: 0,
     });
+    // Year two of the SIP actually run: a newer fund pushes the first SIP
+    // past the requested start, so anchor the skip window there.
+    const sipStart =
+      sip.error === "no-nav" ? range.start : (sip.cashflow?.startIso ?? range.start);
+    const skip = skipYearWindow(sipStart, range.end);
     const step = runPlan(basket, navs, settings, range.start, range.end, {
       kind: "sip",
       stepUp: STEP_UP,
@@ -107,6 +127,7 @@ export function CashflowCompare() {
           stepUp: 0,
           skipStartIso: skip.skipStartIso,
           skipEndIso: skip.skipEndIso,
+          skipEndInclusive: skip.skipEndInclusive,
         })
       : null;
     return [
@@ -145,7 +166,7 @@ export function CashflowCompare() {
           : "Need a window past year two",
       },
     ];
-  }, [basket, navByCode, range.end, range.start, settings]);
+  }, [basket, navByCode, range.end, range.start, settings, stale]);
 
   if (!basket) return null;
 

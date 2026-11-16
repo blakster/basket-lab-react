@@ -64,12 +64,25 @@ export type CashflowPlan =
       stepUp: number;
       skipStartIso?: string;
       skipEndIso?: string;
+      /** Skip SIPs on `skipEndIso` too (window was clipped to the run's end). */
+      skipEndInclusive?: boolean;
     };
 
+export type SkipWindow = {
+  skipStartIso: string;
+  skipEndIso: string;
+  skipEndInclusive: boolean;
+};
+
+/**
+ * Year two of a SIP that starts on `startIso`. The second anniversary is
+ * exclusive; when that falls after `endIso` the window is clipped to the
+ * (inclusive) last day of the run so no SIP lands inside the skip year.
+ */
 export function skipYearWindow(
   startIso: string,
   endIso: string,
-): { skipStartIso: string; skipEndIso: string } | null {
+): SkipWindow | null {
   const start = parseDay(startIso);
   const end = parseDay(endIso);
   const skipStart = new Date(start);
@@ -77,9 +90,18 @@ export function skipYearWindow(
   const skipEnd = new Date(skipStart);
   skipEnd.setFullYear(skipEnd.getFullYear() + 1);
   if (skipStart >= end) return null;
-  const skipEndIso =
-    skipEnd < end ? isoDay(skipEnd) : endIso;
-  return { skipStartIso: isoDay(skipStart), skipEndIso };
+  if (skipEnd <= end) {
+    return {
+      skipStartIso: isoDay(skipStart),
+      skipEndIso: isoDay(skipEnd),
+      skipEndInclusive: false,
+    };
+  }
+  return {
+    skipStartIso: isoDay(skipStart),
+    skipEndIso: endIso,
+    skipEndInclusive: true,
+  };
 }
 
 function isoDay(d: Date): string {
@@ -229,7 +251,7 @@ function runBacktest(
         skipStart != null &&
         skipEnd != null &&
         day >= skipStart &&
-        day < skipEnd;
+        (plan.skipEndInclusive ? day <= skipEnd : day < skipEnd);
       if (!inSkip) {
         const installment = sipInstallment(
           settings.amount,

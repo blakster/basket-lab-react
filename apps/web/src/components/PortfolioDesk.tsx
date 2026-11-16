@@ -47,6 +47,7 @@ function MixMeters({
 
 export function PortfolioDesk({
   growth,
+  stale = false,
   beesCagr,
   beesMissing,
   concentration,
@@ -57,6 +58,8 @@ export function PortfolioDesk({
   sectors,
 }: {
   growth: GrowthSplit | null;
+  /** Run is in flight or was computed for other settings. */
+  stale?: boolean;
   beesCagr: number | null;
   beesMissing: boolean;
   concentration: Concentration | null;
@@ -105,6 +108,10 @@ export function PortfolioDesk({
             </span>
           </div>
         </div>
+      ) : stale ? (
+        <p className="insight-empty" role="status">
+          Recalculating…
+        </p>
       ) : (
         <p className="insight-empty">No run yet. Check amount, weights, and NAV.</p>
       )}

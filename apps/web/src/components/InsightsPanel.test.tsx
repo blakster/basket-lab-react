@@ -21,6 +21,7 @@ const { postInsightsMock, ensureFilingsMock, uploadFilingMock, loadBeesMock, lab
   labState: {
     baskets: [] as Basket[],
     results: [] as BacktestResult[],
+    analyzing: false,
     reportStatus: vi.fn(),
     insightsOpen: true,
     insightsBasketId: "1" as string | null,
@@ -221,6 +222,7 @@ describe("InsightsPanel", () => {
     labState.insightsBasketId = "1";
     labState.baskets = [basket];
     labState.results = [];
+    labState.analyzing = false;
     labState.settings = {
       mode: "lumpsum",
       amount: 100_000,
@@ -533,6 +535,42 @@ describe("InsightsPanel", () => {
     expect(screen.getByText("Financials is 48.0% of this basket")).toBeInTheDocument();
     expect(screen.getByText("Small-cap is 35.0% of this basket")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Overlap" })).toBeInTheDocument();
+  });
+
+  it("hides desk invested/current while a run is in flight", async () => {
+    labState.results = [
+      {
+        basketId: "1",
+        series: [
+          { x: "2023-01-01", y: 100_000, drawdown: 0 },
+          { x: "2024-01-01", y: 118_000, drawdown: 0 },
+        ],
+        stats: { initial: 100_000, final: 118_000, abs: 18, cagr: 12.4, mdd: -8 },
+      },
+    ];
+    labState.analyzing = true;
+    postInsightsMock.mockResolvedValue(emptyFiling);
+    renderPanel();
+    expect(await screen.findByText("Recalculating…")).toBeInTheDocument();
+    expect(screen.queryByText("₹1,18,000")).toBeNull();
+  });
+
+  it("hides desk metrics from a run for other settings", async () => {
+    labState.results = [
+      {
+        basketId: "1",
+        series: [
+          { x: "2023-01-01", y: 1_000, drawdown: 0 },
+          { x: "2024-01-01", y: 14_000, drawdown: 0 },
+        ],
+        cashflow: { mode: "sip", amount: 1000, startIso: "2023-01-01" },
+        stats: { initial: 13_000, final: 14_000, abs: 7.7, cagr: 14, mdd: -2 },
+      },
+    ];
+    postInsightsMock.mockResolvedValue(emptyFiling);
+    renderPanel();
+    expect(await screen.findByText("Recalculating…")).toBeInTheDocument();
+    expect(screen.queryByText("₹14,000")).toBeNull();
   });
 
   it("lets the user open the full holdings list", async () => {

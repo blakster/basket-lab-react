@@ -21,7 +21,7 @@ import {
 } from "../lib/api/insights";
 import {
   assetMeters,
-  beesCagrFromNavs,
+  benchmarkForResult,
   concentrationFromHoldings,
   equityMeters,
   growthFromResult,
@@ -43,6 +43,7 @@ import {
   type DatedReturn,
 } from "../lib/risk";
 import { resolveRange } from "../lib/resolveSettings";
+import { runIsStale } from "../lib/runFreshness";
 import { inkAlpha } from "../lib/theme";
 import { useLab } from "../state/LabContext";
 import type { BacktestResult, Basket, LabSettings } from "../types";
@@ -232,8 +233,15 @@ function riskRowHasContent(row: RiskRow, beesMissing: boolean): boolean {
 }
 
 function useInsightsDesk() {
-  const { baskets, results, reportStatus, settings, insightsBasketId, insightsOpen } =
-    useLab();
+  const {
+    baskets,
+    results,
+    analyzing,
+    reportStatus,
+    settings,
+    insightsBasketId,
+    insightsOpen,
+  } = useLab();
   const active = useMemo(() => baskets.filter((b) => b.active), [baskets]);
   const basketSignature = useMemo(
     () => insightsBasketSignature(active),
@@ -375,10 +383,29 @@ function useInsightsDesk() {
     [results, focusedId],
   );
 
-  const beesCagr = useMemo(
-    () => beesCagrFromNavs(benchQuery.data),
-    [benchQuery.data],
-  );
+  // Same guard as BacktestView: don't show a run computed for other settings.
+  const runStale = analyzing || runIsStale(results, settings, range.start);
+
+  // BeES on the focused basket's own cashflow (start date and SIP schedule),
+  // so the desk compares XIRR to XIRR and CAGR to CAGR.
+  const beesCagr = useMemo(() => {
+    if (runStale) return null;
+    const bench = benchmarkForResult(focusedResult, benchQuery.data, {
+      mode: settings.mode,
+      amount: settings.amount,
+      startIso: range.start,
+      endIso: range.end,
+    });
+    return bench ? bench.stats.cagr : null;
+  }, [
+    runStale,
+    focusedResult,
+    benchQuery.data,
+    settings.mode,
+    settings.amount,
+    range.start,
+    range.end,
+  ]);
 
   return {
     baskets,
@@ -393,6 +420,7 @@ function useInsightsDesk() {
     beesCagr,
     focusedId,
     focusedResult,
+    runStale,
     mode: settings.mode,
     fetchingFilings: ensureQuery.isFetching || retryMutation.isPending,
     retryFilings: retryMutation.mutate,
@@ -422,6 +450,7 @@ function InsightsDesk({
   beesCagr,
   focusedId,
   focusedResult,
+  runStale,
   mode,
   fetchingFilings,
   retryFilings,
@@ -502,7 +531,7 @@ function InsightsDesk({
     [focusedId, overlap, overlapHoldings, baskets],
   );
   const focusedFiling = focusedId ? filingById.get(focusedId) : undefined;
-  const growth = growthFromResult(focusedResult, mode);
+  const growth = runStale ? null : growthFromResult(focusedResult, mode);
   const concentration = concentrationFromHoldings(focusedFiling?.holdings);
   const asset = assetMeters(focusedFiling?.asset);
   const equity = equityMeters(focusedFiling?.equitySplit);
@@ -597,6 +626,7 @@ function InsightsDesk({
             <InsightSection id="insight-snapshot" title="Snapshot">
               <PortfolioDesk
                 growth={growth}
+                stale={runStale}
                 beesCagr={beesCagr}
                 beesMissing={beesMissing}
                 concentration={concentration}
