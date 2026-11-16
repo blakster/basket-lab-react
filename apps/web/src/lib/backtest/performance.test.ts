@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { backtestBasket, cagr } from "./performance";
+import { backtestBasket, backtestPlan, cagr, skipYearWindow } from "./performance";
 import { calculateXirr } from "./xirr";
 import { NAV_A, NAV_B, NAV_SIP } from "../../test/navFixture";
-import type { Basket, LabSettings } from "../../types";
+import type { Basket, LabSettings, NavPoint } from "../../types";
 
 const settings: LabSettings = {
   mode: "lumpsum",
@@ -160,6 +160,60 @@ describe("backtestBasket SIP", () => {
     expect(r.error).toBe("no-nav");
     expect(r.series).toEqual([]);
     expect(r.stats.abs).toBe(0);
+  });
+});
+
+describe("step-up and skip-year SIP", () => {
+  const fund: Basket = {
+    id: "s",
+    name: "S",
+    color: "#000",
+    active: true,
+    funds: [
+      { schemeCode: "S", schemeName: "S", isin: null, weight: 100, locked: false },
+    ],
+  };
+  const nav: NavPoint[] = Array.from({ length: 25 }, (_, i) => {
+    const d = new Date("2023-01-01T00:00:00");
+    d.setMonth(d.getMonth() + i);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return { date: `${y}-${m}-${day}`, nav: 10 };
+  });
+  const windowSettings: LabSettings = {
+    mode: "sip",
+    amount: 1000,
+    period: "Custom",
+    customStart: nav[0]!.date,
+    customEnd: nav[24]!.date,
+  };
+
+  it("steps the installment 10% after 12 SIPs", () => {
+    const r = backtestPlan(fund, { S: nav }, windowSettings, {
+      kind: "sip",
+      stepUp: 0.1,
+    });
+    expect(r.error).toBeUndefined();
+    expect(r.stats.initial).toBeCloseTo(12 * 1000 + 12 * 1100 + 1210, 6);
+  });
+
+  it("skips SIPs in year two", () => {
+    const skip = skipYearWindow(nav[0]!.date, nav[24]!.date);
+    expect(skip).not.toBeNull();
+    const r = backtestPlan(fund, { S: nav }, windowSettings, {
+      kind: "sip",
+      stepUp: 0,
+      skipStartIso: skip!.skipStartIso,
+      skipEndIso: skip!.skipEndIso,
+    });
+    expect(r.error).toBeUndefined();
+    expect(r.stats.initial).toBeLessThan(25 * 1000);
+    expect(r.stats.initial).toBeGreaterThan(12 * 1000);
+  });
+
+  it("has no skip window inside one year", () => {
+    expect(skipYearWindow("2023-01-01", "2023-12-01")).toBeNull();
   });
 });
 

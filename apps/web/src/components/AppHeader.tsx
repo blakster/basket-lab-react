@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Moon, Share2, Sun } from "lucide-react";
+import { Moon, Sun } from "lucide-react";
 import { useState } from "react";
 import { useLab, type LabStatus, type Workspace } from "../state/LabContext";
 import { useTheme } from "../state/ThemeContext";
@@ -103,14 +103,6 @@ export function AppHeader() {
         >
           {theme === "dark" ? <Sun /> : <Moon />}
         </Button>
-        <Button
-          type="button"
-          className="share-cta h-auto"
-          onClick={handleShare}
-        >
-          <Share2 />
-          {copied ? "Copied" : "Share"}
-        </Button>
         <Badge
           variant={statusVariant(banner.kind)}
           className="status-plate"
@@ -118,6 +110,14 @@ export function AppHeader() {
         >
           {statusLabel(banner)}
         </Badge>
+        <Button
+          type="button"
+          variant="outline"
+          className="share-cta h-auto"
+          onClick={handleShare}
+        >
+          {copied ? "Copied" : "Share"}
+        </Button>
         {insightsStatus.kind === "insights-down" ? (
           <Badge
             variant="outline"

@@ -87,8 +87,8 @@ describe("paintOnPaper", () => {
 describe("seriesPair", () => {
   it("keeps dashboard loss as the night red, not a cream mix", () => {
     expect(seriesPair("#111111", "loss")).toEqual({
-      light: ["#B54A42"],
-      dark: ["#E8A39C"],
+      light: ["#B33A2B"],
+      dark: ["#E07064"],
     });
   });
 });

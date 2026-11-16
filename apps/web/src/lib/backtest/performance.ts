@@ -47,7 +47,54 @@ export function backtestBasket(
   navs: Record<string, NavPoint[]>,
   settings: LabSettings,
 ): BacktestResult {
-  // Caller must resolve named periods via resolveRange and set customStart/customEnd.
+  return backtestPlan(
+    basket,
+    navs,
+    settings,
+    settings.mode === "lumpsum"
+      ? { kind: "lumpsum" }
+      : { kind: "sip", stepUp: 0 },
+  );
+}
+
+export type CashflowPlan =
+  | { kind: "lumpsum" }
+  | {
+      kind: "sip";
+      stepUp: number;
+      skipStartIso?: string;
+      skipEndIso?: string;
+    };
+
+export function skipYearWindow(
+  startIso: string,
+  endIso: string,
+): { skipStartIso: string; skipEndIso: string } | null {
+  const start = parseDay(startIso);
+  const end = parseDay(endIso);
+  const skipStart = new Date(start);
+  skipStart.setFullYear(skipStart.getFullYear() + 1);
+  const skipEnd = new Date(skipStart);
+  skipEnd.setFullYear(skipEnd.getFullYear() + 1);
+  if (skipStart >= end) return null;
+  const skipEndIso =
+    skipEnd < end ? isoDay(skipEnd) : endIso;
+  return { skipStartIso: isoDay(skipStart), skipEndIso };
+}
+
+function isoDay(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+export function backtestPlan(
+  basket: Basket,
+  navs: Record<string, NavPoint[]>,
+  settings: LabSettings,
+  plan: CashflowPlan,
+): BacktestResult {
   const requestedStartIso = settings.customStart!;
   const endIso = settings.customEnd!;
   const endDate = parseDay(endIso);
@@ -63,7 +110,6 @@ export function backtestBasket(
   if (startIso > endIso) return noNav(basket.id);
 
   const startDate = parseDay(startIso);
-
   const inRange = Object.values(navs).some((series) =>
     series.some((p) => p.date >= startIso && p.date <= endIso),
   );
@@ -74,7 +120,37 @@ export function backtestBasket(
     .filter((d) => d >= startIso && d <= endIso);
   if (timeline[0] !== startIso) timeline.unshift(startIso);
 
-  if (settings.mode === "lumpsum") {
+  return runBacktest(
+    basket,
+    navs,
+    settings,
+    startIso,
+    requestedStartIso,
+    endDate,
+    startDate,
+    timeline,
+    plan,
+  );
+}
+
+function sipInstallment(amount: number, sipIndex: number, stepUp: number): number {
+  if (!(stepUp > 0)) return amount;
+  const years = Math.floor(sipIndex / 12);
+  return amount * Math.pow(1 + stepUp, years);
+}
+
+function runBacktest(
+  basket: Basket,
+  navs: Record<string, NavPoint[]>,
+  settings: LabSettings,
+  startIso: string,
+  requestedStartIso: string,
+  endDate: Date,
+  startDate: Date,
+  timeline: string[],
+  plan: CashflowPlan,
+): BacktestResult {
+  if (plan.kind === "lumpsum") {
     const holdings: Record<string, number> = {};
     for (const f of basket.funds) {
       if (f.weight <= 0) continue;
@@ -114,7 +190,7 @@ export function backtestBasket(
       basketId: basket.id,
       series,
       cashflow: {
-        mode: settings.mode,
+        mode: "lumpsum",
         amount: settings.amount,
         startIso,
         requestedStartIso,
@@ -146,24 +222,38 @@ export function backtestBasket(
   for (const iso of timeline) {
     const day = parseDay(iso);
     if (day >= nextSip) {
-      const adds: Record<string, number> = {};
-      let priced = true;
-      for (const f of basket.funds) {
-        if (f.weight <= 0) continue;
-        const px = navOnOrBefore(navs[f.schemeCode], day);
-        if (px == null || px === 0) {
-          priced = false;
-          break;
+      const skipStart =
+        plan.skipStartIso != null ? parseDay(plan.skipStartIso) : null;
+      const skipEnd = plan.skipEndIso != null ? parseDay(plan.skipEndIso) : null;
+      const inSkip =
+        skipStart != null &&
+        skipEnd != null &&
+        day >= skipStart &&
+        day < skipEnd;
+      if (!inSkip) {
+        const installment = sipInstallment(
+          settings.amount,
+          sipCount,
+          plan.stepUp,
+        );
+        const adds: Record<string, number> = {};
+        let priced = true;
+        for (const f of basket.funds) {
+          if (f.weight <= 0) continue;
+          const px = navOnOrBefore(navs[f.schemeCode], day);
+          if (px == null || px === 0) {
+            priced = false;
+            break;
+          }
+          adds[f.schemeCode] = (installment * f.weight) / 100 / px;
         }
-        adds[f.schemeCode] = (settings.amount * f.weight) / 100 / px;
+        if (!priced) return noNav(basket.id);
+        for (const [code, units] of Object.entries(adds)) {
+          holdings[code]!.units += units;
+        }
+        cashflows.push({ date: new Date(day), amount: -installment });
+        totalInvested += installment;
       }
-      // Missing a weighted fund's price: do not book the full cashflow.
-      if (!priced) return noNav(basket.id);
-      for (const [code, units] of Object.entries(adds)) {
-        holdings[code]!.units += units;
-      }
-      cashflows.push({ date: new Date(day), amount: -settings.amount });
-      totalInvested += settings.amount;
       sipCount += 1;
       nextSip = new Date(startDate);
       nextSip.setMonth(nextSip.getMonth() + sipCount);
@@ -193,7 +283,7 @@ export function backtestBasket(
     basketId: basket.id,
     series,
     cashflow: {
-      mode: settings.mode,
+      mode: "sip",
       amount: settings.amount,
       startIso,
       requestedStartIso,

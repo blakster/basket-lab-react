@@ -8,12 +8,12 @@ import type { Basket, LabSettings } from "../types";
 import { AllocationStack } from "./LabCharts";
 
 const COLORS = [
-  "#0D7480",
-  "#3D6B8A",
-  "#C4A35A",
-  "#B54A42",
-  "#5A8F8A",
-  "#8A6B4A",
+  "#121212",
+  "#6B6B6B",
+  "#5E5E5E",
+  "#B33A2B",
+  "#8A8A8A",
+  "#3A3A3A",
 ];
 
 function newId(): string {
@@ -111,17 +111,21 @@ export function BasketList() {
           </Button>
         </div>
       </div>
-      <ul>
+      <p className="lead-hint">
+        Active baskets are the columns on Compare. Weights must sum to 100% to
+        save.
+      </p>
+      <ul className="basket-league">
         {baskets.map((basket) => {
           const totalWeight = basket.funds.reduce((s, f) => s + f.weight, 0);
           const inputId = `basket-active-${basket.id}`;
           return (
             <li
               key={basket.id}
-              className={`basket-card${basket.active ? "" : " is-inactive"}`}
+              className={`basket-card${basket.active ? " is-on" : " is-inactive"}`}
             >
+              <span className="league-tick" aria-hidden="true" />
               <div className="basket-card-head">
-                <span className="basket-swatch" style={{ background: basket.color }} />
                 <div className="flex flex-1 items-center gap-2">
                   <Checkbox
                     id={inputId}
@@ -143,7 +147,7 @@ export function BasketList() {
                 <div className="basket-actions">
                   <Button
                     type="button"
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
                     onClick={() => openInsights(basket.id)}
                   >
@@ -151,7 +155,7 @@ export function BasketList() {
                   </Button>
                   <Button
                     type="button"
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
                     onClick={() => openEditor(basket.id)}
                   >
@@ -159,7 +163,7 @@ export function BasketList() {
                   </Button>
                   <Button
                     type="button"
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
                     onClick={() => duplicate(basket)}
                   >
@@ -167,7 +171,7 @@ export function BasketList() {
                   </Button>
                   <Button
                     type="button"
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
                     disabled={baskets.length <= 1}
                     onClick={() => remove(basket.id)}

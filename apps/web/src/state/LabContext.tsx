@@ -114,6 +114,7 @@ type LabContextValue = {
   closeEditor: () => void;
   saveBasket: (basket: Basket) => boolean;
   results: BacktestResult[];
+  navByCode: Record<string, NavPoint[]>;
   analyzing: boolean;
   runAnalysis: () => Promise<void>;
   /** True when `?s=` was present but could not be decoded. */
@@ -303,6 +304,7 @@ export function LabProvider({ children }: { children: ReactNode }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editorSeed, setEditorSeed] = useState<Basket | null>(null);
   const [results, setResults] = useState<BacktestResult[]>([]);
+  const [navByCode, setNavByCode] = useState<Record<string, NavPoint[]>>({});
   const [analyzing, setAnalyzing] = useState(false);
   const [navStatus, setNavStatus] = useState<LabStatus>(READY_STATUS);
   const [searchStatus, setSearchStatus] = useState<LabStatus>(READY_STATUS);
@@ -433,7 +435,10 @@ export function LabProvider({ children }: { children: ReactNode }) {
       setAnalyzing(false);
     };
     if (settings.amount < 100) {
-      finish(() => setResults([]));
+      finish(() => {
+        setResults([]);
+        setNavByCode({});
+      });
       return;
     }
 
@@ -441,11 +446,17 @@ export function LabProvider({ children }: { children: ReactNode }) {
     if (
       active.some((b) => Math.abs(weightSum(b) - 100) >= WEIGHT_TOLERANCE)
     ) {
-      finish(() => setResults([]));
+      finish(() => {
+        setResults([]);
+        setNavByCode({});
+      });
       return;
     }
     if (!active.length) {
-      finish(() => setResults([]));
+      finish(() => {
+        setResults([]);
+        setNavByCode({});
+      });
       return;
     }
 
@@ -547,6 +558,7 @@ export function LabProvider({ children }: { children: ReactNode }) {
         setNavStatus(READY_STATUS);
       }
       setResults(nextResults);
+      setNavByCode(navs);
       writeShareQuery(settings, baskets);
     });
     } catch {
@@ -566,6 +578,7 @@ export function LabProvider({ children }: { children: ReactNode }) {
       closeEditor,
       saveBasket,
       results,
+      navByCode,
       analyzing,
       runAnalysis,
       shareHydrateError,
@@ -588,6 +601,7 @@ export function LabProvider({ children }: { children: ReactNode }) {
       closeEditor,
       saveBasket,
       results,
+      navByCode,
       analyzing,
       runAnalysis,
       shareHydrateError,

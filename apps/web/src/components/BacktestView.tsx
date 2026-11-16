@@ -1,18 +1,40 @@
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef } from "react";
+import { loadNiftyBeesNav, NIFTY_BEES_CODE } from "../lib/api/benchmarkNav";
 import { formatInr } from "../lib/format";
+import {
+  beesCagrFromNavs,
+  scaleNavToAmount,
+} from "../lib/portfolioDetails";
 import { yearlyRanking } from "../lib/ranking";
 import { resolveRange } from "../lib/resolveSettings";
 import { useLab } from "../state/LabContext";
-import type { BacktestResult, LabSettings, TimePoint } from "../types";
+import type { BacktestResult, Basket, LabSettings, TimePoint } from "../types";
+import { CashflowCompare } from "./CashflowCompare";
 import { DrawdownChart, GrowthChart, YearlyRankingChart } from "./LabCharts";
+
+const BEES_ID = "__nifty-bees";
+
+const BEES_BASKET: Basket = {
+  id: BEES_ID,
+  name: "Nifty BeES",
+  color: "#6B6B6B",
+  active: true,
+  funds: [
+    {
+      schemeCode: NIFTY_BEES_CODE,
+      schemeName: "Nifty BeES",
+      isin: null,
+      weight: 100,
+      locked: false,
+    },
+  ],
+};
+
+function isBeesOnly(basket: Basket): boolean {
+  const funds = basket.funds.filter((f) => f.weight > 0);
+  return funds.length > 0 && funds.every((f) => f.schemeCode === NIFTY_BEES_CODE);
+}
 
 const DEBOUNCE_MS = 300;
 
@@ -72,7 +94,7 @@ function runIsStale(
   });
 }
 
-function LeadStory() {
+function LeadStory({ beesCagr }: { beesCagr: number | null }) {
   const { results, baskets, settings } = useLab();
   const scored = results.filter((r) => r.error !== "no-nav");
   const runMode = scored[0]?.cashflow?.mode ?? settings.mode;
@@ -99,7 +121,6 @@ function LeadStory() {
   const name =
     baskets.find((b) => b.id === leader.basketId)?.name ?? "Leader";
   const rate = runMode === "sip" ? "XIRR" : "CAGR";
-  const down = leader.stats.cagr < 0;
   const leaderCf = leader.cashflow;
   const fromIso =
     leaderCf?.requestedStartIso && leaderCf.startIso > leaderCf.requestedStartIso
@@ -107,46 +128,24 @@ function LeadStory() {
       : "";
   const fromNote = fromIso ? ` from ${formatAsOf(fromIso)}` : "";
 
-  const worstDd = scored.reduce(
-    (min, cur) => (cur.stats.mdd < min ? cur.stats.mdd : min),
-    0,
-  );
+  const laggards = scored
+    .filter((r) => beesCagr != null && r.stats.cagr < beesCagr)
+    .map((r) => baskets.find((b) => b.id === r.basketId)?.name ?? r.basketId);
 
   return (
     <div className="lead-story">
-      <div className="kpi-row">
-        <div className="kpi-card">
-          <span className="kpi-label">Best {rate}</span>
-          <span className={`kpi-value${down ? " is-down" : " is-up"}`}>
-            {formatPct(leader.stats.cagr)}
-          </span>
-          <span className="kpi-sub">
-            {name}
-            {fromNote}
-          </span>
-        </div>
-        <div className="kpi-card">
-          <span className="kpi-label">Amount</span>
-          <span className="kpi-value">{formatInr(settings.amount)}</span>
-          <span className="kpi-sub">{runMode}</span>
-        </div>
-        <div className="kpi-card">
-          <span className="kpi-label">Period</span>
-          <span className="kpi-value">{settings.period}</span>
-          <span className="kpi-sub">
-            {runMode === "sip" ? "SIP window" : "Lumpsum window"}
-          </span>
-        </div>
-        <div className="kpi-card">
-          <span className="kpi-label">Max drawdown</span>
-          <span
-            className={`kpi-value${worstDd < 0 ? " is-down" : ""}`}
-          >
-            {formatPct(worstDd)}
-          </span>
-          <span className="kpi-sub">Worst of this run</span>
-        </div>
-      </div>
+      <p className="lead-line">
+        {name} leads at {formatPct(leader.stats.cagr)} {rate}
+        {fromNote}.
+      </p>
+      {laggards.length > 0 ? (
+        <p className="lead-flag">
+          {laggards.join(", ")} {laggards.length === 1 ? "trails" : "trail"}{" "}
+          Nifty BeES
+        </p>
+      ) : (
+        <p className="lead-hint">Select a basket for weights and filings.</p>
+      )}
     </div>
   );
 }
@@ -181,6 +180,38 @@ export function BacktestView() {
     [results, settings, range.start],
   );
   const stale = analyzing || runIsStale(results, settings, range.start);
+  const hasSeries = results.some((r) => r.series.length >= 2);
+  const benchQuery = useQuery({
+    queryKey: ["nav", NIFTY_BEES_CODE, range.start, range.end],
+    queryFn: () => loadNiftyBeesNav(range.start, range.end),
+    retry: 1,
+    enabled: hasSeries,
+  });
+  const beesCagr = useMemo(
+    () => beesCagrFromNavs(benchQuery.data),
+    [benchQuery.data],
+  );
+  const showBeesOverlay =
+    settings.mode === "lumpsum" &&
+    !baskets.some((b) => b.active && isBeesOnly(b));
+  const beesResult = useMemo((): BacktestResult | null => {
+    if (!showBeesOverlay) return null;
+    const series = scaleNavToAmount(benchQuery.data, settings.amount);
+    if (series.length < 2) return null;
+    return {
+      basketId: BEES_ID,
+      series,
+      stats: {
+        initial: settings.amount,
+        final: series[series.length - 1]!.y,
+        abs: 0,
+        cagr: beesCagr ?? 0,
+        mdd: 0,
+      },
+    };
+  }, [showBeesOverlay, benchQuery.data, settings.amount, beesCagr]);
+  const growthResults = beesResult ? [...results, beesResult] : results;
+  const growthBaskets = beesResult ? [...baskets, BEES_BASKET] : baskets;
   const ranked = [...results].sort((a, b) => {
     if (a.error === "no-nav" && b.error !== "no-nav") return 1;
     if (b.error === "no-nav" && a.error !== "no-nav") return -1;
@@ -188,8 +219,8 @@ export function BacktestView() {
     return b.stats.cagr - a.stats.cagr;
   });
   const asOf = labels.length ? labels[labels.length - 1]! : "";
-  const runMode = results[0]?.cashflow?.mode ?? settings.mode;
-  const sip = runMode === "sip";
+  const leaderId = ranked.find((row) => row.error !== "no-nav")?.basketId;
+  const beesVol = beesResult ? volFromSeries(beesResult.series) : null;
 
   return (
     <section
@@ -201,125 +232,117 @@ export function BacktestView() {
           Recalculating {settings.mode}…
         </p>
       ) : null}
-      <LeadStory />
-      <div className="table-scroll">
-        <Table className="backtest-table">
-          <TableHeader>
-            <TableRow>
-              <TableHead>Basket</TableHead>
-              <TableHead className="col-invested text-right">Invested</TableHead>
-              <TableHead className="text-right">Current</TableHead>
-              <TableHead className="col-cagr text-right">CAGR</TableHead>
-              <TableHead className="text-right">XIRR</TableHead>
-              <TableHead className="text-right">Max DD</TableHead>
-              <TableHead className="col-vol text-right">Vol</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {ranked.map((r) => {
-              const basket = baskets.find((b) => b.id === r.basketId);
-              const name = basket?.name ?? r.basketId;
-              const fundHint =
-                basket && basket.funds.length === 1
-                  ? basket.funds[0]!.schemeName
-                  : null;
-              if (r.error === "no-nav") {
-                return (
-                  <TableRow key={r.basketId}>
-                    <TableCell className="whitespace-normal">
-                      {basket?.color ? (
-                        <span
-                          className="basket-swatch"
-                          style={{ background: basket.color }}
-                        />
-                      ) : null}
-                      {name}
-                      {fundHint ? (
-                        <span className="basket-sub">{fundHint}</span>
-                      ) : null}
-                    </TableCell>
-                    <TableCell className="col-invested text-right">
-                      {formatInr(settings.amount)}
-                    </TableCell>
-                    <TableCell className="num-empty text-right">No NAV</TableCell>
-                    <TableCell className="num-empty col-cagr text-right">No NAV</TableCell>
-                    <TableCell className="num-empty text-right">No NAV</TableCell>
-                    <TableCell className="num-empty text-right">No NAV</TableCell>
-                    <TableCell className="num-empty col-vol text-right">
-                      No NAV
-                    </TableCell>
-                  </TableRow>
-                );
-              }
-              const vol = volFromSeries(r.series);
-              return (
-                <TableRow key={r.basketId}>
-                  <TableCell className="whitespace-normal">
-                    {basket?.color ? (
-                      <span
-                        className="basket-swatch"
-                        style={{ background: basket.color }}
-                      />
-                    ) : null}
-                    {name}
-                    {fundHint ? (
-                      <span className="basket-sub">{fundHint}</span>
-                    ) : null}
-                  </TableCell>
-                  <TableCell className="col-invested text-right">
-                    {formatInr(r.stats.initial)}
-                  </TableCell>
-                  <TableCell
-                    className={`text-right ${r.stats.final >= r.stats.initial ? "num-gain" : "num-loss"}`}
+      <LeadStory beesCagr={beesCagr} />
+      <ul className="league">
+        {ranked.map((r) => {
+          const basket = baskets.find((b) => b.id === r.basketId);
+          const name = basket?.name ?? r.basketId;
+          const fund =
+            basket && basket.funds.length === 1
+              ? `${basket.funds[0]!.schemeName} · ${basket.funds[0]!.schemeCode}`
+              : basket && basket.funds.length > 1
+                ? `${basket.funds.length} funds`
+                : null;
+          const isLead = leaderId === r.basketId;
+          if (r.error === "no-nav") {
+            return (
+              <li key={r.basketId} className="league-col">
+                <span className="league-tick" aria-hidden="true" />
+                <p className="league-name">{name}</p>
+                <p className="league-rate num-empty">No NAV</p>
+                <p className="league-value">{formatInr(settings.amount)}</p>
+                {fund ? <p className="league-fund">{fund}</p> : null}
+              </li>
+            );
+          }
+          const vol = volFromSeries(r.series);
+          const vs =
+            beesCagr == null ? null : r.stats.cagr - beesCagr;
+          return (
+            <li
+              key={r.basketId}
+              className={`league-col${isLead ? " is-lead" : ""}`}
+            >
+              <span className="league-tick" aria-hidden="true" />
+              <p className="league-name">{name}</p>
+              <p className="league-rate">{formatPct(r.stats.cagr)}</p>
+              <p className="league-value">{formatInr(r.stats.final)}</p>
+              {fund ? <p className="league-fund">{fund}</p> : null}
+              <dl className="league-metrics">
+                <div className="league-metric">
+                  <dt>vs BeES</dt>
+                  <dd
+                    className={
+                      vs == null
+                        ? "num-empty"
+                        : vs >= 0
+                          ? "num-gain"
+                          : "num-loss"
+                    }
                   >
-                    {formatInr(r.stats.final)}
-                    <span
-                      className={`basket-sub ${r.stats.abs >= 0 ? "num-gain" : "num-loss"}`}
-                    >
-                      {formatPct(r.stats.abs)}
-                    </span>
-                  </TableCell>
-                  <TableCell
-                    className={`col-cagr text-right ${!sip && r.stats.cagr >= 0 ? "num-gain" : !sip ? "num-loss" : "num-empty"}`}
-                  >
-                    {sip ? "—" : formatPct(r.stats.cagr)}
-                  </TableCell>
-                  <TableCell
-                    className={`text-right ${sip && r.stats.cagr >= 0 ? "num-gain" : sip ? "num-loss" : "num-empty"}`}
-                  >
-                    {sip ? formatPct(r.stats.cagr) : "—"}
-                  </TableCell>
-                  <TableCell className="num-loss text-right">
-                    {formatPct(r.stats.mdd)}
-                  </TableCell>
-                  <TableCell className="col-vol text-right">
+                    {vs == null ? "—" : formatPct(vs)}
+                  </dd>
+                </div>
+                <div className="league-metric">
+                  <dt>Max DD</dt>
+                  <dd className="num-loss">{formatPct(r.stats.mdd)}</dd>
+                </div>
+                <div className="league-metric">
+                  <dt>Vol</dt>
+                  <dd>
                     {vol == null ? (
                       <span className="num-empty">—</span>
                     ) : (
                       formatPct(vol)
                     )}
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </div>
+                  </dd>
+                </div>
+              </dl>
+            </li>
+          );
+        })}
+        {beesResult && beesCagr != null ? (
+          <li className="league-col is-ref">
+            <span className="league-tick" aria-hidden="true" />
+            <p className="league-name">Nifty BeES · reference</p>
+            <p className="league-rate">{formatPct(beesCagr)}</p>
+            <p className="league-value">
+              {formatInr(beesResult.stats.final)}
+            </p>
+            <p className="league-fund">Not a basket. Overlay only.</p>
+            <dl className="league-metrics">
+              <div className="league-metric">
+                <dt>vs BeES</dt>
+                <dd>—</dd>
+              </div>
+              <div className="league-metric">
+                <dt>Max DD</dt>
+                <dd className="num-loss">—</dd>
+              </div>
+              <div className="league-metric">
+                <dt>Vol</dt>
+                <dd>{beesVol == null ? "—" : formatPct(beesVol)}</dd>
+              </div>
+            </dl>
+          </li>
+        ) : null}
+      </ul>
+      <CashflowCompare />
       <div className="backtest-charts">
         <figure className="backtest-chart">
           <figcaption>
-            Growth
+            Who pulled away from {formatInr(settings.amount)}
             <span className="chart-hint">
-              Value of {formatInr(settings.amount)} over {settings.period}. Click a name to isolate a line.
+              The path, not the ending rate. {settings.period} window.
             </span>
           </figcaption>
-          <GrowthChart results={results} baskets={baskets} />
+          <GrowthChart results={growthResults} baskets={growthBaskets} />
         </figure>
-        <figure className="backtest-chart">
+        <figure className="backtest-chart backtest-chart--drawdown">
           <figcaption>
-            Fall from peak
+            How far from a peak
             <span className="chart-hint">
-              How far each basket dropped from its high. 0% is a new peak.
+              Rust fill is the worst trough in this run. 0% is a new high.
             </span>
           </figcaption>
           <DrawdownChart results={results} baskets={baskets} />
@@ -331,10 +354,10 @@ export function BacktestView() {
       </p>
       {ranking.length > 0 && (
         <div className="yearly-ranking">
-          <h3>Yearly ranking</h3>
+          <h3>Who won each calendar year</h3>
           <p className="yearly-ranking-note">
-            Time-weighted calendar return. Years marked * start mid-window.
-            YTD is through the last NAV date.
+            Rank, not return. Hover a cell for the year&apos;s time-weighted
+            number. * started mid-window. YTD is through the last NAV date.
           </p>
           <div className="ranking-chart-well">
             <YearlyRankingChart ranking={ranking} baskets={baskets} />

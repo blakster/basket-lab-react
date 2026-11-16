@@ -19,9 +19,11 @@ function AmountInput() {
 
   return (
     <label className="field field-amount">
-      <span>Amount</span>
+      <span className="sr-only">Amount</span>
       <span className="amount-input">
-        <span aria-hidden="true">₹</span>
+        <span className="rupee-sign" aria-hidden="true">
+          ₹
+        </span>
         <Input
           type="text"
           inputMode="numeric"
@@ -31,7 +33,7 @@ function AmountInput() {
           value={draft}
           aria-invalid={settings.amount < 100}
           aria-describedby={settings.amount < 100 ? "amount-error" : undefined}
-          className="h-auto border-0 bg-transparent px-0 text-center shadow-none dark:bg-transparent focus-visible:border-0 focus-visible:ring-0"
+          className="h-auto border-0 bg-transparent px-0 text-left shadow-none dark:bg-transparent focus-visible:border-0 focus-visible:ring-0"
           onFocus={(event) => {
             focusedRef.current = true;
             event.currentTarget.select();
@@ -80,18 +82,18 @@ export function InvestmentSettings() {
         }}
       >
         <TabsList
-          className="rounded-[var(--r-md)] bg-muted p-1"
+          className="h-auto gap-1 rounded-none bg-transparent p-0"
           aria-label="Investment mode"
         >
           <TabsTrigger
             value="lumpsum"
-            className="rounded-[var(--r-btn)] px-4 data-[state=active]:bg-primary! data-[state=active]:text-primary-foreground!"
+            className="rounded-[var(--r-btn)] px-2.5 py-1.5 data-[state=active]:bg-primary! data-[state=active]:text-primary-foreground!"
           >
             Lumpsum
           </TabsTrigger>
           <TabsTrigger
             value="sip"
-            className="rounded-[var(--r-btn)] px-4 data-[state=active]:bg-primary! data-[state=active]:text-primary-foreground!"
+            className="rounded-[var(--r-btn)] px-2.5 py-1.5 data-[state=active]:bg-transparent! data-[state=active]:text-[var(--ink)]! data-[state=active]:shadow-[inset_0_-2px_0_var(--ink)]"
           >
             SIP
           </TabsTrigger>
@@ -114,7 +116,7 @@ export function InvestmentSettings() {
           <ToggleGroupItem
             key={period}
             value={period}
-            className="rounded-[var(--r-btn)] border-0 data-[state=on]:bg-primary! data-[state=on]:text-primary-foreground!"
+            className="rounded-none border-0 bg-transparent px-2.5 shadow-none data-[state=on]:bg-transparent! data-[state=on]:text-[var(--ink)]! data-[state=on]:shadow-[inset_0_-2px_0_var(--ink)]"
           >
             {period}
           </ToggleGroupItem>

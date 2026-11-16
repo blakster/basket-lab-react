@@ -23,12 +23,12 @@ import { FundSearch } from "./FundSearch";
 import { WeightField } from "./WeightField";
 
 const SWATCHES = [
-  "#0D7480",
-  "#3D6B8A",
-  "#C4A35A",
-  "#B54A42",
-  "#5A8F8A",
-  "#8A6B4A",
+  "#121212",
+  "#6B6B6B",
+  "#5E5E5E",
+  "#B33A2B",
+  "#8A8A8A",
+  "#3A3A3A",
 ];
 
 const WEIGHT_TOLERANCE = 0.1;

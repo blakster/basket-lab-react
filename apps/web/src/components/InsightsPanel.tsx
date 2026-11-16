@@ -20,6 +20,16 @@ import {
   type InsightsBasket,
 } from "../lib/api/insights";
 import {
+  assetMeters,
+  beesCagrFromNavs,
+  concentrationFromHoldings,
+  equityMeters,
+  growthFromResult,
+  overlapForBasket,
+  redFlags,
+  topSectorMeters,
+} from "../lib/portfolioDetails";
+import {
   alphaBeta,
   calmar,
   correlation,
@@ -33,25 +43,17 @@ import {
   type DatedReturn,
 } from "../lib/risk";
 import { resolveRange } from "../lib/resolveSettings";
-import { inkAlpha, tintTowardWell } from "../lib/theme";
+import { inkAlpha } from "../lib/theme";
 import { useLab } from "../state/LabContext";
-import { useTheme } from "../state/ThemeContext";
 import type { BacktestResult, Basket, LabSettings } from "../types";
 import {
   MixCompareChart,
-  MetricCompareChart,
   type MixSeries,
 } from "./LabCharts";
-import { HoldingsBarChart } from "./LabPlots";
+
+import { OverlapBlock, PortfolioDesk } from "./PortfolioDesk";
 
 const EQUITY_ORDER = ["large", "mid", "small", "unclassified"] as const;
-
-const SECTIONS = [
-  { id: "insight-snapshot", label: "Snapshot" },
-  { id: "insight-holdings", label: "Holdings" },
-  { id: "insight-mix", label: "Mix" },
-  { id: "insight-risk", label: "Risk" },
-] as const;
 
 function formatPct(n: number): string {
   const text = n.toFixed(2);
@@ -368,15 +370,30 @@ function useInsightsDesk() {
     focusedRiskRows.some((row) => riskRowHasContent(row, beesMissing)) ||
     focusedCorrRows.length > 0;
 
+  const focusedResult = useMemo(
+    () => results.find((r) => r.basketId === focusedId),
+    [results, focusedId],
+  );
+
+  const beesCagr = useMemo(
+    () => beesCagrFromNavs(benchQuery.data),
+    [benchQuery.data],
+  );
+
   return {
     baskets,
     data: focusedData,
+    overlap: data?.overlap ?? null,
+    overlapHoldings: data?.overlapHoldings ?? null,
     isError,
     riskRows: focusedRiskRows,
     corrRows: focusedCorrRows,
     showRisk,
     beesMissing,
+    beesCagr,
     focusedId,
+    focusedResult,
+    mode: settings.mode,
     fetchingFilings: ensureQuery.isFetching || retryMutation.isPending,
     retryFilings: retryMutation.mutate,
     refetchInsights: refetch,
@@ -395,19 +412,24 @@ export function InsightsPanel() {
 function InsightsDesk({
   baskets,
   data,
+  overlap,
+  overlapHoldings,
   isError,
   riskRows,
   corrRows,
   showRisk,
   beesMissing,
+  beesCagr,
   focusedId,
+  focusedResult,
+  mode,
   fetchingFilings,
   retryFilings,
   refetchInsights,
 }: ReturnType<typeof useInsightsDesk>) {
   const { openInsights } = useLab();
   const bodyRef = useRef<HTMLDivElement>(null);
-  const [activeSection, setActiveSection] = useState<string>(SECTIONS[0].id);
+  const [activeSection, setActiveSection] = useState("insight-snapshot");
   const sectorCats = useMemo(
     () => (data ? topCategories(data.baskets.map((b) => b.sector)) : []),
     [data],
@@ -436,6 +458,8 @@ function InsightsDesk({
     for (const ib of data?.baskets ?? []) map.set(ib.id, ib);
     return map;
   }, [data]);
+  const switchable = baskets.filter((b) => b.active);
+  const showOverlap = switchable.length >= 2;
 
   useEffect(() => {
     const root = bodyRef.current;
@@ -458,26 +482,57 @@ function InsightsDesk({
       },
       { root: null, rootMargin: "-15% 0px -55% 0px", threshold: [0, 0.15, 0.4, 0.7] },
     );
-    for (const section of SECTIONS) {
-      const el = root.querySelector(`#${section.id}`);
+    for (const section of [
+      "insight-snapshot",
+      "insight-holdings",
+      "insight-mix",
+      "insight-overlap",
+      "insight-risk",
+    ]) {
+      const el = root.querySelector(`#${section}`);
       if (el) obs.observe(el);
     }
     return () => obs.disconnect();
-  }, [data, showRisk]);
+  }, [data, showRisk, showOverlap]);
 
   const focusedName = focusedId ? basketName(focusedId, baskets) : "Insights";
-  const switchable = baskets.filter((b) => b.active);
   const showDesk = Boolean(data || showRisk || focusedId);
+  const overlapRows = useMemo(
+    () => overlapForBasket(focusedId, overlap, overlapHoldings, baskets),
+    [focusedId, overlap, overlapHoldings, baskets],
+  );
+  const focusedFiling = focusedId ? filingById.get(focusedId) : undefined;
+  const growth = growthFromResult(focusedResult, mode);
+  const concentration = concentrationFromHoldings(focusedFiling?.holdings);
+  const asset = assetMeters(focusedFiling?.asset);
+  const equity = equityMeters(focusedFiling?.equitySplit);
+  const sectors = topSectorMeters(focusedFiling?.sector);
+  const flags = redFlags({ overlap: overlapRows, sectors, equity });
+  const peText = focusedFiling
+    ? formatFilingMetric(focusedFiling.pe, focusedFiling.peIncomplete)
+    : null;
+  const peChip = peText && peText !== "not in filing" ? peText : null;
+  const sections = [
+    { id: "insight-snapshot", label: "Snapshot" },
+    ...(data
+      ? [
+          { id: "insight-holdings", label: "Holdings" },
+          { id: "insight-mix", label: "Mix" },
+        ]
+      : []),
+    ...(showOverlap ? [{ id: "insight-overlap", label: "Overlap" }] : []),
+    ...(showRisk ? [{ id: "insight-risk", label: "Risk" }] : []),
+  ];
 
   return (
     <div className="insights-desk">
       <div className="insights-chrome">
         <header className="insights-sheet-header">
-          <h2 className="insights-sheet-title">Insights · {focusedName}</h2>
+          <h2 className="insights-sheet-title">Insights</h2>
           <p id="insights-desk-desc" className="insights-sheet-desc">
             {data?.asOf
-              ? `Fund details as of ${data.asOf}. Risk vs Nifty BeES, rf = 0.`
-              : "Filings, mix, and risk for this basket."}
+              ? `${focusedName}. Filings as of ${data.asOf}. Missing PE or expense stays empty.`
+              : `${focusedName}. Filings, mix, and risk for this basket.`}
           </p>
         </header>
         {switchable.length > 1 && (
@@ -498,20 +553,26 @@ function InsightsDesk({
         )}
         {isError && <p className="insight-empty">Insights unavailable</p>}
         {showDesk && (
-          <nav className="insights-nav" aria-label="Insights sections">
-            {SECTIONS.map((section) => (
-              <button
-                key={section.id}
-                type="button"
-                className="insights-nav-item"
-                aria-current={activeSection === section.id ? "true" : undefined}
-                onClick={() => {
-                  setActiveSection(section.id);
-                  scrollToSection(section.id);
-                }}
-              >
-                {section.label}
-              </button>
+          <nav className="insights-nav" aria-label="On this page">
+            {sections.map((section, i) => (
+              <span key={section.id} className="insights-nav-slot">
+                {i > 0 ? (
+                  <span className="insights-nav-dot" aria-hidden="true">
+                    ·
+                  </span>
+                ) : null}
+                <button
+                  type="button"
+                  className="insights-nav-item"
+                  aria-current={activeSection === section.id ? "true" : undefined}
+                  onClick={() => {
+                    setActiveSection(section.id);
+                    scrollToSection(section.id);
+                  }}
+                >
+                  {section.label}
+                </button>
+              </span>
             ))}
           </nav>
         )}
@@ -534,6 +595,17 @@ function InsightsDesk({
               ) : null,
             )}
             <InsightSection id="insight-snapshot" title="Snapshot">
+              <PortfolioDesk
+                growth={growth}
+                beesCagr={beesCagr}
+                beesMissing={beesMissing}
+                concentration={concentration}
+                peText={peChip}
+                flags={flags}
+                asset={asset}
+                equity={equity}
+                sectors={sectors}
+              />
               <SnapshotBlock
                 baskets={baskets}
                 filingById={filingById}
@@ -600,26 +672,17 @@ function InsightsDesk({
                 </InsightSection>
               </>
             )}
+            {showOverlap && (
+              <InsightSection id="insight-overlap" title="Overlap">
+                <OverlapBlock rows={overlapRows} twoBaskets={showOverlap} />
+              </InsightSection>
+            )}
             {showRisk && (
               <InsightSection id="insight-risk" title="Risk & skill">
-                <p className="insight-empty">rf = 0 · vs Nifty BeES</p>
-                <MetricCompareChart
-                  metrics={[
-                    { key: "sharpe", label: "Sharpe" },
-                    { key: "sortino", label: "Sortino" },
-                    { key: "calmar", label: "Calmar" },
-                  ]}
-                  series={riskRows.map((row) => ({
-                    key: seriesKey(row.id),
-                    label: row.name,
-                    color: row.color,
-                    values: {
-                      sharpe: row.sharpe,
-                      sortino: row.sortino,
-                      calmar: row.calmar,
-                    },
-                  }))}
-                />
+                <p className="insight-empty">
+                  rf = 0 · vs Nifty BeES. The table is the comparison — numbers,
+                  not a radar.
+                </p>
                 <div className="table-scroll">
                   <Table className="insight-table risk-table">
                     <TableHeader>
@@ -1009,9 +1072,7 @@ function HoldingsBlock({
   ib: InsightsBasket;
   basket: Basket | undefined;
 }) {
-  const { theme } = useTheme();
   const [showAll, setShowAll] = useState(false);
-  const chartItems = ib.holdings.slice(0, HOLDINGS_PREVIEW);
   const rows = showAll ? ib.holdings : ib.holdings.slice(0, HOLDINGS_PREVIEW);
   const extra = ib.holdings.length - HOLDINGS_PREVIEW;
 
@@ -1028,18 +1089,6 @@ function HoldingsBlock({
           No fund details for {fundName(basket, code)}
         </p>
       ))}
-      {chartItems.length > 0 && (
-        <HoldingsBarChart
-          items={chartItems.map((h, i) => ({
-            name: h.name,
-            weight: h.weight,
-            color: inkWash(i, basket?.color ?? "#111111", theme),
-          }))}
-        />
-      )}
-      {extra > 0 && !showAll && (
-        <p className="holdings-note">Chart shows the largest 10.</p>
-      )}
       {ib.holdings.length > 0 && (
         <div className="table-scroll">
           <Table className="insight-table">
@@ -1075,16 +1124,6 @@ function HoldingsBlock({
       )}
     </div>
   );
-}
-
-function inkWash(
-  index: number,
-  base: string,
-  theme: "light" | "dark",
-): string {
-  const steps = [1, 0.78, 0.58, 0.42, 0.28, 0.16];
-  const t = steps[index % steps.length] ?? 0.4;
-  return tintTowardWell(base, t, theme);
 }
 
 function MixBlock({
@@ -1125,9 +1164,7 @@ function MixBlock({
   return (
     <div className="insight-basket">
       <h4>{title}</h4>
-      <figure className="insight-chart">
-        <MixCompareChart series={labeled} categories={categories} />
-      </figure>
+      <MixCompareChart series={labeled} categories={categories} />
     </div>
   );
 }
@@ -1159,24 +1196,22 @@ function EquityMixBlock({
         return null;
       })}
       {categories.length > 0 && (
-        <figure className="insight-chart">
-          <MixCompareChart
-            series={mixSeries(
-              dataBaskets.filter((ib) =>
-                EQUITY_ORDER.some((key) => (ib.equitySplit[key] ?? 0) > 0),
-              ),
-              labBaskets,
-              (ib) => ib.equitySplit,
-              categories,
-            ).map((s) => ({
-              ...s,
-              values: Object.fromEntries(
-                categories.map((raw) => [formatLabel(raw), s.values[raw] ?? 0]),
-              ),
-            }))}
-            categories={categories.map(formatLabel)}
-          />
-        </figure>
+        <MixCompareChart
+          series={mixSeries(
+            dataBaskets.filter((ib) =>
+              EQUITY_ORDER.some((key) => (ib.equitySplit[key] ?? 0) > 0),
+            ),
+            labBaskets,
+            (ib) => ib.equitySplit,
+            categories,
+          ).map((s) => ({
+            ...s,
+            values: Object.fromEntries(
+              categories.map((raw) => [formatLabel(raw), s.values[raw] ?? 0]),
+            ),
+          }))}
+          categories={categories.map(formatLabel)}
+        />
       )}
     </div>
   );

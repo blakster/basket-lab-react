@@ -36,7 +36,7 @@ Confirmed:
 
 - Search: TigZig first; MFAPI search fallback. Debounce 200ms, min 2 chars, abort in-flight.
 - NAV: TigZig bulk first; live payload is `schemes: [{ scheme_code, data }]` (array). MFAPI per-scheme fallback. Cache in IndexedDB.
-- Backtest: lumpsum uses CAGR; SIP uses XIRR; max drawdown is peak-to-trough. Pure client calc.
+- Backtest: lumpsum uses CAGR; SIP uses XIRR; max drawdown is peak-to-trough. Pure client calc. Compare also runs the focused basket as lumpsum, monthly SIP, 10% step-up SIP, and skip-year-two SIP on the same NAV.
 - Insights: top holdings, sector, asset mix, credit, equity large/mid/small, overlap, expense, PE from Foliyo Markets (by AMFI code). Sharpe/vol from NAV series. Missing fields stay empty. Manual AMC Excel upload still works.
 - Share: pako-compressed `s=` query. No accounts.
 - Amount ≥ ₹100. Weights must sum 100% ± 0.1 to save.
@@ -53,7 +53,7 @@ Undecided: public hosting beyond local `npm run dev` + uvicorn.
 
 ## Brand Commitments
 
-Name is **Basket Lab**. This is a React remake of the original vanilla-JS tool, not a pixel clone. The desk is frost/teal/Geist (see DESIGN.md). The information set and one-route lab stay.
+Name is **Basket Lab**. This is a React remake of the original vanilla-JS tool, not a pixel clone. The desk is signage: ink, enamel yellow, IBM Plex (see DESIGN.md). The information set and one-route lab stay.
 
 Confirmed session direction from the user: treat it as a public remake; the first viewport must make comparing returns obvious.
 

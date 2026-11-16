@@ -1,20 +1,11 @@
-import { EvilAreaChart } from "@/components/evilcharts/charts/recharts-area-chart";
-import { EvilBarChart } from "@/components/evilcharts/charts/recharts-bar-chart";
-import type { ChartConfig } from "@/components/evilcharts/ui/recharts-chart";
 import { useMemo } from "react";
-import { formatCompactInr, formatInr } from "../lib/format";
-import { seriesPair } from "../lib/theme";
 import type { YearlyRank } from "../lib/ranking";
 import type { BacktestResult, Basket } from "../types";
-import {
-  formatFullDate,
-  formatPctValue,
-  formatTick,
-  type MixSeries,
-} from "./chartFormat";
+import { type MixSeries } from "./chartFormat";
 import {
   DrawdownLineChart,
-  MixStackChart,
+  GrowthPathChart,
+  MixStripChart,
   RiskRadarChart,
 } from "./LabPlots";
 
@@ -57,21 +48,6 @@ function chartable(results: BacktestResult[], baskets: Basket[]) {
   return { keys, dates };
 }
 
-function configFor(
-  keys: { key: string; basket: Basket | undefined }[],
-  colors: "basket" | "loss",
-): ChartConfig {
-  const config: ChartConfig = {};
-  for (const { key, basket } of keys) {
-    const color = basket?.color ?? "#111111";
-    config[key] = {
-      label: basket?.name ?? key,
-      colors: seriesPair(color, colors === "loss" ? "loss" : "basket"),
-    };
-  }
-  return config;
-}
-
 type LabChartsProps = {
   results: BacktestResult[];
   baskets: Basket[];
@@ -94,49 +70,41 @@ export function GrowthChart({ results, baskets }: LabChartsProps) {
     });
   }, [dates, keys]);
 
-  const config = useMemo(() => configFor(keys, "basket"), [keys]);
+  const startAmount = useMemo(() => {
+    for (const { result } of keys) {
+      const first = result.series[0]?.y;
+      if (typeof first === "number" && Number.isFinite(first)) return first;
+    }
+    return 100000;
+  }, [keys]);
+
+  const leadId = useMemo(() => {
+    let best: { id: string; cagr: number } | null = null;
+    for (const { result } of keys) {
+      if (result.error === "no-nav") continue;
+      if (!best || result.stats.cagr > best.cagr) {
+        best = { id: result.basketId, cagr: result.stats.cagr };
+      }
+    }
+    return best?.id;
+  }, [keys]);
 
   if (!keys.length || !data.length) {
     return <p className="chart-empty">No NAV series to plot.</p>;
   }
 
   return (
-    <EvilAreaChart
+    <GrowthPathChart
       data={data}
-      config={config}
-      className="h-[280px] w-full"
-      xDataKey="date"
-      curveType="monotone"
-      animationType="left-to-right"
-    >
-      <EvilAreaChart.Grid />
-      <EvilAreaChart.XAxis
-        dataKey="date"
-        minTickGap={28}
-        tickFormatter={(v) => formatTick(String(v))}
-      />
-      <EvilAreaChart.YAxis tickFormatter={(v) => formatCompactInr(Number(v))} width={52} />
-      <EvilAreaChart.Legend isClickable variant="circle" align="center" verticalAlign="bottom" />
-      <EvilAreaChart.Tooltip
-        variant="frosted-glass"
-        roundness="sm"
-        labelFormatter={(label) => formatFullDate(String(label ?? ""))}
-        valueFormatter={formatInr}
-      />
-      {keys.map(({ key }) => (
-        <EvilAreaChart.Area
-          key={key}
-          dataKey={key}
-          variant="gradient"
-          strokeVariant="solid"
-          strokeWidth={2}
-          connectNulls
-          isClickable
-        >
-          <EvilAreaChart.ActiveDot variant="colored-border" />
-        </EvilAreaChart.Area>
-      ))}
-    </EvilAreaChart>
+      startAmount={startAmount}
+      series={keys.map(({ key, basket, result }) => ({
+        key,
+        label: basket?.name ?? key,
+        color: basket?.color ?? "#6B6B6B",
+        dashed: basket?.id === "__nifty-bees",
+        lead: result.basketId === leadId,
+      }))}
+    />
   );
 }
 
@@ -157,6 +125,16 @@ export function DrawdownChart({ results, baskets }: Omit<LabChartsProps, "amount
     });
   }, [dates, keys]);
 
+  const worstKey = useMemo(() => {
+    let worst: { key: string; mdd: number } | null = null;
+    for (const { key, result } of keys) {
+      if (!worst || result.stats.mdd < worst.mdd) {
+        worst = { key, mdd: result.stats.mdd };
+      }
+    }
+    return worst?.key;
+  }, [keys]);
+
   if (!keys.length || !data.length) {
     return <p className="chart-empty">No drawdown series to plot.</p>;
   }
@@ -164,10 +142,11 @@ export function DrawdownChart({ results, baskets }: Omit<LabChartsProps, "amount
   return (
     <DrawdownLineChart
       data={data}
+      worstKey={worstKey}
       series={keys.map(({ key, basket }) => ({
         key,
         label: basket?.name ?? key,
-        color: basket?.color ?? "#1f3038",
+        color: basket?.color ?? "#121212",
       }))}
     />
   );
@@ -201,51 +180,37 @@ export function YearlyRankingChart({ ranking, baskets }: RankingChartProps) {
     return list;
   }, [ranking, byId]);
 
-  const data = useMemo(
-    () =>
-      ranking.map((year) => {
-        const label =
-          year.kind === "ytd"
-            ? `${year.year} YTD`
-            : year.kind === "partial"
-              ? `${year.year}*`
-              : String(year.year);
-        const row: Record<string, string | number> = { year: label };
-        for (const entry of year.order) {
-          row[seriesKey(entry.basketId)] = Number(entry.ret.toFixed(2));
-        }
-        return row;
-      }),
-    [ranking],
-  );
+  if (!keys.length || !ranking.length) return null;
 
-  const config = useMemo(() => configFor(keys, "basket"), [keys]);
-
-  if (!keys.length || !data.length) return null;
+  const nameOf = (id: string) =>
+    keys.find((k) => k.id === id)?.basket?.name ?? id;
 
   return (
-    <EvilBarChart
-      data={data}
-      config={config}
-      className="h-[260px] w-full"
-      xDataKey="year"
-      animationType="left-to-right"
-      barRadius={4}
-      barCategoryGap={16}
-    >
-      <EvilBarChart.Grid />
-      <EvilBarChart.XAxis dataKey="year" />
-      <EvilBarChart.YAxis tickFormatter={(v) => `${v}%`} width={48} />
-      <EvilBarChart.Legend isClickable variant="circle" align="center" verticalAlign="bottom" />
-      <EvilBarChart.Tooltip
-        variant="frosted-glass"
-        roundness="sm"
-        valueFormatter={formatPctValue}
-      />
-      {keys.map(({ key }) => (
-        <EvilBarChart.Bar key={key} dataKey={key} variant="gradient" />
+    <div className="rank-ledger" aria-label="Yearly ranking">
+      {ranking.map((year) => (
+        <div key={year.year} className="rank-year">
+          <span className="rank-year-label">
+            {year.kind === "ytd"
+              ? `${year.year} YTD`
+              : year.kind === "partial"
+                ? `${year.year}*`
+                : String(year.year)}
+          </span>
+          <ol>
+            {year.order.map((entry, place) => (
+              <li
+                key={entry.basketId}
+                className={place === 0 ? "is-first" : undefined}
+              >
+                <span className="place">{place + 1}</span>
+                <span>{nameOf(entry.basketId)}</span>
+                <span className="ret">{entry.ret.toFixed(2)}%</span>
+              </li>
+            ))}
+          </ol>
+        </div>
       ))}
-    </EvilBarChart>
+    </div>
   );
 }
 
@@ -256,7 +221,7 @@ type MixCompareProps = {
 };
 
 export function MixCompareChart({ series, categories }: MixCompareProps) {
-  return <MixStackChart series={series} categories={categories} />;
+  return <MixStripChart series={series} categories={categories} />;
 }
 
 type MetricPoint = {
@@ -288,15 +253,16 @@ export function AllocationStack({ segments }: { segments: StackSegment[] }) {
     return <p className="chart-empty">No weights to plot.</p>;
   }
   return (
-    <div className="alloc-stack" role="img" aria-label="Fund weights">
+    <ul className="alloc-rows" aria-label="Fund weights">
       {live.map((s) => (
-        <span
-          key={s.key}
-          className="alloc-seg"
-          style={{ flexGrow: s.weight, background: s.color }}
-          title={`${s.label} ${s.weight.toFixed(1)}%`}
-        />
+        <li key={s.key}>
+          <span className="alloc-name">{s.label}</span>
+          <span className="alloc-pct">{s.weight.toFixed(0)}%</span>
+          <span className="alloc-track">
+            <span style={{ width: `${Math.min(100, Math.max(0, s.weight))}%` }} />
+          </span>
+        </li>
       ))}
-    </div>
+    </ul>
   );
 }
