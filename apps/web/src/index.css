@@ -2461,3 +2461,590 @@ button[data-static="true"]:active:not(:disabled) {
     transition: none !important;
   }
 }
+
+/* ------------------------------------------------------------------
+   Baskets + Insights workspaces: same plate as Compare.
+   Hairline columns, IBM Plex Mono numbers, ink meters, no cards.
+   ------------------------------------------------------------------ */
+
+.basket-list-header,
+.insights-sheet-header {
+  padding: 1.25rem 0 0;
+}
+
+.basket-list-title-wrap h2,
+.insights-sheet-title {
+  font-size: 1.375rem;
+  font-weight: 400;
+  line-height: 1.35;
+  letter-spacing: var(--display-tracking);
+}
+
+/* Baskets */
+
+.basket-list-header {
+  align-items: flex-end;
+  margin: 0;
+}
+
+.basket-count-badge {
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+
+.basket-list-actions {
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.basket-list-actions button.basket-create,
+.share-bar-row button.share-copy {
+  min-height: 2.15rem;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  box-shadow: inset 0 0 0 1px var(--ink);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .basket-list-actions button.basket-create:hover:not(:disabled),
+  .share-bar-row button.share-copy:hover:not(:disabled) {
+    background: var(--ink);
+    color: var(--paper);
+  }
+}
+
+.basket-list-actions button.basket-reset {
+  min-height: 2.15rem;
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+}
+
+.basket-list-hint {
+  margin: 0.35rem 0 0;
+}
+
+.basket-list .basket-league {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 1.1rem 0 0;
+  border-top: 1px solid var(--rule);
+}
+
+.basket-card,
+.basket-card:last-child {
+  min-width: 0;
+  gap: 0.75rem;
+  padding: 1rem 1.15rem 1.1rem;
+  border-bottom: 1px solid var(--rule);
+  border-right: 1px solid var(--rule);
+}
+
+.basket-card:nth-child(3n + 1) {
+  padding-left: 0;
+}
+
+.basket-card:nth-child(3n) {
+  border-right: 0;
+  padding-right: 0;
+}
+
+.basket-card .league-tick {
+  background: var(--rule);
+}
+
+.basket-card.is-on .league-tick {
+  background: var(--ink);
+}
+
+.basket-card.is-inactive {
+  opacity: 1;
+}
+
+.basket-card.is-inactive .basket-card-name,
+.basket-card.is-inactive .basket-card-body {
+  color: var(--ink-soft);
+  opacity: 0.6;
+}
+
+.basket-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
+.basket-card label.basket-card-label {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.basket-card-name {
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.basket-fund-count {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  letter-spacing: -0.02em;
+}
+
+button.basket-check {
+  width: 1rem;
+  height: 1rem;
+  min-height: 0;
+  margin-top: 0.18rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--paper);
+  box-shadow: inset 0 0 0 1.5px var(--ink);
+}
+
+button.basket-check[data-state="checked"] {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  button.basket-check:hover:not(:disabled) {
+    background: var(--ink-wash);
+    transform: none;
+  }
+
+  button.basket-check[data-state="checked"]:hover:not(:disabled) {
+    background: var(--ink);
+    color: var(--paper);
+  }
+}
+
+.basket-card-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.basket-card .alloc-rows {
+  margin: 0;
+  gap: 0.55rem;
+}
+
+.basket-empty-hint {
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  font-style: normal;
+  font-size: 0.8125rem;
+  border: 1px dashed var(--rule);
+  border-radius: var(--r-md);
+}
+
+.basket-actions {
+  justify-content: flex-start;
+  gap: 0;
+  margin-left: -0.45rem;
+}
+
+.basket-actions button {
+  color: var(--ink-soft);
+  font-weight: 500;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .basket-actions button:hover:not(:disabled) {
+    color: var(--ink);
+    transform: none;
+  }
+
+  .basket-actions button.basket-delete:hover:not(:disabled) {
+    color: var(--loss);
+  }
+}
+
+.basket-list + .share-bar {
+  margin-top: 2rem;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.share-bar > h2 {
+  margin-top: 0;
+  font-size: 1.15rem;
+}
+
+.share-bar-row input {
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  letter-spacing: -0.02em;
+}
+
+/* Shared meters: ink on a deep-paper track, square, 4px. */
+
+.alloc-track,
+.insight-meter [data-slot="progress"] {
+  height: 4px;
+  border-radius: 0;
+  background: var(--paper-deep);
+}
+
+.alloc-rows li {
+  grid-template-rows: auto 4px;
+}
+
+.insight-meter [data-slot="progress-indicator"] {
+  background: var(--ink);
+}
+
+.insight-meter-row {
+  font-size: 0.8125rem;
+}
+
+.insight-meter-row > span:last-child,
+.mix-meter-row .alloc-pct {
+  font-family: var(--mono);
+  letter-spacing: -0.02em;
+}
+
+/* Insights */
+
+.insights-sheet-desc {
+  font-size: 0.8125rem;
+}
+
+.insights-switch {
+  margin-top: 1rem;
+}
+
+.insights-switch-item {
+  min-height: 2.25rem;
+  padding: 0.25rem 0.85rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+
+.insights-switch-item:first-child {
+  padding-left: 0;
+}
+
+.insights-switch-item[aria-selected="true"] {
+  color: var(--ink);
+}
+
+.insights-nav {
+  position: sticky;
+  top: 3.4rem;
+  z-index: 5;
+  margin: 0;
+  padding: 0.6rem 0;
+  background: var(--paper);
+}
+
+.insight-alert,
+.insight-loading {
+  margin: 0.85rem 0 0;
+  padding: 0.65rem 0.8rem;
+  font-size: 0.8125rem;
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-border);
+}
+
+.insight-alert {
+  color: var(--loss);
+  box-shadow: inset 2px 0 0 var(--loss), var(--shadow-border);
+}
+
+.insights-sections {
+  gap: 0;
+  padding-top: 0;
+}
+
+.insight-card {
+  padding: 1.5rem 0 1.6rem;
+  scroll-margin-top: 6.5rem;
+}
+
+.insight-card h3 {
+  margin: 0 0 0.85rem;
+  font-size: 1.15rem;
+}
+
+.insight-card h4 {
+  margin: 0 0 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.insight-basket + .insight-basket > h4 {
+  margin-top: 1.1rem;
+}
+
+/* Lists inside meters and mix strips are not ledger rows. */
+.insight-card .mix-meters li,
+.insight-card .alloc-rows li {
+  padding: 0;
+  border-bottom: 0;
+}
+
+.insight-card .mix-meters li {
+  display: flex;
+  flex-direction: column;
+}
+
+.insight-card .alloc-rows li {
+  display: grid;
+}
+
+.insight-filings {
+  padding: 1rem 0;
+}
+
+.insight-filings-flag {
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+}
+
+.insight-filings-count {
+  font-family: var(--mono);
+  font-size: 0.875rem;
+  letter-spacing: -0.02em;
+}
+
+.insight-filings-list li {
+  border-bottom: 1px solid var(--rule-faint);
+}
+
+.insight-filings-list li:last-child {
+  border-bottom: 0;
+}
+
+.insight-filings-state {
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.insight-filings-source {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+}
+
+.insight-filings-source a {
+  color: var(--ink-soft);
+}
+
+.ds-btn-outlined {
+  min-height: 2rem;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border-radius: var(--r-btn);
+  box-shadow: inset 0 0 0 1px var(--ink);
+  background: transparent;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .ds-btn-outlined:hover:not(:disabled) {
+    background: var(--ink);
+    color: var(--paper);
+  }
+}
+
+.insight-card .desk-chips li {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  letter-spacing: -0.02em;
+  border-radius: var(--r-md);
+}
+
+.insight-card .insight-flags li {
+  padding: 0.45rem 0 0.45rem 0.75rem;
+  border-bottom: 0;
+  box-shadow: inset 2px 0 0 var(--loss);
+  font-size: 0.875rem;
+}
+
+.insight-card .insight-flags li + li {
+  margin-top: 0.35rem;
+}
+
+.portfolio-desk {
+  gap: 1.1rem;
+  margin-bottom: 1.25rem;
+}
+
+.portfolio-desk .desk-kpis {
+  border-bottom: 1px solid var(--rule);
+}
+
+.portfolio-desk .desk-kpi:first-child {
+  padding-left: 0;
+}
+
+.desk-mix,
+.insight-grid {
+  display: grid;
+  gap: 0;
+  border-top: 1px solid var(--rule);
+}
+
+.desk-mix {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.insight-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.desk-mix > .insight-basket,
+.insight-grid > .insight-basket {
+  min-width: 0;
+  padding: 1rem 1.15rem 1.1rem;
+  border-right: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+}
+
+.desk-mix > .insight-basket:nth-child(3n + 1),
+.insight-grid > .insight-basket:nth-child(2n + 1) {
+  padding-left: 0;
+}
+
+.desk-mix > .insight-basket:nth-child(3n),
+.desk-mix > .insight-basket:last-child,
+.insight-grid > .insight-basket:nth-child(2n) {
+  border-right: 0;
+  padding-right: 0;
+}
+
+.desk-mix > .insight-basket + .insight-basket > h4,
+.insight-grid > .insight-basket + .insight-basket > h4 {
+  margin-top: 0;
+}
+
+.insight-table td {
+  font-size: 0.875rem;
+}
+
+.insight-table td.text-right,
+.insight-table th.text-right {
+  text-align: right;
+}
+
+.insight-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.holdings-more {
+  min-height: 2.15rem;
+  margin-top: 0.85rem;
+}
+
+.corr-cell {
+  display: inline-block;
+  min-width: 3.5rem;
+  font-family: var(--mono);
+  color: var(--ink);
+}
+
+@media (max-width: 900px) {
+  .basket-list .basket-league {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .basket-card:nth-child(3n + 1) {
+    padding-left: 1.15rem;
+  }
+
+  .basket-card:nth-child(3n) {
+    border-right: 1px solid var(--rule);
+    padding-right: 1.15rem;
+  }
+
+  .basket-card:nth-child(2n + 1) {
+    padding-left: 0;
+  }
+
+  .basket-card:nth-child(2n) {
+    border-right: 0;
+    padding-right: 0;
+  }
+}
+
+@media (max-width: 800px) {
+  .insights-nav {
+    top: 6rem;
+  }
+
+  .insights-switch {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .insights-switch-item {
+    flex: 0 0 auto;
+  }
+
+  .desk-mix,
+  .insight-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .desk-mix > .insight-basket,
+  .insight-grid > .insight-basket {
+    padding: 0.9rem 0 1rem;
+    border-right: 0;
+  }
+}
+
+@media (max-width: 600px) {
+  .basket-list .basket-league {
+    grid-template-columns: 1fr;
+  }
+
+  .basket-card,
+  .basket-card:nth-child(n) {
+    padding: 0.9rem 0 1rem;
+    border-right: 0;
+  }
+
+  .basket-list-header {
+    align-items: flex-start;
+  }
+}
+
+.portfolio-desk > .insight-empty {
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  font-size: 0.8125rem;
+  border: 1px dashed var(--rule);
+  border-radius: var(--r-md);
+}
+
+#insight-snapshot.insight-section {
+  gap: 0;
+}
+
+.insight-basket > div > h4 {
+  margin-top: 1.5rem;
+}
+
+.insights-nav button:hover:not(:disabled),
+.insights-nav button:active:not(:disabled) {
+  background: transparent;
+  transform: none;
+}

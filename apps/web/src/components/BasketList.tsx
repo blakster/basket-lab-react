@@ -95,23 +95,25 @@ export function BasketList() {
         <div className="basket-list-actions">
           <Button
             type="button"
-            variant="default"
+            variant="ghost"
             size="sm"
-            onClick={createNew}
+            className="basket-reset"
+            onClick={resetDefaults}
           >
-            + Create New Basket
+            Reset defaults
           </Button>
           <Button
             type="button"
             variant="outline"
             size="sm"
-            onClick={resetDefaults}
+            className="basket-create"
+            onClick={createNew}
           >
-            Reset Defaults
+            + New basket
           </Button>
         </div>
       </div>
-      <p className="lead-hint">
+      <p className="lead-hint basket-list-hint">
         Active baskets are the columns on Compare. Weights must sum to 100% to
         save.
       </p>
@@ -126,74 +128,72 @@ export function BasketList() {
             >
               <span className="league-tick" aria-hidden="true" />
               <div className="basket-card-head">
-                <div className="flex flex-1 items-center gap-2">
-                  <Checkbox
-                    id={inputId}
-                    checked={basket.active}
-                    onCheckedChange={() => toggleActive(basket.id)}
-                    className="rounded-sm border-foreground cursor-pointer"
-                  />
-                  <label
-                    htmlFor={inputId}
-                    className="flex flex-wrap items-baseline gap-1.5 cursor-pointer font-medium"
-                  >
-                    <span>{basket.name}</span>
-                    <span className="basket-fund-count">
-                      ({basket.funds.length} {basket.funds.length === 1 ? "fund" : "funds"}
-                      {basket.funds.length > 0 ? ` · ${totalWeight.toFixed(0)}%` : ""})
-                    </span>
-                  </label>
-                </div>
-                <div className="basket-actions">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => openInsights(basket.id)}
-                  >
-                    Insights
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => openEditor(basket.id)}
-                  >
-                    Edit
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => duplicate(basket)}
-                  >
-                    Duplicate
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    disabled={baskets.length <= 1}
-                    onClick={() => remove(basket.id)}
-                  >
-                    Delete
-                  </Button>
-                </div>
-              </div>
-              {basket.funds.length > 0 ? (
-                <AllocationStack
-                  segments={basket.funds.map((fund, i) => ({
-                    key: fund.schemeCode,
-                    label: fund.schemeName,
-                    weight: fund.weight,
-                    color: fundTint(basket.color, i, theme),
-                  }))}
+                <Checkbox
+                  id={inputId}
+                  checked={basket.active}
+                  onCheckedChange={() => toggleActive(basket.id)}
+                  className="basket-check cursor-pointer"
                 />
-              ) : (
-                <div className="basket-empty-hint">
-                  No funds added yet · Click <strong>Edit</strong> to add funds
-                </div>
-              )}
+                <label htmlFor={inputId} className="basket-card-label">
+                  <span className="basket-card-name">{basket.name}</span>
+                  <span className="basket-fund-count">
+                    {basket.funds.length} {basket.funds.length === 1 ? "fund" : "funds"}
+                    {basket.funds.length > 0 ? ` · ${totalWeight.toFixed(0)}%` : ""}
+                  </span>
+                </label>
+              </div>
+              <div className="basket-card-body">
+                {basket.funds.length > 0 ? (
+                  <AllocationStack
+                    segments={basket.funds.map((fund, i) => ({
+                      key: fund.schemeCode,
+                      label: fund.schemeName,
+                      weight: fund.weight,
+                      color: fundTint(basket.color, i, theme),
+                    }))}
+                  />
+                ) : (
+                  <p className="basket-empty-hint">
+                    No funds yet. Use <strong>Edit</strong> to add some.
+                  </p>
+                )}
+              </div>
+              <div className="basket-actions">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => openInsights(basket.id)}
+                >
+                  Insights
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => openEditor(basket.id)}
+                >
+                  Edit
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => duplicate(basket)}
+                >
+                  Duplicate
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="basket-delete"
+                  disabled={baskets.length <= 1}
+                  onClick={() => remove(basket.id)}
+                >
+                  Delete
+                </Button>
+              </div>
             </li>
           );
         })}

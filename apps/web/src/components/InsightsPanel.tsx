@@ -264,7 +264,7 @@ function useInsightsDesk() {
     [active],
   );
 
-  const { data, isError, isSuccess, refetch } = useQuery({
+  const { data, isError, isSuccess, isLoading, refetch } = useQuery({
     queryKey: ["insights", basketSignature],
     queryFn: () => postInsights(active),
     retry: 1,
@@ -413,6 +413,7 @@ function useInsightsDesk() {
     overlap: data?.overlap ?? null,
     overlapHoldings: data?.overlapHoldings ?? null,
     isError,
+    loading: isLoading,
     riskRows: focusedRiskRows,
     corrRows: focusedCorrRows,
     showRisk,
@@ -443,6 +444,7 @@ function InsightsDesk({
   overlap,
   overlapHoldings,
   isError,
+  loading,
   riskRows,
   corrRows,
   showRisk,
@@ -580,32 +582,41 @@ function InsightsDesk({
             ))}
           </div>
         )}
-        {isError && <p className="insight-empty">Insights unavailable</p>}
-        {showDesk && (
-          <nav className="insights-nav" aria-label="On this page">
-            {sections.map((section, i) => (
-              <span key={section.id} className="insights-nav-slot">
-                {i > 0 ? (
-                  <span className="insights-nav-dot" aria-hidden="true">
-                    ·
-                  </span>
-                ) : null}
-                <button
-                  type="button"
-                  className="insights-nav-item"
-                  aria-current={activeSection === section.id ? "true" : undefined}
-                  onClick={() => {
-                    setActiveSection(section.id);
-                    scrollToSection(section.id);
-                  }}
-                >
-                  {section.label}
-                </button>
-              </span>
-            ))}
-          </nav>
+        {isError && (
+          <p className="insight-empty insight-alert" role="status">
+            Insights unavailable
+          </p>
+        )}
+        {loading && !data && !isError && (
+          <p className="insight-empty insight-loading" role="status">
+            Loading filings…
+          </p>
         )}
       </div>
+      {showDesk && (
+        <nav className="insights-nav" aria-label="On this page">
+          {sections.map((section, i) => (
+            <span key={section.id} className="insights-nav-slot">
+              {i > 0 ? (
+                <span className="insights-nav-dot" aria-hidden="true">
+                  ·
+                </span>
+              ) : null}
+              <button
+                type="button"
+                className="insights-nav-item"
+                aria-current={activeSection === section.id ? "true" : undefined}
+                onClick={() => {
+                  setActiveSection(section.id);
+                  scrollToSection(section.id);
+                }}
+              >
+                {section.label}
+              </button>
+            </span>
+          ))}
+        </nav>
+      )}
       {showDesk && (
         <>
           <div className="insights-sections" ref={bodyRef}>
@@ -655,50 +666,52 @@ function InsightsDesk({
                   ))}
                 </InsightSection>
                 <InsightSection id="insight-mix" title="Mix">
-                  <MixBlock
-                    title="Sector"
-                    series={mixSeries(
-                      data.baskets,
-                      baskets,
-                      (ib) => ib.sector,
-                      sectorCats,
-                    )}
-                    categories={sectorCats.map(formatLabel)}
-                    rawCategories={sectorCats}
-                  />
-                  <MixBlock
-                    title="Asset"
-                    series={mixSeries(
-                      data.baskets,
-                      baskets,
-                      (ib) => ib.asset,
-                      assetCats,
-                    )}
-                    categories={assetCats.map(formatLabel)}
-                    rawCategories={assetCats}
-                  />
-                  <MixBlock
-                    title="Credit"
-                    series={mixSeries(
-                      data.baskets,
-                      baskets,
-                      (ib) => ib.credit,
-                      creditCats,
-                    )}
-                    categories={creditCats}
-                    rawCategories={creditCats}
-                    empty={
-                      creditCats.length === 0
-                        ? (data.baskets.find((b) => b.creditNote)?.creditNote ??
-                          "N/A — no debt holdings")
-                        : null
-                    }
-                  />
-                  <EquityMixBlock
-                    dataBaskets={data.baskets}
-                    labBaskets={baskets}
-                    categories={equityCats}
-                  />
+                  <div className="insight-grid">
+                    <MixBlock
+                      title="Sector"
+                      series={mixSeries(
+                        data.baskets,
+                        baskets,
+                        (ib) => ib.sector,
+                        sectorCats,
+                      )}
+                      categories={sectorCats.map(formatLabel)}
+                      rawCategories={sectorCats}
+                    />
+                    <MixBlock
+                      title="Asset"
+                      series={mixSeries(
+                        data.baskets,
+                        baskets,
+                        (ib) => ib.asset,
+                        assetCats,
+                      )}
+                      categories={assetCats.map(formatLabel)}
+                      rawCategories={assetCats}
+                    />
+                    <MixBlock
+                      title="Credit"
+                      series={mixSeries(
+                        data.baskets,
+                        baskets,
+                        (ib) => ib.credit,
+                        creditCats,
+                      )}
+                      categories={creditCats}
+                      rawCategories={creditCats}
+                      empty={
+                        creditCats.length === 0
+                          ? (data.baskets.find((b) => b.creditNote)?.creditNote ??
+                            "N/A — no debt holdings")
+                          : null
+                      }
+                    />
+                    <EquityMixBlock
+                      dataBaskets={data.baskets}
+                      labBaskets={baskets}
+                      categories={equityCats}
+                    />
+                  </div>
                 </InsightSection>
               </>
             )}
