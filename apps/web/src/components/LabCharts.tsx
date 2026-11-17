@@ -2,11 +2,10 @@ import { useMemo } from "react";
 import type { YearlyRank } from "../lib/ranking";
 import type { BacktestResult, Basket } from "../types";
 import { type MixSeries } from "./chartFormat";
+import { DitherBarList } from "./dither-kit-local/bar-list";
 import {
   DrawdownLineChart,
   GrowthPathChart,
-  MixStripChart,
-  RiskRadarChart,
 } from "./LabPlots";
 
 export type { MixSeries };
@@ -217,27 +216,30 @@ export function YearlyRankingChart({ ranking, baskets }: RankingChartProps) {
 type MixCompareProps = {
   series: MixSeries[];
   categories: string[];
-  unit?: "pct" | "raw";
 };
 
 export function MixCompareChart({ series, categories }: MixCompareProps) {
-  return <MixStripChart series={series} categories={categories} />;
-}
-
-type MetricPoint = {
-  key: string;
-  label: string;
-  color: string;
-  values: Record<string, number | null>;
-};
-
-type MetricCompareProps = {
-  metrics: { key: string; label: string }[];
-  series: MetricPoint[];
-};
-
-export function MetricCompareChart({ metrics, series }: MetricCompareProps) {
-  return <RiskRadarChart metrics={metrics} series={series} />;
+  if (!series.length || !categories.length) {
+    return <p className="chart-empty">No mix to plot.</p>;
+  }
+  return (
+    <div className="flex flex-col gap-5">
+      {series.map((s) => {
+        const rows = categories
+          .map((cat) => ({ cat, w: s.values[cat] ?? 0 }))
+          .filter((row) => row.w >= 0.5)
+          .sort((a, b) => b.w - a.w)
+          .map(({ cat, w }) => ({ key: cat, label: cat, value: w, text: `${w.toFixed(0)}%` }));
+        if (!rows.length) return null;
+        return (
+          <div key={s.key}>
+            {series.length > 1 ? <p className="mix-strip-name">{s.label}</p> : null}
+            <DitherBarList rows={rows} max={100} label={`${s.label} mix`} />
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 type StackSegment = {

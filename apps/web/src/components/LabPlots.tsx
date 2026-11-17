@@ -1,18 +1,9 @@
 import { useMemo, type ReactNode } from "react";
 import {
   Area,
-  Bar,
-  BarChart,
   CartesianGrid,
-  Cell,
   ComposedChart,
-  Legend,
   Line,
-  PolarAngleAxis,
-  PolarGrid,
-  PolarRadiusAxis,
-  Radar,
-  RadarChart,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -24,23 +15,11 @@ import {
   formatFullDate,
   formatPctValue,
   formatTick,
-  type MixSeries,
 } from "./chartFormat";
 
 const INK = "var(--ink)";
 const MUTED = "var(--ink-soft)";
 const GRID = "color-mix(in srgb, var(--ink) 12%, transparent)";
-
-const PART_COLORS = [
-  "#121212",
-  "#6b6b6b",
-  "#5e5e5e",
-  "#b33a2b",
-  "#8a8a8a",
-  "#3a3a3a",
-  "#f5c400",
-  "#9a9a9a",
-];
 
 function tickStyle(size = 12) {
   return { fill: MUTED, fontSize: size, fontFamily: "inherit" };
@@ -317,225 +296,6 @@ export function DrawdownLineChart({
             />
           ))}
         </ComposedChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
-export function MixStripChart({
-  series,
-  categories,
-}: {
-  series: MixSeries[];
-  categories: string[];
-}) {
-  if (!series.length || !categories.length) {
-    return <p className="chart-empty">No mix to plot.</p>;
-  }
-  return (
-    <div className="mix-strips">
-      {series.map((s) => {
-        const rows = categories
-          .map((cat) => ({ cat, w: s.values[cat] ?? 0 }))
-          .filter((row) => row.w >= 0.5)
-          .sort((a, b) => b.w - a.w);
-        if (!rows.length) return null;
-        return (
-          <div key={s.key} className="mix-strip">
-            {series.length > 1 ? (
-              <p className="mix-strip-name">{s.label}</p>
-            ) : null}
-            <ul className="mix-meters" aria-label={`${s.label} mix`}>
-              {rows.map((row) => (
-                <li key={row.cat}>
-                  <span className="mix-meter-row">
-                    <span>{row.cat}</span>
-                    <span className="alloc-pct">{row.w.toFixed(0)}%</span>
-                  </span>
-                  <span className="alloc-track">
-                    <span
-                      style={{ width: `${Math.min(100, Math.max(0, row.w))}%` }}
-                    />
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-export function MixStackChart({
-  series,
-  categories,
-}: {
-  series: MixSeries[];
-  categories: string[];
-}) {
-  const data = useMemo(
-    () =>
-      series.map((s) => {
-        const row: Record<string, string | number> = { name: s.label };
-        for (const cat of categories) row[cat] = s.values[cat] ?? 0;
-        return row;
-      }),
-    [series, categories],
-  );
-
-  if (!series.length || !categories.length) return null;
-
-  const legendRows = Math.max(1, Math.ceil(categories.length / 3));
-  const height = Math.min(360, Math.max(168, series.length * 52 + 48 + legendRows * 22));
-
-  return (
-    <div className="lab-plot lab-plot--mix" style={{ height }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart
-          data={data}
-          layout="vertical"
-          margin={{ top: 8, right: 12, bottom: 10 + legendRows * 18, left: 8 }}
-          barCategoryGap="28%"
-        >
-          <CartesianGrid horizontal={false} stroke={GRID} strokeDasharray="3 3" />
-          <XAxis
-            type="number"
-            tick={tickStyle()}
-            tickLine={false}
-            axisLine={false}
-            tickFormatter={(v) => `${v}%`}
-          />
-          <YAxis
-            type="category"
-            dataKey="name"
-            width={108}
-            tick={tickStyle()}
-            tickLine={false}
-            axisLine={false}
-          />
-          <Tooltip
-            content={<FrostTooltip formatValue={formatPctValue} hideZero />}
-            cursor={{ fill: "color-mix(in srgb, var(--ink) 6%, transparent)" }}
-            offset={16}
-            allowEscapeViewBox={{ x: true, y: true }}
-            wrapperStyle={{ zIndex: 8, pointerEvents: "none" }}
-            isAnimationActive={false}
-          />
-          <Legend
-            verticalAlign="bottom"
-            wrapperStyle={{ fontSize: 12, color: INK, paddingTop: 4 }}
-          />
-          {categories.map((cat, i) => (
-            <Bar
-              key={cat}
-              dataKey={cat}
-              name={cat}
-              stackId="mix"
-              fill={PART_COLORS[i % PART_COLORS.length]}
-              maxBarSize={28}
-            />
-          ))}
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
-export function RiskRadarChart({
-  metrics,
-  series,
-}: {
-  metrics: { key: string; label: string }[];
-  series: Array<{
-    key: string;
-    label: string;
-    color: string;
-    values: Record<string, number | null>;
-  }>;
-}) {
-  const data = useMemo(
-    () =>
-      metrics.map((m) => {
-        const row: Record<string, string | number> = { metric: m.label };
-        for (const s of series) {
-          const n = s.values[m.key];
-          if (n != null) row[s.key] = Number(n.toFixed(2));
-        }
-        return row;
-      }),
-    [metrics, series],
-  );
-
-  if (!series.length || !metrics.length) return null;
-  if (data.every((row) => series.every((s) => row[s.key] == null))) return null;
-
-  return (
-    <div className="lab-plot lab-plot--radar">
-      <ResponsiveContainer width="100%" height="100%">
-        <RadarChart data={data} cx="50%" cy="50%" outerRadius="70%">
-          <PolarGrid stroke={GRID} />
-          <PolarAngleAxis dataKey="metric" tick={tickStyle()} />
-          <PolarRadiusAxis tick={false} axisLine={false} />
-          <Tooltip content={<FrostTooltip />} />
-          <Legend verticalAlign="bottom" wrapperStyle={{ fontSize: 12, color: INK }} />
-          {series.map((s) => (
-            <Radar
-              key={s.key}
-              name={s.label}
-              dataKey={s.key}
-              stroke={s.color}
-              fill={s.color}
-              fillOpacity={0.12}
-              strokeWidth={2}
-            />
-          ))}
-        </RadarChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
-export function HoldingsBarChart({
-  items,
-}: {
-  items: Array<{ name: string; weight: number; color: string }>;
-}) {
-  if (!items.length) return null;
-  const data = items.map((item) => ({ name: item.name, weight: item.weight, fill: item.color }));
-  const height = Math.min(360, Math.max(140, items.length * 28 + 48));
-
-  return (
-    <div className="lab-plot" style={{ height }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart
-          data={data}
-          layout="vertical"
-          margin={{ top: 4, right: 12, bottom: 4, left: 8 }}
-        >
-          <CartesianGrid horizontal={false} stroke={GRID} strokeDasharray="3 3" />
-          <XAxis
-            type="number"
-            tick={tickStyle()}
-            tickLine={false}
-            axisLine={false}
-            tickFormatter={(v) => `${v}%`}
-          />
-          <YAxis
-            type="category"
-            dataKey="name"
-            width={128}
-            tick={tickStyle(11)}
-            tickLine={false}
-            axisLine={false}
-          />
-          <Tooltip content={<FrostTooltip formatValue={formatPctValue} />} />
-          <Bar dataKey="weight" name="Weight" maxBarSize={16} radius={[0, 4, 4, 0]}>
-            {data.map((row) => (
-              <Cell key={row.name} fill={row.fill} />
-            ))}
-          </Bar>
-        </BarChart>
       </ResponsiveContainer>
     </div>
   );
