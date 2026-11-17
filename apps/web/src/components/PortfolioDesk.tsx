@@ -7,6 +7,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { DitherBarList } from "./dither-kit-local/bar-list";
 import { formatInr } from "../lib/format";
 import type {
   Concentration,
@@ -212,26 +213,16 @@ export function OverlapBlock({
   }
   return (
     <div className="insight-basket">
-      <div className="table-scroll">
-        <Table className="insight-table">
-          <TableHeader>
-            <TableRow>
-              <TableHead>Basket</TableHead>
-              <TableHead className="text-right">Overlap</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((row) => (
-              <TableRow key={row.key}>
-                <TableCell data-label="Basket">{row.otherName}</TableCell>
-                <TableCell className="text-right" data-label="Overlap">
-                  {formatPct(row.pct)}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+      <DitherBarList
+        label="Overlap by basket"
+        max={100}
+        rows={rows.map((row) => ({
+          key: row.key,
+          label: row.otherName,
+          value: row.pct,
+          text: formatPct(row.pct),
+        }))}
+      />
       {rows.map((row) =>
         row.names.length ? (
           <div key={`${row.key}-names`}>

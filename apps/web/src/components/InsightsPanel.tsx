@@ -52,6 +52,7 @@ import {
   type MixSeries,
 } from "./LabCharts";
 
+import { DitherBarList } from "./dither-kit-local/bar-list";
 import { OverlapBlock, PortfolioDesk } from "./PortfolioDesk";
 
 const EQUITY_ORDER = ["large", "mid", "small", "unclassified"] as const;
@@ -1120,26 +1121,16 @@ function HoldingsBlock({
         </p>
       ))}
       {ib.holdings.length > 0 && (
-        <div className="table-scroll">
-          <Table className="insight-table">
-            <TableHeader>
-              <TableRow>
-                <TableHead>Holding</TableHead>
-                <TableHead className="text-right">Weight</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((h, i) => (
-                <TableRow key={h.isin || `${h.name}-${h.weight}-${i}`}>
-                  <TableCell>{h.name}</TableCell>
-                  <TableCell className="text-right">
-                    {formatPct(h.weight)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        <DitherBarList
+          label={`${basket?.name ?? ib.id} holdings`}
+          max={Math.max(...ib.holdings.map((h) => h.weight))}
+          rows={rows.map((h, i) => ({
+            key: h.isin || `${h.name}-${h.weight}-${i}`,
+            label: h.name,
+            value: h.weight,
+            text: formatPct(h.weight),
+          }))}
+        />
       )}
       {extra > 0 && (
         <button

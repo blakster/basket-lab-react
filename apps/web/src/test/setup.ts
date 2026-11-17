@@ -53,7 +53,7 @@ if (!window.matchMedia) {
   });
 }
 
-// Dither Kit charts measure their box with ResizeObserver, which jsdom lacks.
+// The dither bar tracks measure their width with ResizeObserver, which jsdom lacks.
 if (!("ResizeObserver" in globalThis)) {
   globalThis.ResizeObserver = class {
     observe() {}
@@ -62,5 +62,5 @@ if (!("ResizeObserver" in globalThis)) {
   };
 }
 
-// jsdom has no canvas; the dither painters bail out on a null context.
+// jsdom has no canvas; the dither bar tracks skip painting on a null context.
 HTMLCanvasElement.prototype.getContext = (() => null) as typeof HTMLCanvasElement.prototype.getContext;
