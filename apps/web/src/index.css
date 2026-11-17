@@ -168,8 +168,8 @@ body {
 }
 
 ::selection {
-  background: color-mix(in srgb, var(--primary) 22%, transparent);
-  color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
 }
 
 :focus-visible {
@@ -521,7 +521,7 @@ button[data-static="true"]:active:not(:disabled) {
 
 .field-amount input:hover,
 .field-amount input:focus {
-  border-bottom-color: var(--primary);
+  border-bottom-color: var(--ink);
 }
 
 .text-tabs button {
@@ -1243,8 +1243,8 @@ button[data-static="true"]:active:not(:disabled) {
 }
 
 .rank-year .is-first .place {
-  background: var(--plate);
-  color: var(--plate-ink);
+  background: var(--ink);
+  color: var(--paper);
   text-align: center;
 }
 
