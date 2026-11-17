@@ -38,7 +38,7 @@ export function ShareBar() {
       </p>
       {shareHydrateError && (
         <p className="share-error" role="alert">
-          Could not load shared link. Showing the default setup instead.
+          Could not load the shared link; the default setup was loaded.
         </p>
       )}
       <div className="field share-bar-field">
