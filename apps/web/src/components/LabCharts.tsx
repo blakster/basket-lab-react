@@ -133,16 +133,23 @@ function lastOnTop(keys: ChartKey[], id?: string): ChartKey[] {
 function DitherPlot({
   config,
   height,
+  ending,
   children,
 }: {
   config: ChartConfig;
   height: string;
+  ending?: Record<string, number>;
   children: ReactNode;
 }) {
   return (
     <div className="flex flex-col gap-2">
       <div className={height}>{children}</div>
-      <BlockLegend config={config} className="text-[11px]" />
+      <BlockLegend
+        config={config}
+        values={ending}
+        valueFormatter={formatCompactInr}
+        className="text-[11px]"
+      />
     </div>
   );
 }
@@ -162,6 +169,10 @@ export function GrowthChart({ results, baskets }: LabChartsProps) {
     return { data: rows, floor: base };
   }, [dates, keys]);
   const money = (v: number) => formatCompactInr(v + floor);
+  const ending = useMemo(() => {
+    const last = data[data.length - 1];
+    return Object.fromEntries(keys.map(({ key }) => [key, Number(last?.[key] ?? 0) + floor]));
+  }, [data, keys, floor]);
   const config = useMemo(
     () => seriesConfig(lastOnTop(keys, leaderId(keys)), paletteFor(keys)),
     [keys],
@@ -172,7 +183,7 @@ export function GrowthChart({ results, baskets }: LabChartsProps) {
   }
 
   return (
-    <DitherPlot config={config} height="h-[260px]">
+    <DitherPlot config={config} height="h-[260px]" ending={ending}>
       <LineChart data={data} config={config} margins={{ left: 48 }}>
         <XAxis dataKey="date" maxTicks={6} tickFormatter={(v) => formatTick(String(v))} />
         <YAxis tickFormatter={money} />
