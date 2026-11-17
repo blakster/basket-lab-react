@@ -38,7 +38,7 @@ const PART_COLORS = [
   "#b33a2b",
   "#8a8a8a",
   "#3a3a3a",
-  "#f5c400",
+  "#777777",
   "#9a9a9a",
 ];
 
@@ -163,7 +163,7 @@ export function GrowthPathChart({
           y1={yAt(startAmount)}
           x2={L + innerW}
           y2={yAt(startAmount)}
-          stroke="var(--plate)"
+          stroke="var(--rule)"
           strokeWidth="1.25"
         />
         {ticks.map((t) => (
@@ -209,7 +209,7 @@ export function GrowthPathChart({
               cx={xAt(lastIdx)}
               cy={yAt(last)}
               r={s.lead ? 4 : 2.5}
-              fill={s.lead ? "var(--plate)" : s.color}
+              fill={s.lead ? "var(--ink)" : s.color}
               stroke="var(--paper)"
               strokeWidth="1.25"
             />
@@ -234,7 +234,7 @@ export function GrowthPathChart({
           const last = data[lastIdx]?.[s.key];
           return (
             <li key={s.key} className={s.lead ? "is-lead" : s.dashed ? "is-ref" : undefined}>
-              <i style={{ background: s.lead ? "var(--plate)" : s.color }} />
+              <i style={{ background: s.lead ? "var(--ink)" : s.color }} />
               {s.label}
               {typeof last === "number" ? ` ${formatCompactInr(last)}` : ""}
             </li>
