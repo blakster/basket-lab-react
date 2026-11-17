@@ -101,7 +101,7 @@ export function CashflowCompare() {
           label: "Cashflows",
           note: "",
           result: null,
-          empty: "No NAV available for this basket. Retry NAV or choose another basket.",
+          empty: "No NAV for this basket yet. Run Compare first.",
         },
       ];
     }
@@ -194,7 +194,7 @@ export function CashflowCompare() {
         </div>
       )}
       <div className="table-scroll">
-        <Table className="backtest-table cashflow-table">
+        <Table className="backtest-table">
           <TableHeader>
             <TableRow>
               <TableHead>Plan</TableHead>
@@ -229,11 +229,10 @@ export function CashflowCompare() {
                     {row.label}
                     <span className="basket-sub">{row.note}</span>
                   </TableCell>
-                  <TableCell className="text-right" data-label="Invested">
+                  <TableCell className="text-right">
                     {formatInr(r.stats.initial)}
                   </TableCell>
                   <TableCell
-                    data-label="Current"
                     className={`text-right ${r.stats.final >= r.stats.initial ? "num-gain" : "num-loss"}`}
                   >
                     {formatInr(r.stats.final)}
@@ -244,7 +243,6 @@ export function CashflowCompare() {
                     </span>
                   </TableCell>
                   <TableCell
-                    data-label="Rate"
                     className={`text-right ${r.stats.cagr >= 0 ? "num-gain" : "num-loss"}`}
                   >
                     {formatPct(r.stats.cagr)}
@@ -252,7 +250,7 @@ export function CashflowCompare() {
                       {sipLike ? "XIRR" : "CAGR"}
                     </span>
                   </TableCell>
-                  <TableCell className="num-loss text-right" data-label="Max DD">
+                  <TableCell className="num-loss text-right">
                     {formatPct(r.stats.mdd)}
                   </TableCell>
                 </TableRow>

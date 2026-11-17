@@ -6,7 +6,6 @@ import App from "./App";
 import { LabProvider } from "./state/LabContext";
 import { ThemeProvider } from "./state/ThemeContext";
 import "./index.css";
-import "./lab-surfaces.css";
 
 const queryClient = new QueryClient();
 
