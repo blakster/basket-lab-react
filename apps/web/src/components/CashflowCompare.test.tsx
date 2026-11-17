@@ -64,12 +64,12 @@ describe("CashflowCompare", () => {
     labState.analyzing = false;
   });
 
-  it("asks to run Compare when NAV is missing", () => {
+  it("explains recovery when NAV is missing", () => {
     labState.baskets = [basket];
     labState.navByCode = {};
     render(<CashflowCompare />);
     expect(
-      screen.getByText("No NAV for this basket yet. Run Compare first."),
+      screen.getByText("No NAV available for this basket. Retry NAV or choose another basket."),
     ).toBeInTheDocument();
   });
 

@@ -1,24 +1,30 @@
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { searchFunds } from "../lib/api/search";
 import { useLab } from "../state/LabContext";
 import type { SearchHit } from "../types";
 
 type FundSearchProps = {
   onSelect: (hit: SearchHit) => void;
+  selectedCodes?: string[];
 };
 
-export function FundSearch({ onSelect }: FundSearchProps) {
+export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
   const { reportStatus } = useLab();
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
-  const [open, setOpen] = useState(false);
+  const [state, setState] = useState<"idle" | "loading" | "ready" | "error">(
+    "idle",
+  );
+  const [attempt, setAttempt] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const hintId = useId();
 
   useEffect(() => {
     const controller = new AbortController();
     if (query.trim().length < 2) {
-      setHits([]);
-      setOpen(false);
+      reportStatus("search", { kind: "ready" });
       return () => controller.abort();
     }
 
@@ -29,14 +35,14 @@ export function FundSearch({ onSelect }: FundSearchProps) {
           if (controller.signal.aborted) return;
           reportStatus("search", { kind: "ready" });
           setHits(rows);
-          setOpen(true);
+          setState("ready");
         })
         .catch((err: unknown) => {
           if (controller.signal.aborted) return;
           if (err instanceof DOMException && err.name === "AbortError") return;
           reportStatus("search", { kind: "search-down" });
           setHits([]);
-          setOpen(false);
+          setState("error");
         });
     }, 200);
 
@@ -44,7 +50,7 @@ export function FundSearch({ onSelect }: FundSearchProps) {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [query, reportStatus]);
+  }, [query, attempt, reportStatus]);
 
   useEffect(() => {
     return () => {
@@ -57,37 +63,78 @@ export function FundSearch({ onSelect }: FundSearchProps) {
       <label className="field">
         <span>Search funds</span>
         <Input
+          ref={inputRef}
           type="search"
           value={query}
-          placeholder="Type a fund or ETF name"
-          className="rounded-md"
-          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Fund or ETF name"
+          aria-describedby={hintId}
+          autoComplete="off"
+          onChange={(event) => {
+            const next = event.target.value;
+            setQuery(next);
+            setHits([]);
+            setState(next.trim().length >= 2 ? "loading" : "idle");
+          }}
         />
       </label>
-      {open && query.trim().length >= 2 && (
-        <ul className="fund-search-list" role="listbox">
-          {hits.length === 0 ? (
-            <li className="fund-search-empty">No results</li>
-          ) : (
-            hits.map((hit) => (
+      <p id={hintId} className="fund-search-hint">
+        Search by name using at least 2 characters.
+      </p>
+      <div className="fund-search-feedback" role="status">
+        {state === "loading" && <p>Searching funds…</p>}
+        {state === "ready" && hits.length === 0 && (
+          <p>No funds found. Try another name.</p>
+        )}
+        {state === "ready" && hits.length > 0 && (
+          <p>
+            {hits.length} {hits.length === 1 ? "fund" : "funds"} found
+          </p>
+        )}
+        {state === "error" && (
+          <div className="fund-search-error">
+            <p>Search unavailable. Your basket is unchanged.</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setState("loading");
+                setAttempt((value) => value + 1);
+              }}
+            >
+              Retry search
+            </Button>
+          </div>
+        )}
+      </div>
+      {state === "ready" && hits.length > 0 && (
+        <ul className="fund-search-list" aria-label="Fund search results">
+          {hits.map((hit) => {
+            const added = selectedCodes.includes(hit.schemeCode);
+            return (
               <li key={hit.schemeCode}>
                 <button
                   type="button"
-                  role="option"
-                  aria-selected="false"
+                  disabled={added}
                   onClick={() => {
                     onSelect(hit);
                     setQuery("");
                     setHits([]);
-                    setOpen(false);
+                    setState("idle");
+                    inputRef.current?.focus();
                   }}
                 >
-                  <span className="fund-search-name">{hit.schemeName}</span>
-                  <span className="fund-search-code">{hit.schemeCode}</span>
+                  <span className="fund-search-name">
+                    {hit.schemeName}
+                    <span className="fund-search-code">{hit.schemeCode}</span>
+                  </span>
+                  <span className="fund-search-action">
+                    {added ? "Added" : "+ Add"}
+                  </span>
                 </button>
               </li>
-            ))
-          )}
+            );
+          })}
         </ul>
       )}
     </div>

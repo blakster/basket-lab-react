@@ -1,4 +1,5 @@
 import { act, render } from "@testing-library/react";
+import { StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LabProvider, useLab } from "./LabContext";
 import type { Basket } from "../types";
@@ -60,7 +61,7 @@ describe("LabContext share hydrate", () => {
     clearShareQuery();
   });
 
-  it("corrupt ?s= shows defaults without wiping basket-lab-v1", () => {
+  it("corrupt ?s= preserves the warning and saved baskets under StrictMode", () => {
     const saved = {
       settings: {
         mode: "lumpsum" as const,
@@ -79,9 +80,11 @@ describe("LabContext share hydrate", () => {
 
     const api: { current: ReturnType<typeof useLab> | null } = { current: null };
     render(
-      <LabProvider>
-        <Consumer api={api} />
-      </LabProvider>,
+      <StrictMode>
+        <LabProvider>
+          <Consumer api={api} />
+        </LabProvider>
+      </StrictMode>,
     );
 
     expect(api.current!.shareHydrateError).toBe(true);
