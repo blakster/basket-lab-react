@@ -351,7 +351,7 @@ export function BacktestView() {
           <figcaption>
             How far from a peak
             <span className="chart-hint">
-              Rust fill is the worst trough in this run. 0% is a new high.
+              The red line is the worst trough in this run. 0% is a new high.
             </span>
           </figcaption>
           <DrawdownChart results={results} baskets={baskets} />

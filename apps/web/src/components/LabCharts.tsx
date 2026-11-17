@@ -1,16 +1,25 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
+import { formatCompactInr } from "../lib/format";
 import type { YearlyRank } from "../lib/ranking";
 import type { BacktestResult, Basket } from "../types";
-import { type MixSeries } from "./chartFormat";
-import {
-  DrawdownLineChart,
-  GrowthPathChart,
-  MixStripChart,
-  RiskRadarChart,
-} from "./LabPlots";
+import { formatFullDate, formatPctValue, formatTick, type MixSeries } from "./chartFormat";
+import { Line } from "./dither-kit/area";
+import { LineChart } from "./dither-kit/area-chart";
+import { Bar } from "./dither-kit/bar";
+import { BarChart } from "./dither-kit/bar-chart";
+import { BlockLegend } from "./dither-kit/block-legend";
+import type { ChartConfig } from "./dither-kit/chart-context";
+import type { DitherColor } from "./dither-kit/palette";
+import { Tooltip } from "./dither-kit/tooltip";
+import { XAxis } from "./dither-kit/x-axis";
+import { YAxis } from "./dither-kit/y-axis";
 
 export type { MixSeries };
 
+const BEES_ID = "__nifty-bees";
+// Dither Kit only takes named palette colours. Ink-on-white: the leader is blue,
+// the BeES reference is grey, everyone else gets the next quiet hue.
+const OTHER_COLORS: DitherColor[] = ["purple", "green", "orange", "pink"];
 const MAX_POINTS = 120;
 
 function seriesKey(id: string): string {
@@ -53,102 +62,168 @@ type LabChartsProps = {
   baskets: Basket[];
 };
 
-export function GrowthChart({ results, baskets }: LabChartsProps) {
-  const { keys, dates } = useMemo(
-    () => chartable(results, baskets),
-    [results, baskets],
+type Row = Record<string, string | number>;
+type ChartKey = ReturnType<typeof chartable>["keys"][number];
+
+/** One colour per basket, shared by the growth and drawdown charts. */
+function seriesConfig(
+  keys: ChartKey[],
+  colorOf: (id: string) => DitherColor,
+): ChartConfig {
+  return Object.fromEntries(
+    keys.map(({ key, basket, result }) => [
+      key,
+      { label: basket?.name ?? key, color: colorOf(result.basketId) },
+    ]),
   );
+}
 
-  const data = useMemo(() => {
-    return dates.map((date) => {
-      const row: Record<string, string | number | null> = { date };
-      for (const { key, result } of keys) {
-        const point = result.series.find((p) => p.x === date);
-        row[key] = point ? Math.round(point.y) : null;
-      }
-      return row;
+function leaderId(keys: ChartKey[]): string | undefined {
+  let best: { id: string; cagr: number } | null = null;
+  for (const { result } of keys) {
+    if (result.basketId === BEES_ID) continue;
+    if (!best || result.stats.cagr > best.cagr) {
+      best = { id: result.basketId, cagr: result.stats.cagr };
+    }
+  }
+  return best?.id;
+}
+
+function paletteFor(keys: ChartKey[]) {
+  const lead = leaderId(keys);
+  const others = keys.filter(
+    (k) => k.result.basketId !== lead && k.result.basketId !== BEES_ID,
+  );
+  return (id: string): DitherColor => {
+    if (id === lead) return "blue";
+    if (id === BEES_ID) return "grey";
+    const i = others.findIndex((k) => k.result.basketId === id);
+    return OTHER_COLORS[i % OTHER_COLORS.length]!;
+  };
+}
+
+/**
+ * Dither Kit reads a missing value as 0, so a basket that starts later would
+ * dive to the floor. Carry the nearest known value across gaps instead.
+ */
+function seriesRows(
+  dates: string[],
+  keys: ChartKey[],
+  pick: (p: BacktestResult["series"][number]) => number,
+): Row[] {
+  const rows: Row[] = dates.map((date) => ({ date, label: formatFullDate(date) }));
+  for (const { key, result } of keys) {
+    const byDate = new Map(result.series.map((p) => [p.x, pick(p)]));
+    let last: number | undefined;
+    const vals = dates.map((d) => (last = byDate.get(d) ?? last));
+    const first = vals.find((v) => v !== undefined) ?? 0;
+    vals.forEach((v, i) => {
+      rows[i]![key] = v ?? first;
     });
+  }
+  return rows;
+}
+
+/** Config order is paint order in Dither Kit, so the series to read goes last. */
+function lastOnTop(keys: ChartKey[], id?: string): ChartKey[] {
+  const top = keys.filter((k) => k.result.basketId === id);
+  return [...keys.filter((k) => k.result.basketId !== id), ...top];
+}
+
+function DitherPlot({
+  config,
+  height,
+  children,
+}: {
+  config: ChartConfig;
+  height: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className={height}>{children}</div>
+      <BlockLegend config={config} className="text-[11px]" />
+    </div>
+  );
+}
+
+export function GrowthChart({ results, baskets }: LabChartsProps) {
+  const { keys, dates } = useMemo(() => chartable(results, baskets), [results, baskets]);
+  // Dither Kit always draws from 0. Lift the floor to just under the lowest
+  // value so the paths use the full height, and add it back in the labels.
+  const { data, floor } = useMemo(() => {
+    const rows = seriesRows(dates, keys, (p) => Math.round(p.y));
+    const values = rows.flatMap((r) => keys.map(({ key }) => Number(r[key])));
+    const lo = Math.min(...values);
+    const hi = Math.max(...values);
+    const step = 10 ** Math.floor(Math.log10(Math.max(hi - lo, 1)));
+    const base = Math.max(0, Math.floor((lo - (hi - lo) * 0.1) / step) * step);
+    for (const r of rows) for (const { key } of keys) r[key] = Number(r[key]) - base;
+    return { data: rows, floor: base };
   }, [dates, keys]);
-
-  const startAmount = useMemo(() => {
-    for (const { result } of keys) {
-      const first = result.series[0]?.y;
-      if (typeof first === "number" && Number.isFinite(first)) return first;
-    }
-    return 100000;
-  }, [keys]);
-
-  const leadId = useMemo(() => {
-    let best: { id: string; cagr: number } | null = null;
-    for (const { result } of keys) {
-      if (result.error === "no-nav") continue;
-      if (!best || result.stats.cagr > best.cagr) {
-        best = { id: result.basketId, cagr: result.stats.cagr };
-      }
-    }
-    return best?.id;
-  }, [keys]);
+  const money = (v: number) => formatCompactInr(v + floor);
+  const config = useMemo(
+    () => seriesConfig(lastOnTop(keys, leaderId(keys)), paletteFor(keys)),
+    [keys],
+  );
 
   if (!keys.length || !data.length) {
     return <p className="chart-empty">No NAV series to plot.</p>;
   }
 
   return (
-    <GrowthPathChart
-      data={data}
-      startAmount={startAmount}
-      series={keys.map(({ key, basket, result }) => ({
-        key,
-        label: basket?.name ?? key,
-        color: basket?.color ?? "#6B6B6B",
-        dashed: basket?.id === "__nifty-bees",
-        lead: result.basketId === leadId,
-      }))}
-    />
+    <DitherPlot config={config} height="h-[260px]">
+      <LineChart data={data} config={config} margins={{ left: 48 }}>
+        <XAxis dataKey="date" maxTicks={6} tickFormatter={(v) => formatTick(String(v))} />
+        <YAxis tickFormatter={money} />
+        <Tooltip labelKey="label" valueFormatter={money} />
+        {keys.map(({ key, result }) => (
+          <Line
+            key={key}
+            dataKey={key}
+            strokeVariant={result.basketId === BEES_ID ? "dashed" : "solid"}
+          />
+        ))}
+      </LineChart>
+    </DitherPlot>
   );
 }
 
-export function DrawdownChart({ results, baskets }: Omit<LabChartsProps, "amount" | "period">) {
-  const { keys, dates } = useMemo(
-    () => chartable(results, baskets),
-    [results, baskets],
+export function DrawdownChart({ results, baskets }: LabChartsProps) {
+  const { keys, dates } = useMemo(() => chartable(results, baskets), [results, baskets]);
+  const data = useMemo(
+    () => seriesRows(dates, keys, (p) => Number(p.drawdown.toFixed(2))),
+    [dates, keys],
   );
-
-  const data = useMemo(() => {
-    return dates.map((date) => {
-      const row: Record<string, string | number | null> = { date };
-      for (const { key, result } of keys) {
-        const point = result.series.find((p) => p.x === date);
-        row[key] = point ? Number(point.drawdown.toFixed(2)) : null;
-      }
-      return row;
-    });
-  }, [dates, keys]);
-
-  const worstKey = useMemo(() => {
-    let worst: { key: string; mdd: number } | null = null;
-    for (const { key, result } of keys) {
+  const worstId = useMemo(() => {
+    let worst: { id: string; mdd: number } | null = null;
+    for (const { result } of keys) {
       if (!worst || result.stats.mdd < worst.mdd) {
-        worst = { key, mdd: result.stats.mdd };
+        worst = { id: result.basketId, mdd: result.stats.mdd };
       }
     }
-    return worst?.key;
+    return worst?.id;
   }, [keys]);
+  const config = useMemo(() => {
+    const color = paletteFor(keys);
+    return seriesConfig(lastOnTop(keys, worstId), (id) => (id === worstId ? "red" : color(id)));
+  }, [keys, worstId]);
 
   if (!keys.length || !data.length) {
     return <p className="chart-empty">No drawdown series to plot.</p>;
   }
 
   return (
-    <DrawdownLineChart
-      data={data}
-      worstKey={worstKey}
-      series={keys.map(({ key, basket }) => ({
-        key,
-        label: basket?.name ?? key,
-        color: basket?.color ?? "#121212",
-      }))}
-    />
+    <DitherPlot config={config} height="h-[180px]">
+      <LineChart data={data} config={config} margins={{ left: 40 }}>
+        <XAxis dataKey="date" maxTicks={8} tickFormatter={(v) => formatTick(String(v))} />
+        <YAxis tickFormatter={(v) => (Math.abs(v) < 0.05 ? "0%" : `${v.toFixed(0)}%`)} />
+        <Tooltip labelKey="label" valueFormatter={(v) => formatPctValue(v)} />
+        {keys.map(({ key }) => (
+          <Line key={key} dataKey={key} />
+        ))}
+      </LineChart>
+    </DitherPlot>
   );
 }
 
@@ -217,27 +292,72 @@ export function YearlyRankingChart({ ranking, baskets }: RankingChartProps) {
 type MixCompareProps = {
   series: MixSeries[];
   categories: string[];
-  unit?: "pct" | "raw";
 };
 
-export function MixCompareChart({ series, categories }: MixCompareProps) {
-  return <MixStripChart series={series} categories={categories} />;
+const MIX_COLORS: DitherColor[] = ["blue", "purple", "green", "orange"];
+
+function shortLabel(cat: string): string {
+  return cat.length > 17 ? `${cat.slice(0, 16)}…` : cat;
 }
 
-type MetricPoint = {
-  key: string;
-  label: string;
-  color: string;
-  values: Record<string, number | null>;
-};
+export function MixCompareChart({ series, categories }: MixCompareProps) {
+  const cats = categories.filter((cat) => series.some((s) => (s.values[cat] ?? 0) >= 0.5));
+  if (!series.length || !cats.length) {
+    return <p className="chart-empty">No mix to plot.</p>;
+  }
+  // One or two categories (asset, equity split) read better as meters than as
+  // a wall of dither.
+  if (cats.length < 3) return <MixMeters series={series} categories={cats} />;
+  const config: ChartConfig = Object.fromEntries(
+    series.map((s, i) => [s.key, { label: s.label, color: MIX_COLORS[i % MIX_COLORS.length]! }]),
+  );
+  const data = cats.map((cat) => ({
+    cat,
+    ...Object.fromEntries(series.map((s) => [s.key, Number((s.values[cat] ?? 0).toFixed(1))])),
+  }));
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="h-[200px]">
+        <BarChart data={data} config={config} margins={{ left: 36 }}>
+          <XAxis dataKey="cat" maxTicks={12} tickFormatter={(v) => shortLabel(String(v))} />
+          <YAxis tickFormatter={(v) => `${v}%`} />
+          <Tooltip labelKey="cat" valueFormatter={(v) => `${v.toFixed(1)}%`} />
+          {series.map((s) => (
+            <Bar key={s.key} dataKey={s.key} variant="gradient" />
+          ))}
+        </BarChart>
+      </div>
+      {series.length > 1 ? <BlockLegend config={config} /> : null}
+    </div>
+  );
+}
 
-type MetricCompareProps = {
-  metrics: { key: string; label: string }[];
-  series: MetricPoint[];
-};
-
-export function MetricCompareChart({ metrics, series }: MetricCompareProps) {
-  return <RiskRadarChart metrics={metrics} series={series} />;
+function MixMeters({ series, categories }: MixCompareProps) {
+  return (
+    <div className="mix-strips">
+      {series.map((s) => (
+        <div key={s.key} className="mix-strip">
+          {series.length > 1 ? <p className="mix-strip-name">{s.label}</p> : null}
+          <ul className="mix-meters" aria-label={`${s.label} mix`}>
+            {categories.map((cat) => {
+              const w = s.values[cat] ?? 0;
+              return (
+                <li key={cat}>
+                  <span className="mix-meter-row">
+                    <span>{cat}</span>
+                    <span className="alloc-pct">{w.toFixed(0)}%</span>
+                  </span>
+                  <span className="alloc-track">
+                    <span style={{ width: `${Math.min(100, Math.max(0, w))}%` }} />
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 type StackSegment = {
