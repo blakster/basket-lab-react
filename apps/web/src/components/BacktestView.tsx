@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
 import { useEffect, useMemo, useRef } from "react";
 import { loadNiftyBeesNav, NIFTY_BEES_CODE } from "../lib/api/benchmarkNav";
 import { formatInr } from "../lib/format";
@@ -31,7 +32,9 @@ const BEES_BASKET: Basket = {
 
 function isBeesOnly(basket: Basket): boolean {
   const funds = basket.funds.filter((f) => f.weight > 0);
-  return funds.length > 0 && funds.every((f) => f.schemeCode === NIFTY_BEES_CODE);
+  return (
+    funds.length > 0 && funds.every((f) => f.schemeCode === NIFTY_BEES_CODE)
+  );
 }
 
 const DEBOUNCE_MS = 300;
@@ -56,7 +59,8 @@ function volFromSeries(series: TimePoint[]): number | null {
   for (let i = 1; i < series.length; i++) {
     const prev = series[i - 1]!.y;
     const curr = series[i]!.y;
-    if (!Number.isFinite(prev) || !Number.isFinite(curr) || prev === 0) continue;
+    if (!Number.isFinite(prev) || !Number.isFinite(curr) || prev === 0)
+      continue;
     returns.push(curr / prev - 1);
   }
   if (returns.length < 2) return null;
@@ -75,19 +79,59 @@ function unionLabels(results: BacktestResult[]): string[] {
   return [...dates].sort();
 }
 
-function LeadStory({
-  beesRateById,
-}: {
-  beesRateById: Map<string, number>;
-}) {
-  const { results, baskets, settings } = useLab();
+function LeadStory({ beesRateById }: { beesRateById: Map<string, number> }) {
+  const { results, baskets, settings, analyzing, runAnalysis, setWorkspace } =
+    useLab();
   const scored = results.filter((r) => r.error !== "no-nav");
   const runMode = scored[0]?.cashflow?.mode ?? settings.mode;
 
   if (!results.length) {
+    if (analyzing) return null;
+    const active = baskets.filter((basket) => basket.active);
+    const invalidWeights = active.some(
+      (basket) =>
+        Math.abs(
+          basket.funds.reduce((sum, fund) => sum + fund.weight, 0) - 100,
+        ) >= 0.1,
+    );
+    const needsBaskets = !active.length || invalidWeights;
     return (
       <div className="lead-story lead-empty">
-        <p>No run yet. Check amount, weights, and NAV.</p>
+        <p>
+          {!active.length
+            ? "No active baskets"
+            : settings.amount < 100
+              ? "Set an investment amount"
+              : invalidWeights
+                ? "Check your basket weights"
+                : "No comparison yet"}
+        </p>
+        <p>
+          {!active.length
+            ? "Activate a basket to start comparing."
+            : settings.amount < 100
+              ? "Enter at least ₹100 in the settings above."
+              : invalidWeights
+                ? "Each active basket needs funds with weights totaling 100%."
+                : "Check your settings, then try loading NAV again."}
+        </p>
+        {needsBaskets ? (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setWorkspace("baskets")}
+          >
+            Choose baskets
+          </Button>
+        ) : settings.amount >= 100 ? (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void runAnalysis()}
+          >
+            Retry NAV
+          </Button>
+        ) : null}
       </div>
     );
   }
@@ -96,6 +140,17 @@ function LeadStory({
     return (
       <div className="lead-story lead-empty">
         <p>Can&apos;t load NAV for the active baskets.</p>
+        <p>
+          Your baskets are saved. Try again when the data source is available.
+        </p>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={analyzing}
+          onClick={() => void runAnalysis()}
+        >
+          {analyzing ? "Loading NAV…" : "Retry NAV"}
+        </Button>
       </div>
     );
   }
@@ -103,12 +158,12 @@ function LeadStory({
   const leader = scored.reduce((best, cur) =>
     cur.stats.cagr >= best.stats.cagr ? cur : best,
   );
-  const name =
-    baskets.find((b) => b.id === leader.basketId)?.name ?? "Leader";
+  const name = baskets.find((b) => b.id === leader.basketId)?.name ?? "Leader";
   const rate = runMode === "sip" ? "XIRR" : "CAGR";
   const leaderCf = leader.cashflow;
   const fromIso =
-    leaderCf?.requestedStartIso && leaderCf.startIso > leaderCf.requestedStartIso
+    leaderCf?.requestedStartIso &&
+    leaderCf.startIso > leaderCf.requestedStartIso
       ? leaderCf.startIso
       : "";
   const fromNote = fromIso ? ` from ${formatAsOf(fromIso)}` : "";
@@ -257,7 +312,12 @@ export function BacktestView() {
                 <span className="league-tick" aria-hidden="true" />
                 <p className="league-name">{name}</p>
                 <p className="league-rate num-empty">No NAV</p>
-                <p className="league-value">{formatInr(settings.amount)}</p>
+                <p
+                  className="league-value num-empty"
+                  aria-label="Current value unavailable"
+                >
+                  —
+                </p>
                 {fund ? <p className="league-fund">{fund}</p> : null}
               </li>
             );
@@ -312,12 +372,8 @@ export function BacktestView() {
           <li className="league-col is-ref">
             <span className="league-tick" aria-hidden="true" />
             <p className="league-name">Nifty BeES · reference</p>
-            <p className="league-rate">
-              {formatPct(beesResult.stats.cagr)}
-            </p>
-            <p className="league-value">
-              {formatInr(beesResult.stats.final)}
-            </p>
+            <p className="league-rate">{formatPct(beesResult.stats.cagr)}</p>
+            <p className="league-value">{formatInr(beesResult.stats.final)}</p>
             <p className="league-fund">Not a basket. Overlay only.</p>
             <dl className="league-metrics">
               <div className="league-metric">
@@ -336,31 +392,35 @@ export function BacktestView() {
           </li>
         ) : null}
       </ul>
-      <CashflowCompare />
-      <div className="backtest-charts">
-        <figure className="backtest-chart">
-          <figcaption>
-            Who pulled away from {formatInr(settings.amount)}
-            <span className="chart-hint">
-              The path, not the ending rate. {settings.period} window.
-            </span>
-          </figcaption>
-          <GrowthChart results={growthResults} baskets={growthBaskets} />
-        </figure>
-        <figure className="backtest-chart backtest-chart--drawdown">
-          <figcaption>
-            How far from a peak
-            <span className="chart-hint">
-              Rust fill is the worst trough in this run. 0% is a new high.
-            </span>
-          </figcaption>
-          <DrawdownChart results={results} baskets={baskets} />
-        </figure>
-      </div>
-      <p className="source-rule">
-        Source: Basket Lab · Data as on {asOf ? formatAsOf(asOf) : "—"} · All
-        figures annualised
-      </p>
+      {hasSeries && (
+        <>
+          <CashflowCompare />
+          <div className="backtest-charts">
+            <figure className="backtest-chart">
+              <figcaption>
+                Who pulled away from {formatInr(settings.amount)}
+                <span className="chart-hint">
+                  The path, not the ending rate. {settings.period} window.
+                </span>
+              </figcaption>
+              <GrowthChart results={growthResults} baskets={growthBaskets} />
+            </figure>
+            <figure className="backtest-chart backtest-chart--drawdown">
+              <figcaption>
+                How far from a peak
+                <span className="chart-hint">
+                  Rust fill is the worst trough in this run. 0% is a new high.
+                </span>
+              </figcaption>
+              <DrawdownChart results={results} baskets={baskets} />
+            </figure>
+          </div>
+          <p className="source-rule">
+            Source: Basket Lab · Data as on {asOf ? formatAsOf(asOf) : "—"} ·
+            All figures annualised
+          </p>
+        </>
+      )}
       {ranking.length > 0 && (
         <div className="yearly-ranking">
           <h3>Who won each calendar year</h3>
