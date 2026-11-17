@@ -2,7 +2,6 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -55,16 +54,13 @@ export function BasketEditor() {
       return;
     }
     setDraft(
-      editorSeed && editorSeed.id === editingId
-        ? cloneBasket(editorSeed)
-        : null,
+      editorSeed && editorSeed.id === editingId ? cloneBasket(editorSeed) : null,
     );
   }, [editingId, editorSeed]);
 
   const open = Boolean(editingId && draft);
   const sum = draft?.funds.reduce((s, f) => s + f.weight, 0) ?? 0;
   const balanced = Math.abs(sum - 100) < WEIGHT_TOLERANCE;
-  const creating = !baskets.some((basket) => basket.id === editingId);
 
   function addFund(hit: SearchHit) {
     setDraft((prev) => {
@@ -91,10 +87,7 @@ export function BasketEditor() {
       if (!prev) return prev;
       const fund = prev.funds.find((f) => f.schemeCode === schemeCode);
       if (!fund || fund.locked) return prev;
-      return {
-        ...prev,
-        funds: applyWeightChange(prev.funds, schemeCode, next),
-      };
+      return { ...prev, funds: applyWeightChange(prev.funds, schemeCode, next) };
     });
   }
 
@@ -113,10 +106,7 @@ export function BasketEditor() {
   function deleteRow(schemeCode: string) {
     setDraft((prev) => {
       if (!prev) return prev;
-      return {
-        ...prev,
-        funds: prev.funds.filter((f) => f.schemeCode !== schemeCode),
-      };
+      return { ...prev, funds: prev.funds.filter((f) => f.schemeCode !== schemeCode) };
     });
   }
 
@@ -126,167 +116,111 @@ export function BasketEditor() {
   }
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) closeEditor();
-      }}
-    >
-      <DialogContent className="basket-editor">
-        <DialogHeader className="editor-header">
-          <DialogTitle id="basket-editor-title" className="editor-title">
-            {creating ? "New basket" : "Edit basket"}
+    <Dialog open={open} onOpenChange={(next) => { if (!next) closeEditor(); }}>
+      <DialogContent
+        className="max-h-[90vh] overflow-y-auto rounded-2xl bg-background sm:max-w-3xl"
+        aria-describedby={undefined}
+      >
+        <DialogHeader>
+          <DialogTitle
+            id="basket-editor-title"
+            className="text-xl font-semibold tracking-[-0.02em]"
+          >
+            Edit basket
           </DialogTitle>
-          <DialogDescription className="editor-description">
-            Add funds, set weights, and lock allocations you want to keep.
-          </DialogDescription>
         </DialogHeader>
         {draft && (
           <>
-            <div className="editor-body">
-              <div className="editor-identity">
-                <label className="field">
-                  <span>Name</span>
-                  <Input
-                    type="text"
-                    value={draft.name}
-                    onChange={(e) =>
-                      setDraft({ ...draft, name: e.target.value })
-                    }
-                  />
-                </label>
-                <fieldset className="swatches">
-                  <legend>Chart color</legend>
-                  {SWATCHES.map((color) => (
-                    <button
-                      key={color}
-                      type="button"
-                      className="swatch"
-                      style={{ background: color }}
-                      aria-label={color}
-                      aria-pressed={draft.color === color}
-                      onClick={() => setDraft({ ...draft, color })}
-                    />
-                  ))}
-                </fieldset>
-              </div>
-              <FundSearch
-                onSelect={addFund}
-                selectedCodes={draft.funds.map((fund) => fund.schemeCode)}
+            <label className="field">
+              <span>Name</span>
+              <Input
+                type="text"
+                value={draft.name}
+                className="rounded-md"
+                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
               />
-              <div className="editor-allocation-heading">
-                <h3>Allocation</h3>
-                <span>
-                  {draft.funds.length}{" "}
-                  {draft.funds.length === 1 ? "fund" : "funds"}
-                </span>
-              </div>
-              {draft.funds.length === 0 ? (
-                <div className="editor-empty">
-                  <p>No funds yet</p>
-                  <p>
-                    Search above to add your first fund, then allocate 100%
-                    across your basket.
-                  </p>
-                </div>
-              ) : (
-                <Table className="fund-table">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Fund</TableHead>
-                      <TableHead>Weight</TableHead>
-                      <TableHead>Lock</TableHead>
-                      <TableHead>
-                        <span className="sr-only">Remove</span>
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {draft.funds.map((fund) => (
-                      <TableRow key={fund.schemeCode}>
-                        <TableCell className="editor-fund-name">
-                          {fund.schemeName}
-                          <span className="editor-fund-code">
-                            {fund.schemeCode}
-                          </span>
-                        </TableCell>
-                        <TableCell className="editor-weight-cell">
-                          <span className="editor-weight">
-                            <WeightField
-                              value={fund.weight}
-                              disabled={fund.locked}
-                              onCommit={(next) =>
-                                setWeight(fund.schemeCode, next)
-                              }
-                              label={`Weight for ${fund.schemeName}`}
-                            />
-                            <span aria-hidden="true">%</span>
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            aria-label={`${fund.locked ? "Unlock" : "Lock"} ${fund.schemeName}`}
-                            aria-pressed={fund.locked}
-                            onClick={() => toggleLock(fund.schemeCode)}
-                          >
-                            {fund.locked ? "Unlock" : "Lock"}
-                          </Button>
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="editor-delete"
-                            aria-label={`Delete ${fund.schemeName}`}
-                            onClick={() => deleteRow(fund.schemeCode)}
-                          >
-                            Delete
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-              <p className="editor-help">
-                Weights must total 100%. Changing a weight redistributes the
-                remaining unlocked funds.
-              </p>
-            </div>
-            <DialogFooter className="editor-footer">
-              <div className="editor-total" role="status">
-                <span>Total allocation</span>
-                <strong
-                  className={
-                    balanced
-                      ? "total-ok"
-                      : draft.funds.length
-                        ? "total-bad"
-                        : ""
-                  }
-                >
-                  {sum.toFixed(2)}%
-                </strong>
-                <span>
-                  {balanced
-                    ? "Ready to save"
-                    : draft.funds.length
-                      ? "Adjust weights to reach 100%"
-                      : "Add a fund to begin"}
-                </span>
-              </div>
-              <div className="modal-actions">
-                <Button type="button" variant="outline" onClick={closeEditor}>
-                  Cancel
-                </Button>
-                <Button type="button" disabled={!balanced} onClick={onSave}>
-                  Save basket
-                </Button>
-              </div>
+            </label>
+            <fieldset className="swatches">
+              <legend>Color</legend>
+              {SWATCHES.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  className="swatch"
+                  style={{ background: color }}
+                  aria-label={color}
+                  aria-pressed={draft.color === color}
+                  onClick={() => setDraft({ ...draft, color })}
+                />
+              ))}
+            </fieldset>
+            <FundSearch onSelect={addFund} />
+            <Table className="fund-table">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Fund</TableHead>
+                  <TableHead>Weight</TableHead>
+                  <TableHead>Lock</TableHead>
+                  <TableHead />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {draft.funds.map((fund) => (
+                  <TableRow key={fund.schemeCode}>
+                    <TableCell>{fund.schemeName}</TableCell>
+                    <TableCell>
+                      <WeightField
+                        value={fund.weight}
+                        disabled={fund.locked}
+                        onCommit={(next) => setWeight(fund.schemeCode, next)}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="rounded-md"
+                        onClick={() => toggleLock(fund.schemeCode)}
+                      >
+                        {fund.locked ? "Unlock" : "Lock"}
+                      </Button>
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="rounded-md"
+                        onClick={() => deleteRow(fund.schemeCode)}
+                      >
+                        Delete
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            <p className={balanced ? "total-ok" : "total-bad"}>
+              Total: {sum.toFixed(2)}%
+            </p>
+            <DialogFooter className="modal-actions">
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-md"
+                onClick={closeEditor}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                className="rounded-md"
+                disabled={!balanced}
+                onClick={onSave}
+              >
+                Save
+              </Button>
             </DialogFooter>
           </>
         )}

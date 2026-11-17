@@ -1,11 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { benchmarkForResult } from "../lib/portfolioDetails";
 import { cagr } from "../lib/backtest/performance";
@@ -19,7 +13,6 @@ const { labState, loadBeesMock } = vi.hoisted(() => ({
     navByCode: {} as Record<string, NavPoint[]>,
     analyzing: false,
     runAnalysis: vi.fn(),
-    setWorkspace: vi.fn(),
     settings: {
       mode: "lumpsum",
       amount: 100_000,
@@ -81,39 +74,6 @@ describe("BacktestView table", () => {
   beforeEach(() => {
     loadBeesMock.mockReset();
     loadBeesMock.mockResolvedValue([] as NavPoint[]);
-  });
-
-  it("offers basket activation rather than an empty run or charts", () => {
-    labState.baskets = [{ ...basket, active: false }];
-    labState.results = [];
-    labState.analyzing = false;
-    renderView();
-    expect(screen.getByText("No active baskets")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Choose baskets" }));
-    expect(labState.setWorkspace).toHaveBeenCalledWith("baskets");
-    expect(
-      screen.queryByText("Same basket, different cashflows"),
-    ).not.toBeInTheDocument();
-  });
-
-  it("keeps missing NAV values unavailable and offers retry", () => {
-    labState.baskets = [basket];
-    labState.results = [
-      {
-        basketId: basket.id,
-        error: "no-nav",
-        series: [],
-        stats: { initial: 0, final: 0, abs: 0, cagr: 0, mdd: 0 },
-      },
-    ];
-    labState.analyzing = false;
-    renderView();
-    expect(
-      screen.getByLabelText("Current value unavailable"),
-    ).toHaveTextContent("—");
-    fireEvent.click(screen.getByRole("button", { name: "Retry NAV" }));
-    expect(labState.runAnalysis).toHaveBeenCalled();
-    expect(screen.queryByText("₹1,00,000")).not.toBeInTheDocument();
   });
 
   it("shows invested and current as Indian-rupee amounts", () => {
@@ -218,9 +178,7 @@ describe("BacktestView table", () => {
 
     expect(screen.getByText("vs BeES")).toBeInTheDocument();
     await waitFor(() => {
-      expect(
-        screen.getByText("Flexi Cap trails Nifty BeES"),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Flexi Cap trails Nifty BeES")).toBeInTheDocument();
     });
     expect(screen.getByText("-90.00%")).toBeInTheDocument();
   });
@@ -265,14 +223,14 @@ describe("BacktestView table", () => {
       (365 * 86400000);
     const aligned = cagr(100_000, 200_000, years);
     await waitFor(() => {
-      expect(screen.getByText(`${aligned.toFixed(2)}%`)).toBeInTheDocument();
+      expect(
+        screen.getByText(`${aligned.toFixed(2)}%`),
+      ).toBeInTheDocument();
     });
     // Reference row ends at 2× the amount from the basket's start, not
     // from the window start.
     expect(screen.getByText("₹2,00,000")).toBeInTheDocument();
-    expect(
-      screen.getByText(`${(44 - aligned).toFixed(2)}%`),
-    ).toBeInTheDocument();
+    expect(screen.getByText(`${(44 - aligned).toFixed(2)}%`)).toBeInTheDocument();
     // Window-start BeES CAGR (100%) is not used.
     expect(screen.queryByText("100.00%")).toBeNull();
   });

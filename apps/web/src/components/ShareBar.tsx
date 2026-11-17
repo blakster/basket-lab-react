@@ -1,17 +1,17 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useEffect, useMemo, useState } from "react";
-import { encodeShare } from "../lib/shareUrl";
+import { useEffect, useState } from "react";
 import { useLab } from "../state/LabContext";
 
 export function ShareBar() {
-  const { shareHydrateError, settings, baskets, workspace } = useLab();
+  const { shareHydrateError } = useLab();
   const [toast, setToast] = useState<string | null>(null);
-  const href = useMemo(() => {
-    const url = new URL(window.location.href);
-    url.searchParams.set("s", encodeShare({ settings, baskets }));
-    return url.href;
-  }, [settings, baskets, workspace]);
+  const href = window.location.href;
+
+  useEffect(() => {
+    if (!shareHydrateError) return;
+    setToast("Could not load shared link");
+  }, [shareHydrateError]);
 
   useEffect(() => {
     if (!toast) return;
@@ -20,7 +20,7 @@ export function ShareBar() {
   }, [toast]);
 
   const copy = () => {
-    const write = navigator.clipboard?.writeText?.(href);
+    const write = navigator.clipboard?.writeText?.(window.location.href);
     if (!write) {
       setToast("Clipboard unavailable — select the URL and copy it");
       return;
@@ -32,15 +32,7 @@ export function ShareBar() {
 
   return (
     <section className="share-bar" aria-label="Share link">
-      <h2>Share this setup</h2>
-      <p className="share-note">
-        A link to your baskets, weights, and investment settings.
-      </p>
-      {shareHydrateError && (
-        <p className="share-error" role="alert">
-          Could not load the shared link; the default setup was loaded.
-        </p>
-      )}
+      <h2>Share</h2>
       <div className="field share-bar-field">
         <span id="share-url-label">Share URL</span>
         <div className="share-bar-row">
@@ -49,10 +41,9 @@ export function ShareBar() {
             readOnly
             value={href}
             aria-labelledby="share-url-label"
-            onFocus={(event) => event.currentTarget.select()}
           />
           <Button type="button" onClick={copy}>
-            Copy link
+            Copy
           </Button>
         </div>
       </div>

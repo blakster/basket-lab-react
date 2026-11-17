@@ -169,6 +169,18 @@ function loadInitial(): {
           shareHydrateError: false,
         };
       }
+      // Drop corrupt s= so a refresh does not keep failing hydrate.
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("s");
+        window.history.replaceState(
+          null,
+          "",
+          `${url.pathname}${url.search}${url.hash}`,
+        );
+      } catch {
+        // ignore
+      }
       return { ...cloneDefaults(), shareHydrateError: true };
     }
   } catch {
@@ -285,7 +297,7 @@ function mergeNav(a: NavPoint[], b: NavPoint[]): NavPoint[] {
 }
 
 export function LabProvider({ children }: { children: ReactNode }) {
-  const [initial] = useState(loadInitial);
+  const initial = loadInitial();
   const [settings, setSettingsState] = useState<LabSettings>(initial.settings);
   const [baskets, setBasketsState] = useState<Basket[]>(initial.baskets);
   const [shareHydrateError] = useState(initial.shareHydrateError);
@@ -305,15 +317,6 @@ export function LabProvider({ children }: { children: ReactNode }) {
   const runIdRef = useRef(0);
   /** After a failed `?s=` hydrate, keep session defaults without wiping storage until the user edits. */
   const blockPersistRef = useRef(initial.shareHydrateError);
-
-  useEffect(() => {
-    if (!initial.shareHydrateError) return;
-    // Keep initialization pure so StrictMode cannot consume this error before
-    // the committed render. Remove the corrupt query only after mounting.
-    const url = new URL(window.location.href);
-    url.searchParams.delete("s");
-    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
-  }, [initial.shareHydrateError]);
 
   useEffect(() => {
     if (blockPersistRef.current) return;
