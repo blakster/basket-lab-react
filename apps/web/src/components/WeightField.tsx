@@ -5,6 +5,7 @@ import { readWeightDraft, weightFromDraft } from "../lib/weights";
 type WeightFieldProps = {
   value: number;
   disabled?: boolean;
+  label?: string;
   onCommit: (next: number) => void;
 };
 
@@ -12,7 +13,12 @@ function formatWeight(value: number): string {
   return String(value);
 }
 
-export function WeightField({ value, disabled, onCommit }: WeightFieldProps) {
+export function WeightField({
+  value,
+  disabled,
+  label = "Weight",
+  onCommit,
+}: WeightFieldProps) {
   const [draft, setDraft] = useState(formatWeight(value));
   const focusedRef = useRef(false);
 
@@ -24,10 +30,10 @@ export function WeightField({ value, disabled, onCommit }: WeightFieldProps) {
     <Input
       type="text"
       inputMode="decimal"
-      aria-label="Weight"
+      aria-label={label}
       disabled={disabled}
       value={draft}
-      className="w-24 rounded-md"
+      className="weight-input"
       onFocus={(event) => {
         focusedRef.current = true;
         setDraft(formatWeight(value));

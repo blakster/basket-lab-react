@@ -121,7 +121,7 @@
   --destructive: #e07064;
   --border: #2a2a2a;
   --input: #2a2a2a;
-  --ring: #f5c400;
+  --ring: #f5f5f5;
   --paper: #121212;
   --paper-deep: #0a0a0a;
   --paper-well: #1c1c1c;
@@ -135,7 +135,7 @@
   --plate: #f5c400;
   --plate-ink: #121212;
   --on-loss: #121212;
-  --focus: #f5c400;
+  --focus: #f5f5f5;
   --overlay: rgb(0 0 0 / 0.72);
   --shadow-border: 0 0 0 1px var(--rule);
   --umbra: 0 24px 48px rgb(0 0 0 / 0.56);
@@ -168,8 +168,8 @@ body {
 }
 
 ::selection {
-  background: color-mix(in srgb, var(--primary) 22%, transparent);
-  color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
 }
 
 :focus-visible {
@@ -420,8 +420,8 @@ button {
 }
 
 button[data-slot="button"][data-variant="default"] {
-  background: var(--primary);
-  color: var(--primary-foreground);
+  background: var(--ink);
+  color: var(--paper);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -430,11 +430,15 @@ button[data-slot="button"][data-variant="default"] {
     transform: translateY(-1px);
   }
 
-  button[data-slot="button"][data-variant="default"]:hover:not(:disabled),
+  button[data-slot="button"][data-variant="default"]:hover:not(:disabled) {
+    background: var(--ink-soft);
+    color: var(--paper);
+  }
+
   button[aria-pressed="true"]:hover:not(:disabled),
   button[data-state="on"]:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--primary) 86%, var(--ink));
-    color: var(--primary-foreground);
+    background: var(--ink-wash);
+    color: var(--ink);
   }
 }
 
@@ -456,8 +460,8 @@ button:active:not(:disabled) {
 
 button[aria-pressed="true"],
 button[data-state="on"] {
-  background: var(--primary);
-  color: var(--primary-foreground);
+  background: var(--ink-wash);
+  color: var(--ink);
   border-color: transparent;
 }
 
@@ -517,7 +521,7 @@ button[data-static="true"]:active:not(:disabled) {
 
 .field-amount input:hover,
 .field-amount input:focus {
-  border-bottom-color: var(--primary);
+  border-bottom-color: var(--ink);
 }
 
 .text-tabs button {
@@ -1239,8 +1243,8 @@ button[data-static="true"]:active:not(:disabled) {
 }
 
 .rank-year .is-first .place {
-  background: var(--plate);
-  color: var(--plate-ink);
+  background: var(--ink);
+  color: var(--paper);
   text-align: center;
 }
 
@@ -1669,16 +1673,15 @@ button[data-static="true"]:active:not(:disabled) {
 .swatch {
   width: 1.35rem;
   height: 1.35rem;
-  border-radius: 999px;
+  border-radius: var(--r-sm);
   padding: 0;
   border: 0;
   box-shadow: var(--shadow-border);
 }
 
 .swatch[aria-pressed="true"] {
-  outline: 2px solid var(--primary);
+  outline: 2px solid var(--ink);
   outline-offset: 2px;
-  background: unset;
   color: inherit;
 }
 
