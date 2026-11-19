@@ -2625,21 +2625,6 @@ button.basket-check[data-state="checked"] {
   color: var(--paper);
 }
 
-/* Forced colors drops box-shadows, so the unchecked toggle needs a real border
-   in system colors to stay visible. */
-@media (forced-colors: active) {
-  button.basket-check[data-slot="checkbox"] {
-    border: 1.5px solid ButtonText;
-    box-shadow: none;
-  }
-
-  button.basket-check[data-state="checked"] {
-    border-color: ButtonText;
-    background: ButtonText;
-    color: ButtonFace;
-  }
-}
-
 @media (hover: hover) and (pointer: fine) {
   button.basket-check:hover:not(:disabled) {
     background: var(--ink-wash);
@@ -3068,4 +3053,20 @@ button.basket-check[data-state="checked"] {
   background: transparent;
   transform: none;
 }
+}
+
+/* Forced colors drops box-shadows, so the unchecked toggle needs a real border
+   in system colors to stay visible. Kept unlayered so it beats the `border-0`
+   utility on `.basket-check`. */
+@media (forced-colors: active) {
+  button.basket-check[data-slot="checkbox"] {
+    border: 1.5px solid ButtonText;
+    box-shadow: none;
+  }
+
+  button.basket-check[data-state="checked"] {
+    border-color: ButtonText;
+    background: ButtonText;
+    color: ButtonFace;
+  }
 }
