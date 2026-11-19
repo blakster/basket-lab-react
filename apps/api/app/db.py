@@ -102,6 +102,7 @@ def init_db(path: str | Path) -> sqlite3.Connection:
     # TestClient (and uvicorn workers) use the connection off the creating thread.
     conn = sqlite3.connect(path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(SCHEMA)
     cols = {row[1] for row in conn.execute("PRAGMA table_info(fundamentals)")}
     if "aum_cr" not in cols:

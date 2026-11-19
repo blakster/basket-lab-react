@@ -1,3 +1,7 @@
+import sqlite3
+
+import pytest
+
 from app.db import init_db
 
 
@@ -32,3 +36,12 @@ def test_init_db_domain_tables_on_existing_db(tmp_path):
     conn = init_db(path)
     assert conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0] == 1
     assert conn.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0] == 1
+
+
+def test_domain_foreign_keys_enforced(tmp_path):
+    conn = init_db(tmp_path / "basket.sqlite")
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            "INSERT INTO transactions (id, account_id, instrument_id, date, kind, units, amount, import_id)"
+            " VALUES ('t1', 'missing-acc', 'missing-inst', '2026-01-15', 'buy', 1.0, 1.0, 'imp1')"
+        )
