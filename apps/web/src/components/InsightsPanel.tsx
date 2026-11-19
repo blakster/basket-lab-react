@@ -36,12 +36,10 @@ import {
   dailyTwrs,
   navToTwrs,
   rollingCagr,
-  sharpeFromTwrs,
-  sortinoFromTwrs,
-  volatilityFromTwrs,
   type CashflowSpec,
   type DatedReturn,
 } from "../lib/risk";
+import { computeMetrics } from "../lib/backtest/metrics";
 import { resolveRange } from "../lib/resolveSettings";
 import { runIsStale } from "../lib/runFreshness";
 import { inkAlpha } from "../lib/theme";
@@ -199,15 +197,18 @@ function buildRiskRow(
   benchTwrs: DatedReturn[] | null,
 ): RiskRow {
   const twrs = dailyTwrs(result.series, result.cashflow ?? cashflow);
-  const rs = twrs.map((d) => d.r);
   const ab = benchTwrs && benchTwrs.length >= 2 ? alphaBeta(twrs, benchTwrs) : null;
+  const metrics = computeMetrics(result, {
+    cashflow: result.cashflow ?? cashflow,
+    twrs,
+  });
   return {
     id: result.basketId,
     name: basket?.name ?? result.basketId,
     color: basket?.color ?? "#111111",
-    vol: volatilityFromTwrs(rs),
-    sharpe: sharpeFromTwrs(rs),
-    sortino: sortinoFromTwrs(rs),
+    vol: metrics.vol,
+    sharpe: metrics.sharpe,
+    sortino: metrics.sortino,
     calmar: calmar(result.stats.cagr, result.stats.mdd),
     rolling1y: rollingCagr(result.series, twrs, 252),
     rolling3y: rollingCagr(result.series, twrs, 756),

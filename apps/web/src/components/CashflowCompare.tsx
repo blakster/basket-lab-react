@@ -8,6 +8,13 @@ import {
 } from "@/components/ui/table";
 import { useMemo, useState } from "react";
 import {
+  METRICS,
+  metricClass,
+  metricLabel,
+  metricText,
+  type MetricId,
+} from "../lib/backtest/metrics";
+import {
   backtestPlan,
   skipYearWindow,
   type CashflowPlan,
@@ -31,6 +38,9 @@ type Row = {
 function formatPct(n: number): string {
   return `${n.toFixed(2)}%`;
 }
+
+
+const CELL_METRICS: MetricId[] = ["mdd", "sharpe", "sortino"];
 
 function navsForBasket(
   basket: Basket,
@@ -201,7 +211,11 @@ export function CashflowCompare() {
               <TableHead className="text-right">Invested</TableHead>
               <TableHead className="text-right">Current</TableHead>
               <TableHead className="text-right">Rate</TableHead>
-              <TableHead className="text-right">Max DD</TableHead>
+              {CELL_METRICS.map((id) => (
+                <TableHead key={id} className="text-right">
+                  {metricLabel(id)}
+                </TableHead>
+              ))}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -215,14 +229,16 @@ export function CashflowCompare() {
                         <span className="basket-sub">{row.note}</span>
                       ) : null}
                     </TableCell>
-                    <TableCell className="num-empty" colSpan={4}>
+                    <TableCell
+                      className="num-empty"
+                      colSpan={3 + CELL_METRICS.length}
+                    >
                       {row.empty ?? "No NAV"}
                     </TableCell>
                   </TableRow>
                 );
               }
               const r = row.result;
-              const sipLike = r.cashflow?.mode === "sip";
               return (
                 <TableRow key={row.id}>
                   <TableCell>
@@ -245,16 +261,23 @@ export function CashflowCompare() {
                   </TableCell>
                   <TableCell
                     data-label="Rate"
-                    className={`text-right ${r.stats.cagr >= 0 ? "num-gain" : "num-loss"}`}
+                    className={`text-right ${metricClass("rate", r.stats.cagr)}`}
                   >
-                    {formatPct(r.stats.cagr)}
-                    <span className="basket-sub">
-                      {sipLike ? "XIRR" : "CAGR"}
-                    </span>
+                    {metricText("rate", r.stats.cagr)}
+                    <span className="basket-sub">{metricLabel("rate", r)}</span>
                   </TableCell>
-                  <TableCell className="num-loss text-right" data-label="Max DD">
-                    {formatPct(r.stats.mdd)}
-                  </TableCell>
+                  {CELL_METRICS.map((id) => {
+                    const value = METRICS[id].compute(r, {});
+                    return (
+                      <TableCell
+                        key={id}
+                        className={`text-right ${metricClass(id, value)}`}
+                        data-label={metricLabel(id)}
+                      >
+                        {metricText(id, value)}
+                      </TableCell>
+                    );
+                  })}
                 </TableRow>
               );
             })}
