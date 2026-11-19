@@ -14,9 +14,10 @@ import type {
   LabSettings,
   NavPoint,
 } from "../types";
-import { WEIGHT_TOLERANCE, writeShareQuery, weightSum } from "./basketStore";
+import { writeShareQuery, weightSum } from "./basketStore";
 import { READY_STATUS, type LabStatus, type StatusSource } from "./labTypes";
 
+const WEIGHT_TOLERANCE = 0.1;
 /** Last trading day before a weekend/holiday `to` still covers the range. */
 const RANGE_SLACK_DAYS = 4;
 
@@ -80,8 +81,14 @@ function cacheUsable(
   to: string,
 ): boolean {
   if (!cacheCoversRange(entry.points, since, to)) return false;
-  const min = firstIso(entry.points);
-  const max = lastIso(entry.points);
+  const min = entry.points.reduce(
+    (a, p) => (p.date < a ? p.date : a),
+    entry.points[0].date,
+  );
+  const max = entry.points.reduce(
+    (a, p) => (p.date > a ? p.date : a),
+    entry.points[0].date,
+  );
   const freshSince = since < min ? min : since;
   const freshTo = to > max ? max : to;
   return isNavCacheFresh(entry.points, freshSince, freshTo, entry.writtenAt);

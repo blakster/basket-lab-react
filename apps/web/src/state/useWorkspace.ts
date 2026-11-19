@@ -51,21 +51,6 @@ export function useWorkspace(baskets: Basket[]) {
     return () => window.removeEventListener("hashchange", sync);
   }, []);
 
-  const pickInsightsId = useCallback(
-    (prev: string | null, asked?: string) => {
-      const valid = (id: string | null | undefined) =>
-        id != null && baskets.some((b) => b.id === id) ? id : undefined;
-      return (
-        valid(asked) ??
-        valid(prev) ??
-        baskets.find((b) => b.active)?.id ??
-        baskets[0]?.id ??
-        null
-      );
-    },
-    [baskets],
-  );
-
   const setWorkspace = useCallback(
     (next: Workspace) => {
       setWorkspaceState(next);
@@ -73,24 +58,33 @@ export function useWorkspace(baskets: Basket[]) {
         writeWorkspaceHash(next);
         return;
       }
-      const id = pickInsightsId(insightsBasketId);
-      setInsightsBasketId(id);
-      writeWorkspaceHash("insights", id);
+      setInsightsBasketId((prev) => {
+        const id =
+          prev ??
+          baskets.find((b) => b.active)?.id ??
+          baskets[0]?.id ??
+          null;
+        writeWorkspaceHash("insights", id);
+        return id;
+      });
     },
-    [pickInsightsId, insightsBasketId],
+    [baskets],
   );
 
-  const openInsights = useCallback(
-    (basketId?: string) => {
-      const asked =
-        typeof basketId === "string" && basketId ? basketId : undefined;
-      const id = pickInsightsId(insightsBasketId, asked);
-      setInsightsBasketId(id);
-      writeWorkspaceHash("insights", id);
-      setWorkspaceState("insights");
-    },
-    [pickInsightsId, insightsBasketId],
-  );
+  const openInsights = useCallback((basketId?: string) => {
+    setInsightsBasketId((prev) => {
+      const asked = typeof basketId === "string" && basketId ? basketId : undefined;
+      const next =
+        asked ??
+        prev ??
+        baskets.find((b) => b.active)?.id ??
+        baskets[0]?.id ??
+        null;
+      writeWorkspaceHash("insights", next);
+      return next;
+    });
+    setWorkspaceState("insights");
+  }, [baskets]);
 
   const closeInsights = useCallback(() => {
     writeWorkspaceHash("compare");

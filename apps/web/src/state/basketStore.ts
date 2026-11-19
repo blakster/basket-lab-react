@@ -12,7 +12,7 @@ import { decodeShare, encodeShare } from "../lib/shareUrl";
 import type { Basket, LabSettings } from "../types";
 
 const STORAGE_KEY = "basket-lab-v1";
-export const WEIGHT_TOLERANCE = 0.1;
+const WEIGHT_TOLERANCE = 0.1;
 
 function cloneDefaults(): { settings: LabSettings; baskets: Basket[] } {
   return structuredClone(defaults) as { settings: LabSettings; baskets: Basket[] };
