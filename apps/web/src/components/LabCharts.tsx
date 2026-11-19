@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { YearlyRank } from "../lib/ranking";
-import type { BacktestResult, Basket } from "../types";
+import type { BacktestResult, Basket, TimePoint } from "../types";
 import { type MixSeries } from "./chartFormat";
 import {
   DrawdownLineChart,
@@ -39,13 +39,35 @@ function unionDates(results: BacktestResult[]): string[] {
 function chartable(results: BacktestResult[], baskets: Basket[]) {
   const live = results.filter((r) => r.error !== "no-nav" && r.series.length > 0);
   const byId = new Map(baskets.map((b) => [b.id, b]));
-  const keys = live.map((r) => ({
-    result: r,
-    key: seriesKey(r.basketId),
-    basket: byId.get(r.basketId),
-  }));
+  const keys = live.map((r) => {
+    const byDate = new Map<string, TimePoint>();
+    for (const p of r.series) {
+      if (!byDate.has(p.x)) byDate.set(p.x, p);
+    }
+    return {
+      result: r,
+      key: seriesKey(r.basketId),
+      basket: byId.get(r.basketId),
+      byDate,
+    };
+  });
   const dates = downsample(unionDates(live));
   return { keys, dates };
+}
+
+export function chartRows(
+  dates: string[],
+  keys: { key: string; byDate: Map<string, TimePoint> }[],
+  value: (p: TimePoint) => number,
+): Record<string, string | number | null>[] {
+  return dates.map((date) => {
+    const row: Record<string, string | number | null> = { date };
+    for (const { key, byDate } of keys) {
+      const point = byDate.get(date);
+      row[key] = point ? value(point) : null;
+    }
+    return row;
+  });
 }
 
 type LabChartsProps = {
@@ -59,16 +81,10 @@ export function GrowthChart({ results, baskets }: LabChartsProps) {
     [results, baskets],
   );
 
-  const data = useMemo(() => {
-    return dates.map((date) => {
-      const row: Record<string, string | number | null> = { date };
-      for (const { key, result } of keys) {
-        const point = result.series.find((p) => p.x === date);
-        row[key] = point ? Math.round(point.y) : null;
-      }
-      return row;
-    });
-  }, [dates, keys]);
+  const data = useMemo(
+    () => chartRows(dates, keys, (p) => Math.round(p.y)),
+    [dates, keys],
+  );
 
   const startAmount = useMemo(() => {
     for (const { result } of keys) {
@@ -114,16 +130,10 @@ export function DrawdownChart({ results, baskets }: Omit<LabChartsProps, "amount
     [results, baskets],
   );
 
-  const data = useMemo(() => {
-    return dates.map((date) => {
-      const row: Record<string, string | number | null> = { date };
-      for (const { key, result } of keys) {
-        const point = result.series.find((p) => p.x === date);
-        row[key] = point ? Number(point.drawdown.toFixed(2)) : null;
-      }
-      return row;
-    });
-  }, [dates, keys]);
+  const data = useMemo(
+    () => chartRows(dates, keys, (p) => Number(p.drawdown.toFixed(2))),
+    [dates, keys],
+  );
 
   const worstKey = useMemo(() => {
     let worst: { key: string; mdd: number } | null = null;
