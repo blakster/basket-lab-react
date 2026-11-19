@@ -84,7 +84,7 @@ def test_networth(client, db):
     assert client.get('/api/portfolio/networth?date=2025-01-14').json()['total'] == 100
     latest = client.get('/api/portfolio/networth').json()
     assert latest['asOf'] == date.today().isoformat()
-    assert latest['total'] == 265
+    assert latest['total'] == 260
     assert client.get('/api/portfolio/networth?date=2025-01-01').json()['total'] == 100
     assert client.delete('/api/manual-assets/nse:test').status_code == 404
 
@@ -94,3 +94,30 @@ def test_invalid_networth_date(client, value):
     response = client.get('/api/portfolio/networth', params={"date": value})
     assert response.status_code == 422
     assert response.json()['error'] == 'bad_request'
+
+
+def test_networth_full_account_snapshots(client, db):
+    db.execute("INSERT INTO accounts VALUES ('zerodha', 'zerodha', 'Zerodha')")
+    db.execute("INSERT INTO instruments (id, name, kind) VALUES ('nse:A', 'A', 'stock')")
+    db.execute("INSERT INTO instruments (id, name, kind) VALUES ('nse:B', 'B', 'stock')")
+    db.executemany(
+        'INSERT INTO snapshots VALUES (?, ?, ?, ?, ?)',
+        [('2025-01-01', 'zerodha', 'nse:A', 1, 100),
+         ('2025-01-01', 'zerodha', 'nse:B', 2, 200),
+         ('2025-02-01', 'zerodha', 'nse:A', 1, 150)],
+    )
+    db.commit()
+    client.post('/api/manual-assets', json={
+        'name': 'Savings', 'kind': 'cash', 'value': 10, 'date': '2025-01-01',
+    })
+    client.post('/api/manual-assets', json={
+        'name': 'EPF', 'kind': 'epf', 'value': 20, 'date': '2025-02-01',
+    })
+    day1 = client.get('/api/portfolio/networth?date=2025-01-01').json()
+    assert day1['total'] == 310
+    assert day1['byKind'] == {'stock': 300, 'cash': 10}
+    assert {item['instrumentId'] for item in day1['items']} == {'nse:A', 'nse:B', 'manual:savings'}
+    day2 = client.get('/api/portfolio/networth?date=2025-02-01').json()
+    assert day2['total'] == 180
+    assert day2['byKind'] == {'stock': 150, 'cash': 10, 'epf': 20}
+    assert {item['instrumentId'] for item in day2['items']} == {'nse:A', 'manual:savings', 'manual:epf'}

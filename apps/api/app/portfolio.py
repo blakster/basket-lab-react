@@ -94,9 +94,11 @@ def networth(conn: sqlite3.Connection, snapshot_date=None):
         'SELECT s.account_id AS accountId, s.instrument_id AS instrumentId, '
         'i.name, i.kind, s.date, s.value FROM snapshots s '
         'JOIN instruments i ON i.id = s.instrument_id '
+        'JOIN accounts a ON a.id = s.account_id '
         'WHERE s.date <= ? AND NOT EXISTS ('
         'SELECT 1 FROM snapshots newer WHERE newer.account_id = s.account_id '
-        'AND newer.instrument_id = s.instrument_id AND newer.date > s.date AND newer.date <= ?) '
+        "AND (a.provider != 'manual' OR newer.instrument_id = s.instrument_id) "
+        'AND newer.date > s.date AND newer.date <= ?) '
         'ORDER BY s.account_id, s.instrument_id',
         (as_of, as_of),
     )]
