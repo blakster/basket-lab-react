@@ -20,6 +20,44 @@ import type { BacktestResult, Basket, NavPoint } from "../types";
 
 const STEP_UP = 0.1;
 
+/** A scenario descriptor: either a cashflow plan literal, or a SIP that
+ * skips its nth year (window resolved against the plain SIP's actual start). */
+type ScenarioSpec = { plan: CashflowPlan } | { sipSkipYear: number };
+
+type Scenario = {
+  id: string;
+  label: string;
+  note: string;
+  spec: ScenarioSpec;
+};
+
+const SCENARIOS: Scenario[] = [
+  {
+    id: "lumpsum",
+    label: "Lumpsum",
+    note: "Once at start",
+    spec: { plan: { kind: "lumpsum" } },
+  },
+  {
+    id: "sip",
+    label: "Monthly SIP",
+    note: "Same installment",
+    spec: { plan: { kind: "sip", stepUp: 0 } },
+  },
+  {
+    id: "step-up",
+    label: "Step-up 10%",
+    note: "SIP rises each year",
+    spec: { plan: { kind: "sip", stepUp: STEP_UP } },
+  },
+  {
+    id: "skip-year",
+    label: "Skip year 2",
+    note: "",
+    spec: { sipSkipYear: 2 },
+  },
+];
+
 type Row = {
   id: string;
   label: string;
@@ -105,67 +143,59 @@ export function CashflowCompare() {
         },
       ];
     }
-    const lumpsum = runPlan(basket, navs, settings, range.start, range.end, {
-      kind: "lumpsum",
+    const resultsById = new Map<string, BacktestResult>();
+    for (const scenario of SCENARIOS) {
+      if ("plan" in scenario.spec) {
+        resultsById.set(
+          scenario.id,
+          runPlan(basket, navs, settings, range.start, range.end, scenario.spec.plan),
+        );
+      }
+    }
+    return SCENARIOS.map((scenario): Row => {
+      if ("plan" in scenario.spec) {
+        const result = resultsById.get(scenario.id)!;
+        return {
+          id: scenario.id,
+          label: scenario.label,
+          note: scenario.note,
+          result,
+          empty: result.error === "no-nav" ? "No NAV" : null,
+        };
+      }
+      // The skip year is relative to the SIP actually run: a newer fund
+      // pushes the first SIP past the requested start, so anchor the
+      // skip window there.
+      const sip = resultsById.get("sip");
+      const sipStart =
+        !sip || sip.error === "no-nav"
+          ? range.start
+          : (sip.cashflow?.startIso ?? range.start);
+      const skip = skipYearWindow(sipStart, range.end);
+      if (!skip) {
+        return {
+          id: scenario.id,
+          label: scenario.label,
+          note: "Window shorter than 2Y",
+          result: null,
+          empty: "Need a window past year two",
+        };
+      }
+      const result = runPlan(basket, navs, settings, range.start, range.end, {
+        kind: "sip",
+        stepUp: 0,
+        skipStartIso: skip.skipStartIso,
+        skipEndIso: skip.skipEndIso,
+        skipEndInclusive: skip.skipEndInclusive,
+      });
+      return {
+        id: scenario.id,
+        label: scenario.label,
+        note: `No SIP ${skip.skipStartIso}–${skip.skipEndIso}`,
+        result,
+        empty: result.error === "no-nav" ? "No NAV" : null,
+      };
     });
-    const sip = runPlan(basket, navs, settings, range.start, range.end, {
-      kind: "sip",
-      stepUp: 0,
-    });
-    // Year two of the SIP actually run: a newer fund pushes the first SIP
-    // past the requested start, so anchor the skip window there.
-    const sipStart =
-      sip.error === "no-nav" ? range.start : (sip.cashflow?.startIso ?? range.start);
-    const skip = skipYearWindow(sipStart, range.end);
-    const step = runPlan(basket, navs, settings, range.start, range.end, {
-      kind: "sip",
-      stepUp: STEP_UP,
-    });
-    const skipResult = skip
-      ? runPlan(basket, navs, settings, range.start, range.end, {
-          kind: "sip",
-          stepUp: 0,
-          skipStartIso: skip.skipStartIso,
-          skipEndIso: skip.skipEndIso,
-          skipEndInclusive: skip.skipEndInclusive,
-        })
-      : null;
-    return [
-      {
-        id: "lumpsum",
-        label: "Lumpsum",
-        note: "Once at start",
-        result: lumpsum,
-        empty: lumpsum.error === "no-nav" ? "No NAV" : null,
-      },
-      {
-        id: "sip",
-        label: "Monthly SIP",
-        note: "Same installment",
-        result: sip,
-        empty: sip.error === "no-nav" ? "No NAV" : null,
-      },
-      {
-        id: "step-up",
-        label: "Step-up 10%",
-        note: "SIP rises each year",
-        result: step,
-        empty: step.error === "no-nav" ? "No NAV" : null,
-      },
-      {
-        id: "skip-year",
-        label: "Skip year 2",
-        note: skip
-          ? `No SIP ${skip.skipStartIso}–${skip.skipEndIso}`
-          : "Window shorter than 2Y",
-        result: skipResult,
-        empty: skip
-          ? skipResult?.error === "no-nav"
-            ? "No NAV"
-            : null
-          : "Need a window past year two",
-      },
-    ];
   }, [basket, navByCode, range.end, range.start, settings, stale]);
 
   if (!basket) return null;
