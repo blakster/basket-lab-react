@@ -30,7 +30,7 @@ function isFinitePositive(n: number): boolean {
   return Number.isFinite(n) && n > 0;
 }
 
-/** Daily time-weighted returns. SIP cash is stripped: `y_t / (y_{t-1} + sip_t) - 1`. */
+/** Daily time-weighted returns. SIP cash is stripped: `(y_t - sip_t) / y_{t-1} - 1`. */
 export function dailyTwrs(
   series: TimePoint[],
   cashflow?: CashflowSpec,
