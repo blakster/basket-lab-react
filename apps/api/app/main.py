@@ -13,6 +13,7 @@ from app.ingest.run import resolve_ingest_files, run_ingest
 from app.ingest.scheme_master import SchemeMaster
 from app.ingest.upload import upload_filing
 from app.insights import compute_insights
+from app.portfolio import delete_manual_asset, manual_assets, networth, save_manual_asset
 
 # apps/api/app/main.py → repo root / data / basket.sqlite
 DB_PATH = Path(__file__).resolve().parents[3] / "data" / "basket.sqlite"
@@ -44,6 +45,38 @@ app = FastAPI(lifespan=lifespan)
 @app.get("/api/health")
 def health():
     return {"ok": True}
+
+
+@app.post("/api/manual-assets")
+async def post_manual_asset(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        body = None
+    try:
+        return save_manual_asset(request.app.state.db, body)
+    except ValueError as exc:
+        return JSONResponse(status_code=422, content={"error": "bad_request", "message": str(exc)})
+
+
+@app.get("/api/manual-assets")
+def get_manual_assets(request: Request):
+    return manual_assets(request.app.state.db)
+
+
+@app.delete("/api/manual-assets/{id}")
+def remove_manual_asset(id: str, request: Request):
+    if not delete_manual_asset(request.app.state.db, id):
+        return JSONResponse(status_code=404, content={"error": "not_found", "message": "manual asset not found"})
+    return {"ok": True}
+
+
+@app.get("/api/portfolio/networth")
+def get_networth(request: Request):
+    try:
+        return networth(request.app.state.db, request.query_params.get("date"))
+    except ValueError as exc:
+        return JSONResponse(status_code=422, content={"error": "bad_request", "message": str(exc)})
 
 
 @app.post("/api/insights")
