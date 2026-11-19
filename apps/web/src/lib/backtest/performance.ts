@@ -75,18 +75,19 @@ export type SkipWindow = {
 };
 
 /**
- * Year two of a SIP that starts on `startIso`. The second anniversary is
+ * Year `year` of a SIP that starts on `startIso`. The next anniversary is
  * exclusive; when that falls after `endIso` the window is clipped to the
  * (inclusive) last day of the run so no SIP lands inside the skip year.
  */
 export function skipYearWindow(
   startIso: string,
   endIso: string,
+  year = 2,
 ): SkipWindow | null {
   const start = parseDay(startIso);
   const end = parseDay(endIso);
   const skipStart = new Date(start);
-  skipStart.setFullYear(skipStart.getFullYear() + 1);
+  skipStart.setFullYear(skipStart.getFullYear() + year - 1);
   const skipEnd = new Date(skipStart);
   skipEnd.setFullYear(skipEnd.getFullYear() + 1);
   if (skipStart >= end) return null;

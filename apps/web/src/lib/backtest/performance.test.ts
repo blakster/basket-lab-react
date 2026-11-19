@@ -247,6 +247,15 @@ describe("step-up and skip-year SIP", () => {
     expect(r.stats.initial).toBe(13 * 1000);
   });
 
+  it("skips year three when requested", () => {
+    expect(skipYearWindow("2023-01-01", "2027-01-01", 3)).toEqual({
+      skipStartIso: "2025-01-01",
+      skipEndIso: "2026-01-01",
+      skipEndInclusive: false,
+    });
+    expect(skipYearWindow("2023-01-01", "2024-12-01", 3)).toBeNull();
+  });
+
   it("has no skip window inside one year", () => {
     expect(skipYearWindow("2023-01-01", "2023-12-01")).toBeNull();
   });

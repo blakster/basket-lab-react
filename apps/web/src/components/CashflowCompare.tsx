@@ -21,8 +21,10 @@ import type { BacktestResult, Basket, NavPoint } from "../types";
 const STEP_UP = 0.1;
 
 /** A scenario descriptor: either a cashflow plan literal, or a SIP that
- * skips its nth year (window resolved against the plain SIP's actual start). */
-type ScenarioSpec = { plan: CashflowPlan } | { sipSkipYear: number };
+ * skips its nth year and supplies its short-window message. */
+type ScenarioSpec =
+  | { plan: CashflowPlan }
+  | { sipSkipYear: number; tooShort: string };
 
 type Scenario = {
   id: string;
@@ -53,8 +55,8 @@ const SCENARIOS: Scenario[] = [
   {
     id: "skip-year",
     label: "Skip year 2",
-    note: "",
-    spec: { sipSkipYear: 2 },
+    note: "Window shorter than 2Y",
+    spec: { sipSkipYear: 2, tooShort: "Need a window past year two" },
   },
 ];
 
@@ -171,14 +173,14 @@ export function CashflowCompare() {
         !sip || sip.error === "no-nav"
           ? range.start
           : (sip.cashflow?.startIso ?? range.start);
-      const skip = skipYearWindow(sipStart, range.end);
+      const skip = skipYearWindow(sipStart, range.end, scenario.spec.sipSkipYear);
       if (!skip) {
         return {
           id: scenario.id,
           label: scenario.label,
-          note: "Window shorter than 2Y",
+          note: scenario.note,
           result: null,
-          empty: "Need a window past year two",
+          empty: scenario.spec.tooShort,
         };
       }
       const result = runPlan(basket, navs, settings, range.start, range.end, {
