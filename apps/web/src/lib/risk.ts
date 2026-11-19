@@ -71,16 +71,18 @@ export function dailyTwrs(
     }
     if (i === 0) continue;
     const prev = series[i - 1]!;
-    const base = prev.y + add;
+    // The installment is bought at the day's NAV, so it earns no return that
+    // day: strip it from the end value. Dividing the base by it instead would
+    // dilute the market return by however large the contribution was.
+    const end = curr.y - add;
     if (
       !Number.isFinite(prev.y) ||
-      !Number.isFinite(curr.y) ||
-      !Number.isFinite(base) ||
-      base === 0
+      !Number.isFinite(end) ||
+      prev.y === 0
     ) {
       continue;
     }
-    const r = curr.y / base - 1;
+    const r = end / prev.y - 1;
     if (!Number.isFinite(r)) continue;
     out.push({ date: curr.x, r });
   }

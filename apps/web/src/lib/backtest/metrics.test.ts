@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { BacktestResult } from "../../types";
+import type { BacktestResult, NavPoint } from "../../types";
+import { dailyTwrs } from "../risk";
 import {
   computeMetrics,
   METRICS,
@@ -68,6 +69,38 @@ describe("metric registry", () => {
     expect(m.mdd).toBeLessThan(0);
     expect(m.sharpe).not.toBeNull();
     expect(m.sortino).not.toBeNull();
+  });
+
+  it("strips step-up and skipped installments, so every SIP plan yields the same TWRs", () => {
+    // 25 monthly NAVs with ups and downs: year two (12+ months in) is where
+    // step-up applies and the skip window lands.
+    const nav: NavPoint[] = Array.from({ length: 25 }, (_, i) => {
+      const d = new Date("2023-01-01T00:00:00");
+      d.setMonth(d.getMonth() + i);
+      const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      return { date, nav: 10 + (i % 7) - (i > 12 ? 2 : 0) };
+    });
+    const sipSettings = { ...settings, mode: "sip" as const };
+    const plans = [
+      { kind: "sip" as const, stepUp: 0 },
+      { kind: "sip" as const, stepUp: 0.1 },
+      {
+        kind: "sip" as const,
+        stepUp: 0,
+        skipStartIso: "2024-01-01",
+        skipEndIso: "2025-01-01",
+        skipEndInclusive: false,
+      },
+    ];
+    const twrSets = plans.map((plan) => {
+      const r = backtestPlan(basket, { A: nav }, sipSettings, plan);
+      expect(r.error).toBeUndefined();
+      return dailyTwrs(r.series, r.cashflow);
+    });
+    expect(twrSets[0].length).toBeGreaterThan(0);
+    for (const twrs of twrSets) {
+      expect(twrs).toEqual(twrSets[0]);
+    }
   });
 
   it("reuses precomputed TWRs when provided", () => {
