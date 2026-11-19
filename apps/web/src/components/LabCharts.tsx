@@ -203,7 +203,9 @@ export function YearlyRankingChart({ ranking, baskets }: RankingChartProps) {
                 className={place === 0 ? "is-first" : undefined}
               >
                 <span className="place">{place + 1}</span>
-                <span>{nameOf(entry.basketId)}</span>
+                <span className="rank-name" title={nameOf(entry.basketId)}>
+                  {nameOf(entry.basketId)}
+                </span>
                 <span className="ret">{entry.ret.toFixed(2)}%</span>
               </li>
             ))}
