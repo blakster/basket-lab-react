@@ -18,6 +18,22 @@ export const INK_SOFT_DARK = "#9A9A9A";
 export const GAIN_DARK = "#F5F5F5";
 export const LOSS_DARK = "#E07064";
 
+export interface BasketColor {
+  /** Stored on the basket — a token reference so the color follows the theme. */
+  value: string;
+  /** Literal hex the reference replaced; matches colors saved on older baskets. */
+  hex?: string;
+}
+
+export const BASKET_COLORS: BasketColor[] = [
+  { value: "var(--chart-1)", hex: "#121212" },
+  { value: "var(--chart-2)", hex: "#6B6B6B" },
+  { value: "var(--chart-6)", hex: "#5E5E5E" },
+  { value: "var(--chart-3)", hex: "#B33A2B" },
+  { value: "var(--chart-4)", hex: "#8A8A8A" },
+  { value: "var(--chart-5)", hex: "#3A3A3A" },
+];
+
 const MIN_SERIES_CONTRAST = 4.5;
 
 export function isTheme(value: string | null | undefined): value is Theme {

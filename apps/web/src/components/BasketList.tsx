@@ -1,20 +1,11 @@
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import defaults from "../data/defaults.json";
-import { tintTowardWell } from "../lib/theme";
+import { BASKET_COLORS, tintTowardWell } from "../lib/theme";
 import { useLab } from "../state/LabContext";
 import { useTheme } from "../state/ThemeContext";
 import type { Basket, LabSettings } from "../types";
 import { AllocationStack } from "./LabCharts";
-
-const COLORS = [
-  "#121212",
-  "#6B6B6B",
-  "#5E5E5E",
-  "#B33A2B",
-  "#8A8A8A",
-  "#3A3A3A",
-];
 
 function newId(): string {
   return crypto.randomUUID();
@@ -64,7 +55,7 @@ export function BasketList() {
     const basket: Basket = {
       id: newId(),
       name: "New Basket",
-      color: COLORS[baskets.length % COLORS.length],
+      color: BASKET_COLORS[baskets.length % BASKET_COLORS.length].value,
       active: true,
       funds: [],
     };
