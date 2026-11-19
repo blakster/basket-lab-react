@@ -28,7 +28,7 @@ export interface BasketColor {
 export const BASKET_COLORS: BasketColor[] = [
   { value: "var(--chart-1)", hex: "#121212" },
   { value: "var(--chart-2)", hex: "#6B6B6B" },
-  { value: "#5E5E5E" },
+  { value: "var(--ink-soft)", hex: "#5E5E5E" },
   { value: "var(--chart-3)", hex: "#B33A2B" },
   { value: "var(--chart-4)", hex: "#8A8A8A" },
   { value: "var(--chart-5)", hex: "#3A3A3A" },
