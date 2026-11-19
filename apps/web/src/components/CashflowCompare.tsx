@@ -215,7 +215,7 @@ export function CashflowCompare() {
                         <span className="basket-sub">{row.note}</span>
                       ) : null}
                     </TableCell>
-                    <TableCell className="num-empty text-right" colSpan={4}>
+                    <TableCell className="num-empty" colSpan={4}>
                       {row.empty ?? "No NAV"}
                     </TableCell>
                   </TableRow>

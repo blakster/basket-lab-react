@@ -30,12 +30,6 @@ function todayLabel(): string {
   }).format(new Date());
 }
 
-function statusVariant(kind: LabStatus["kind"]) {
-  if (kind === "no-nav" || kind === "search-down") return "destructive" as const;
-  if (kind === "ready") return "default" as const;
-  return "outline" as const;
-}
-
 const WORKSPACES: { id: Workspace; label: string }[] = [
   { id: "compare", label: "Compare" },
   { id: "baskets", label: "Baskets" },
@@ -104,8 +98,8 @@ export function AppHeader() {
           {theme === "dark" ? <Sun /> : <Moon />}
         </Button>
         <Badge
-          variant={statusVariant(banner.kind)}
-          className="status-plate px-[0.5rem] py-[0.28rem] text-[0.8125rem] bg-[var(--plate)] text-[var(--plate-ink)]"
+          variant="ghost"
+          className="status-plate px-[0.5rem] py-[0.28rem] text-[0.8125rem]"
           data-kind={banner.kind}
         >
           {statusLabel(banner)}
@@ -120,8 +114,8 @@ export function AppHeader() {
         </Button>
         {insightsStatus.kind === "insights-down" ? (
           <Badge
-            variant="outline"
-            className="status-plate px-[0.5rem] py-[0.28rem] text-[0.8125rem] bg-[var(--plate)] text-[var(--plate-ink)]"
+            variant="ghost"
+            className="status-plate px-[0.5rem] py-[0.28rem] text-[0.8125rem] max-[800px]:hidden"
             data-kind="insights-down"
           >
             {statusLabel(insightsStatus)}

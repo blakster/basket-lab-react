@@ -38,7 +38,10 @@ function MixMeters({
             <span>{m.label}</span>
             <span>{formatPct(m.weight)}</span>
           </div>
-          <Progress value={Math.min(100, Math.max(0, m.weight))} />
+          <Progress
+            value={Math.min(100, Math.max(0, m.weight))}
+            className="h-1 rounded-none bg-[var(--paper-deep)] [&_[data-slot=progress-indicator]]:bg-[var(--ink)]"
+          />
         </div>
       ))}
     </div>

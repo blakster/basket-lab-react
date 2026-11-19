@@ -2185,6 +2185,7 @@ button[data-static="true"]:active:not(:disabled) {
 }
 
 .insight-table th {
+  text-align: left;
   font-size: 0.72rem;
   letter-spacing: 0.02em;
   text-transform: none;
