@@ -45,6 +45,11 @@ export type BacktestCashflow = {
   startIso: string;
   /** Window the user asked for; may be earlier than `startIso` when a fund is newer. */
   requestedStartIso?: string;
+  /** SIP plan the run used: annual step-up (decimal) and skipped months. */
+  stepUp?: number;
+  skipStartIso?: string;
+  skipEndIso?: string;
+  skipEndInclusive?: boolean;
 };
 
 export type BacktestResult = {

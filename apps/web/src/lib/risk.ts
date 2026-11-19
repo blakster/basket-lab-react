@@ -4,6 +4,12 @@ export type CashflowSpec = {
   mode: "lumpsum" | "sip";
   amount: number;
   startIso: string;
+  /** Annual installment step-up as a decimal (0.1 = +10%/year). */
+  stepUp?: number;
+  /** Months inside this window get no installment. */
+  skipStartIso?: string;
+  skipEndIso?: string;
+  skipEndInclusive?: boolean;
 };
 
 export type DatedReturn = { date: string; r: number };
@@ -33,6 +39,11 @@ export function dailyTwrs(
 
   const sip = cashflow?.mode === "sip";
   const amount = cashflow?.amount ?? 0;
+  const stepUp = cashflow?.stepUp ?? 0;
+  const skipStart =
+    cashflow?.skipStartIso != null ? parseDay(cashflow.skipStartIso) : null;
+  const skipEnd =
+    cashflow?.skipEndIso != null ? parseDay(cashflow.skipEndIso) : null;
   let nextSip = sip && cashflow ? parseDay(cashflow.startIso) : null;
   let sipCount = 0;
   const out: DatedReturn[] = [];
@@ -43,7 +54,16 @@ export function dailyTwrs(
     if (nextSip && cashflow) {
       const day = parseDay(curr.x);
       if (day >= nextSip) {
-        add = amount;
+        // Mirrors runBacktest: skipped months advance the schedule but add
+        // nothing; step-up applies on the installment's calendar year.
+        const inSkip =
+          skipStart != null &&
+          skipEnd != null &&
+          day >= skipStart &&
+          (cashflow.skipEndInclusive ? day <= skipEnd : day < skipEnd);
+        if (!inSkip) {
+          add = amount * Math.pow(1 + stepUp, Math.floor(sipCount / 12));
+        }
         sipCount += 1;
         nextSip = parseDay(cashflow.startIso);
         nextSip.setMonth(nextSip.getMonth() + sipCount);

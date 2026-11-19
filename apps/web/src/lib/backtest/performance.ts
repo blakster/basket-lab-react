@@ -309,6 +309,10 @@ function runBacktest(
       amount: settings.amount,
       startIso,
       requestedStartIso,
+      stepUp: plan.stepUp,
+      skipStartIso: plan.skipStartIso,
+      skipEndIso: plan.skipEndIso,
+      skipEndInclusive: plan.skipEndInclusive,
     },
     stats: {
       initial: totalInvested,
