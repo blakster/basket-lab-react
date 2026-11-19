@@ -87,13 +87,13 @@ export function InvestmentSettings() {
         >
           <TabsTrigger
             value="lumpsum"
-            className="rounded-[var(--r-btn)] px-2.5 py-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            className="rounded-[var(--r-btn)] px-2.5 py-1.5 data-[state=active]:bg-primary! data-[state=active]:text-primary-foreground!"
           >
             Lumpsum
           </TabsTrigger>
           <TabsTrigger
             value="sip"
-            className="rounded-[var(--r-btn)] px-2.5 py-1.5 data-[state=active]:bg-transparent data-[state=active]:text-[var(--ink)] data-[state=active]:shadow-[inset_0_-2px_0_var(--ink)]"
+            className="rounded-[var(--r-btn)] px-2.5 py-1.5 data-[state=active]:bg-transparent! data-[state=active]:text-[var(--ink)]! data-[state=active]:shadow-[inset_0_-2px_0_var(--ink)]"
           >
             SIP
           </TabsTrigger>
@@ -116,7 +116,7 @@ export function InvestmentSettings() {
           <ToggleGroupItem
             key={period}
             value={period}
-            className="rounded-none border-0 bg-transparent px-2.5 shadow-none data-[state=on]:bg-transparent data-[state=on]:text-[var(--ink)] data-[state=on]:shadow-[inset_0_-2px_0_var(--ink)]"
+            className="rounded-none border-0 bg-transparent px-2.5 shadow-none data-[state=on]:bg-transparent! data-[state=on]:text-[var(--ink)]! data-[state=on]:shadow-[inset_0_-2px_0_var(--ink)]"
           >
             {period}
           </ToggleGroupItem>
