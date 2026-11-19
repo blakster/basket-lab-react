@@ -32,14 +32,14 @@ const MUTED = "var(--ink-soft)";
 const GRID = "color-mix(in srgb, var(--ink) 12%, transparent)";
 
 const PART_COLORS = [
-  "#121212",
-  "#6b6b6b",
-  "#5e5e5e",
-  "#b33a2b",
-  "#8a8a8a",
-  "#3a3a3a",
-  "#777777",
-  "#9a9a9a",
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
+  "var(--steel)",
+  "var(--ink-soft)",
+  "var(--steel)",
 ];
 
 function tickStyle(size = 12) {

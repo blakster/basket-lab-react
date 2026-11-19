@@ -8,12 +8,12 @@ import type { Basket, LabSettings } from "../types";
 import { AllocationStack } from "./LabCharts";
 
 const COLORS = [
-  "#121212",
-  "#6B6B6B",
-  "#5E5E5E",
-  "#B33A2B",
-  "#8A8A8A",
-  "#3A3A3A",
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
+  "var(--steel)",
 ];
 
 function newId(): string {

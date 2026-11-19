@@ -13,6 +13,11 @@ colors:
   loss: "#B33A2B"
   rule: "#E8E8E8"
   overlay: "rgb(18 18 18 / 0.6)"
+  chart-1: "#121212"
+  chart-2: "#6B6B6B"
+  chart-3: "#B33A2B"
+  chart-4: "#8A8A8A"
+  chart-5: "#3A3A3A"
   paper-night: "#121212"
   paper-deep-night: "#0A0A0A"
   paper-well-night: "#1C1C1C"
@@ -21,6 +26,11 @@ colors:
   gain-night: "#F5F5F5"
   loss-night: "#E07064"
   overlay-night: "rgb(0 0 0 / 0.72)"
+  chart-1-night: "#F5F5F5"
+  chart-2-night: "#9A9A9A"
+  chart-3-night: "#E07064"
+  chart-4-night: "#777777"
+  chart-5-night: "#5E5E5E"
 typography:
   display:
     fontFamily: "IBM Plex Sans, system-ui, sans-serif"
@@ -61,17 +71,17 @@ Basket Lab is a local Indian MF and ETF lab. The field is white `#FFFFFF`. Type 
 
 The first viewport is a league: one lead sentence, baskets as columns (BeES as a ghost reference), one growth chart. Settings are a thin instrument strip, not a card.
 
-This look replaces the frost/teal/Geist desk. The information set and one-route lab stay.
+## Tokens
 
-## Colors
-
-The interface is 90%+ ink on white. Yellow is not a series color and not a gain color.
+`apps/web/src/theme.css` is the single source of truth for every design token: the neutral scale, the accent, semantic gain/loss, the `--chart-1`…`--chart-5` series palette, radii, type and motion — for both light and `.dark`. `@theme inline` maps them onto Tailwind utilities (`bg-primary`, `text-gain`, `text-chart-3`, …); components never hardcode hex values for palette colors.
 
 - **Plate** `paper`: page, header.
 - **Carbon ink** `ink`: type, hairlines, the ring mark, signed gains.
-- **Enamel yellow** `primary`: LIVE, active lumpsum, leader tick.
-- **Rust** `loss`: drawdown, BLACKOUT, trailing vs BeES.
+- **Enamel yellow** `primary` / `accent`: LIVE, active lumpsum, leader tick. Yellow is not a series color and not a gain color.
+- **Rust** `loss` / `destructive`: drawdown, trailing vs BeES.
 - **Steel**: BeES reference and secondary series.
+- **`--chart-1`…`--chart-5`**: the only series palette — neutral inks plus rust as the contrast entry; night mirrors them in frost. Components read them as `var(--chart-N)`, never literals.
+- **Gain/loss are semantic tokens** (`--gain`, `--loss`): always a sign (+/−) and color, never color alone, so they read for colorblind users and in grayscale.
 
 Night uses inverse tokens: field `#121212`, well `#1C1C1C`, ink frost. Yellow chrome stays.
 
@@ -98,6 +108,7 @@ Sharp: 0 / 2. Buttons 2px. Focus is a 2px ink ring, offset 2px.
 - Keep yellow for LIVE, the active mode plate, and the leader tick.
 - Keep comparison as columns on the first viewport.
 - Keep missing NAV as empty copy, never zero.
+- Add or retune a color only in `theme.css`; never introduce a palette literal in a component.
 
 ## Don't
 
@@ -105,3 +116,4 @@ Sharp: 0 / 2. Buttons 2px. Focus is a 2px ink ring, offset 2px.
 - Don't color signed gains teal or green.
 - Don't add a marketing hero in front of the lab.
 - Don't blur the header.
+- Don't bypass `--chart-N` with hardcoded series colors.

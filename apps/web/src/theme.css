@@ -1,0 +1,156 @@
+@custom-variant dark (&:where(.dark, .dark *));
+
+@custom-variant hover {
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      @slot;
+    }
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-gain: var(--gain);
+  --color-loss: var(--loss);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: 0px;
+  --radius-md: 2px;
+  --radius-lg: 2px;
+  --radius-xl: 2px;
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+
+:root {
+  --background: #ffffff;
+  --foreground: #121212;
+  --card: #ffffff;
+  --card-foreground: #121212;
+  --popover: #ffffff;
+  --popover-foreground: #121212;
+  --primary: #f5c400;
+  --primary-foreground: #121212;
+  --secondary: #f3f3f3;
+  --secondary-foreground: #121212;
+  --muted: #f3f3f3;
+  --muted-foreground: #5e5e5e;
+  --accent: #f5c400;
+  --accent-foreground: #121212;
+  --destructive: #b33a2b;
+  --border: #e8e8e8;
+  --input: #e8e8e8;
+  --ring: #121212;
+  --radius: 2px;
+  --paper: #ffffff;
+  --paper-deep: #f3f3f3;
+  --paper-well: #ffffff;
+  --ink: #121212;
+  --ink-soft: #5e5e5e;
+  --steel: #6b6b6b;
+  --chart-1: #121212;
+  --chart-2: #6b6b6b;
+  --chart-3: #b33a2b;
+  --chart-4: #8a8a8a;
+  --chart-5: #3a3a3a;
+  --gain: #121212;
+  --loss: #b33a2b;
+  --rule: #e8e8e8;
+  --rule-faint: #eeeeee;
+  --plate: #f5c400;
+  --plate-ink: #121212;
+  --on-loss: #ffffff;
+  --focus: #121212;
+  --ink-wash: color-mix(in srgb, var(--ink) 8%, transparent);
+  --ink-wash-soft: color-mix(in srgb, var(--ink) 4%, transparent);
+  --overlay: rgb(18 18 18 / 0.6);
+  --shadow-border: 0 0 0 1px var(--rule);
+  --umbra: 0 24px 48px rgb(18 18 18 / 0.28);
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --duration-press: 90ms;
+  --duration-ui: 150ms;
+  --duration-sheet: 280ms;
+  --press-scale: 0.985;
+  --sans: "IBM Plex Sans", system-ui, sans-serif;
+  --condensed: "IBM Plex Sans", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --display-weight: 500;
+  --display-tracking: -0.02em;
+  --r-sm: 0px;
+  --r-md: 2px;
+  --r-lg: 2px;
+  --r-btn: 2px;
+  --space: 1.15rem;
+  color-scheme: light;
+  color: var(--ink);
+  background: var(--paper);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.5;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
+
+.dark {
+  --background: #121212;
+  --foreground: #f5f5f5;
+  --card: #1c1c1c;
+  --card-foreground: #f5f5f5;
+  --popover: #1c1c1c;
+  --popover-foreground: #f5f5f5;
+  --primary: #f5c400;
+  --primary-foreground: #121212;
+  --secondary: #1c1c1c;
+  --secondary-foreground: #f5f5f5;
+  --muted: #1c1c1c;
+  --muted-foreground: #9a9a9a;
+  --accent: #f5c400;
+  --accent-foreground: #121212;
+  --destructive: #e07064;
+  --border: #2a2a2a;
+  --input: #2a2a2a;
+  --ring: #f5f5f5;
+  --paper: #121212;
+  --paper-deep: #0a0a0a;
+  --paper-well: #1c1c1c;
+  --ink: #f5f5f5;
+  --ink-soft: #9a9a9a;
+  --steel: #8a8a8a;
+  --chart-1: #f5f5f5;
+  --chart-2: #9a9a9a;
+  --chart-3: #e07064;
+  --chart-4: #777777;
+  --chart-5: #5e5e5e;
+  --gain: #f5f5f5;
+  --loss: #e07064;
+  --rule: #2a2a2a;
+  --rule-faint: #242424;
+  --plate: #f5c400;
+  --plate-ink: #121212;
+  --on-loss: #121212;
+  --focus: #f5f5f5;
+  --overlay: rgb(0 0 0 / 0.72);
+  --shadow-border: 0 0 0 1px var(--rule);
+  --umbra: 0 24px 48px rgb(0 0 0 / 0.56);
+  color-scheme: dark;
+}
