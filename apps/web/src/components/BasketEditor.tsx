@@ -17,20 +17,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useEffect, useRef, useState } from "react";
+import { BASKET_COLORS } from "../lib/theme";
 import { applyWeightChange } from "../lib/weights";
 import { useLab } from "../state/LabContext";
 import type { Basket, SearchHit } from "../types";
 import { FundSearch } from "./FundSearch";
 import { WeightField } from "./WeightField";
 
-const SWATCHES = [
-  "#121212",
-  "#6B6B6B",
-  "#5E5E5E",
-  "#B33A2B",
-  "#8A8A8A",
-  "#3A3A3A",
-];
+const SWATCHES = BASKET_COLORS;
 
 const WEIGHT_TOLERANCE = 0.1;
 
@@ -158,15 +152,20 @@ export function BasketEditor() {
                 </label>
                 <fieldset className="swatches">
                   <legend>Chart color</legend>
-                  {SWATCHES.map((color) => (
+                  {SWATCHES.map((swatch) => (
                     <button
-                      key={color}
+                      key={swatch.value}
                       type="button"
                       className="swatch"
-                      style={{ background: color }}
-                      aria-label={color}
-                      aria-pressed={draft.color === color}
-                      onClick={() => setDraft({ ...draft, color })}
+                      style={{ background: swatch.value }}
+                      aria-label={swatch.value}
+                      aria-pressed={
+                        draft.color === swatch.value ||
+                        (!!swatch.hex && draft.color.toUpperCase() === swatch.hex)
+                      }
+                      onClick={() =>
+                        setDraft({ ...draft, color: swatch.value })
+                      }
                     />
                   ))}
                 </fieldset>
