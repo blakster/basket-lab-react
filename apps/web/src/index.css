@@ -188,6 +188,7 @@ body {
   }
 }
 
+@layer components {
 .sr-only {
   position: absolute;
   width: 1px;
@@ -3050,4 +3051,5 @@ button.basket-check[data-state="checked"] {
 .insights-nav button:active:not(:disabled) {
   background: transparent;
   transform: none;
+}
 }

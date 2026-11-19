@@ -1,3 +1,4 @@
+@layer components {
 /* Remaining lab surfaces share the same ink, hairlines, and sharp plate. */
 button[data-slot="checkbox"] {
   padding: 0;
@@ -418,4 +419,5 @@ button[data-slot="checkbox"]:hover:not(:disabled) {
     font: 400 0.75rem var(--sans);
     color: var(--ink-soft);
   }
+}
 }
