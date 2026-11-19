@@ -115,7 +115,7 @@ export function AppHeader() {
         {insightsStatus.kind === "insights-down" ? (
           <Badge
             variant="ghost"
-            className="status-plate px-[0.5rem] py-[0.28rem] text-[0.8125rem] max-[800px]:hidden"
+            className="status-plate px-[0.5rem] py-[0.28rem] text-[0.8125rem] [@media(max-width:800px)]:hidden"
             data-kind="insights-down"
           >
             {statusLabel(insightsStatus)}
