@@ -67,6 +67,7 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
           type="search"
           value={query}
           placeholder="Fund or ETF name"
+          className="border-0 rounded-[var(--r-sm)] bg-[var(--paper)] px-[0.65rem] py-[0.45rem] min-w-[8rem] shadow-[var(--shadow-border)]"
           aria-describedby={hintId}
           autoComplete="off"
           onChange={(event) => {

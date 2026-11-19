@@ -132,12 +132,12 @@ export function BasketEditor() {
         if (!next) closeEditor();
       }}
     >
-      <DialogContent className="basket-editor">
-        <DialogHeader className="editor-header">
-          <DialogTitle id="basket-editor-title" className="editor-title">
+      <DialogContent className="basket-editor flex flex-col gap-0 p-0 w-[min(48rem,calc(100%-2rem))] max-w-none sm:max-w-none">
+        <DialogHeader className="editor-header gap-[0.35rem] text-left">
+          <DialogTitle id="basket-editor-title" className="editor-title text-[1.25rem] font-medium tracking-[var(--display-tracking)]">
             {creating ? "New basket" : "Edit basket"}
           </DialogTitle>
-          <DialogDescription className="editor-description">
+          <DialogDescription className="editor-description text-[0.8125rem] text-[var(--ink-soft)]">
             Add funds, set weights, and lock allocations you want to keep.
           </DialogDescription>
         </DialogHeader>
@@ -149,6 +149,7 @@ export function BasketEditor() {
                   <span>Name</span>
                   <Input
                     type="text"
+                    className="border-0 rounded-[var(--r-sm)] bg-[var(--paper)] px-[0.65rem] py-[0.45rem] min-w-[8rem] shadow-[var(--shadow-border)]"
                     value={draft.name}
                     onChange={(e) =>
                       setDraft({ ...draft, name: e.target.value })
@@ -257,7 +258,7 @@ export function BasketEditor() {
                 remaining unlocked funds.
               </p>
             </div>
-            <DialogFooter className="editor-footer">
+            <DialogFooter className="editor-footer flex-row flex-wrap justify-between gap-4 sm:justify-between">
               <div className="editor-total" role="status">
                 <span>Total allocation</span>
                 <strong

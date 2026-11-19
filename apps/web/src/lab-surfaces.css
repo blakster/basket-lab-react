@@ -217,7 +217,7 @@ button[data-slot="checkbox"]:hover:not(:disabled) {
 }
 
 .weight-input {
-  width: 4.75rem;
+  flex: 0 0 4.75rem;
   font-family: var(--mono);
   text-align: right;
   padding: 0.35rem 0.5rem;

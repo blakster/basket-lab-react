@@ -96,7 +96,7 @@ export function AppHeader() {
           type="button"
           variant="ghost"
           size="icon-sm"
-          className="share-text"
+          className="share-text text-[0.88rem]"
           aria-pressed={theme === "dark"}
           aria-label="Night edition"
           onClick={toggleTheme}
@@ -105,7 +105,7 @@ export function AppHeader() {
         </Button>
         <Badge
           variant={statusVariant(banner.kind)}
-          className="status-plate"
+          className="status-plate px-[0.5rem] py-[0.28rem] text-[0.8125rem] bg-[var(--plate)] text-[var(--plate-ink)]"
           data-kind={banner.kind}
         >
           {statusLabel(banner)}
@@ -113,7 +113,7 @@ export function AppHeader() {
         <Button
           type="button"
           variant="outline"
-          className="share-cta h-auto"
+          className="share-cta h-auto bg-transparent px-[0.65rem] py-[0.35rem] text-[0.8125rem]"
           onClick={handleShare}
         >
           {copied ? "Copied" : "Share"}
@@ -121,7 +121,7 @@ export function AppHeader() {
         {insightsStatus.kind === "insights-down" ? (
           <Badge
             variant="outline"
-            className="status-plate"
+            className="status-plate px-[0.5rem] py-[0.28rem] text-[0.8125rem] bg-[var(--plate)] text-[var(--plate-ink)]"
             data-kind="insights-down"
           >
             {statusLabel(insightsStatus)}

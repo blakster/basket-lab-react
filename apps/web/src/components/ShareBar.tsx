@@ -49,12 +49,13 @@ export function ShareBar() {
             readOnly
             value={href}
             aria-labelledby="share-url-label"
+            className="text-[0.8125rem]"
             onFocus={(event) => event.currentTarget.select()}
           />
           <Button
             type="button"
             variant="outline"
-            className="share-copy"
+            className="share-copy border-0 bg-transparent px-3 py-[0.35rem] text-[0.8125rem]"
             onClick={copy}
           >
             Copy link
