@@ -7,6 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.db import init_db
+from app.cas_routes import router as cas_router
 from app.filing_status import filing_statuses
 from app.ingest.ensure import _serialize_status, ensure_filings, scheme_codes_from_body
 from app.ingest.run import resolve_ingest_files, run_ingest
@@ -39,6 +40,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+app.include_router(cas_router)
 
 
 @app.get("/api/health")
