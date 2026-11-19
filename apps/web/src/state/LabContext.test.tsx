@@ -601,3 +601,81 @@ describe("LabContext runAnalysis", () => {
     expect(api.current!.results[0]?.cashflow?.startIso).toBe("2021-01-01");
   });
 });
+
+describe("LabContext insights basket id", () => {
+  beforeEach(() => {
+    window.localStorage.removeItem("basket-lab-v1");
+    clearShareQuery();
+    const url = new URL(window.location.href);
+    url.hash = "";
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  });
+
+  function basketWithId(id: string, active: boolean): Basket {
+    const b = makeBasket(100);
+    return { ...b, id, name: id, active };
+  }
+
+  it("drops a deleted basket's id when reopening insights", () => {
+    const api: { current: ReturnType<typeof useLab> | null } = { current: null };
+    render(
+      <LabProvider>
+        <Consumer api={api} />
+      </LabProvider>,
+    );
+
+    const a = basketWithId("basket-a", false);
+    const b = basketWithId("basket-b", true);
+    act(() => {
+      api.current!.setBaskets([a, b]);
+    });
+    act(() => {
+      api.current!.openInsights("basket-a");
+    });
+    expect(api.current!.insightsBasketId).toBe("basket-a");
+    expect(window.location.hash).toBe("#insights=basket-a");
+
+    act(() => {
+      api.current!.setBaskets([b]);
+    });
+    act(() => {
+      api.current!.openInsights();
+    });
+    expect(api.current!.insightsBasketId).toBe("basket-b");
+    expect(window.location.hash).toBe("#insights=basket-b");
+  });
+
+  it("drops a deleted basket's id when returning to insights from baskets", () => {
+    const api: { current: ReturnType<typeof useLab> | null } = { current: null };
+    render(
+      <LabProvider>
+        <Consumer api={api} />
+      </LabProvider>,
+    );
+
+    const a = basketWithId("basket-a", false);
+    const b = basketWithId("basket-b", true);
+    act(() => {
+      api.current!.setBaskets([a, b]);
+    });
+    act(() => {
+      api.current!.openInsights("basket-a");
+    });
+    expect(api.current!.insightsBasketId).toBe("basket-a");
+
+    act(() => {
+      api.current!.setWorkspace("baskets");
+    });
+    expect(window.location.hash).toBe("#baskets");
+
+    act(() => {
+      api.current!.setBaskets([b]);
+    });
+    act(() => {
+      api.current!.setWorkspace("insights");
+    });
+    expect(api.current!.workspace).toBe("insights");
+    expect(api.current!.insightsBasketId).toBe("basket-b");
+    expect(window.location.hash).toBe("#insights=basket-b");
+  });
+});
