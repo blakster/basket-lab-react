@@ -2,6 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Moon, Sun } from "lucide-react";
 import { useState } from "react";
+import { encodeShare } from "../lib/shareUrl";
 import { useLab, type LabStatus, type Workspace } from "../state/LabContext";
 import { useTheme } from "../state/ThemeContext";
 
@@ -37,7 +38,8 @@ const WORKSPACES: { id: Workspace; label: string }[] = [
 ];
 
 export function AppHeader() {
-  const { status, insightsStatus, workspace, setWorkspace } = useLab();
+  const { status, insightsStatus, workspace, setWorkspace, settings, baskets } =
+    useLab();
   const { theme, toggleTheme } = useTheme();
   const [copied, setCopied] = useState(false);
   const banner =
@@ -45,8 +47,8 @@ export function AppHeader() {
 
   function handleShare() {
     const url = new URL(window.location.href);
-    const href = `${url.origin}${url.pathname}${url.search}`;
-    const write = navigator.clipboard?.writeText?.(href);
+    url.searchParams.set("s", encodeShare({ settings, baskets }));
+    const write = navigator.clipboard?.writeText?.(url.href);
     if (!write) return;
     void write
       .then(() => {
