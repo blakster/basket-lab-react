@@ -2,13 +2,20 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { useEffect, useMemo, useRef } from "react";
 import { loadNiftyBeesNav, NIFTY_BEES_CODE } from "../lib/api/benchmarkNav";
+import {
+  METRICS,
+  metricClass,
+  metricLabel,
+  metricText,
+  type MetricId,
+} from "../lib/backtest/metrics";
 import { formatInr } from "../lib/format";
 import { benchmarkForResult } from "../lib/portfolioDetails";
 import { yearlyRanking } from "../lib/ranking";
 import { resolveRange } from "../lib/resolveSettings";
 import { runIsStale } from "../lib/runFreshness";
 import { useLab } from "../state/LabContext";
-import type { BacktestResult, Basket, TimePoint } from "../types";
+import type { BacktestResult, Basket } from "../types";
 import { CashflowCompare } from "./CashflowCompare";
 import { DrawdownChart, GrowthChart, YearlyRankingChart } from "./LabCharts";
 
@@ -53,23 +60,8 @@ function formatAsOf(iso: string): string {
   });
 }
 
-function volFromSeries(series: TimePoint[]): number | null {
-  if (series.length < 3) return null;
-  const returns: number[] = [];
-  for (let i = 1; i < series.length; i++) {
-    const prev = series[i - 1]!.y;
-    const curr = series[i]!.y;
-    if (!Number.isFinite(prev) || !Number.isFinite(curr) || prev === 0)
-      continue;
-    returns.push(curr / prev - 1);
-  }
-  if (returns.length < 2) return null;
-  const mean = returns.reduce((s, r) => s + r, 0) / returns.length;
-  const sq = returns.reduce((s, r) => s + (r - mean) ** 2, 0);
-  const stdev = Math.sqrt(sq / (returns.length - 1));
-  if (stdev === 0 || !Number.isFinite(stdev)) return null;
-  return stdev * Math.sqrt(252) * 100;
-}
+// Registry metrics shown under each league card after the bespoke vs-BeES cell.
+const LEAGUE_METRICS: MetricId[] = ["mdd", "vol", "sharpe", "sortino"];
 
 function unionLabels(results: BacktestResult[]): string[] {
   const dates = new Set<string>();
@@ -282,7 +274,6 @@ export function BacktestView() {
   });
   const asOf = labels.length ? labels[labels.length - 1]! : "";
   const leaderId = ranked.find((row) => row.error !== "no-nav")?.basketId;
-  const beesVol = beesResult ? volFromSeries(beesResult.series) : null;
 
   return (
     <section
@@ -322,7 +313,6 @@ export function BacktestView() {
               </li>
             );
           }
-          const vol = volFromSeries(r.series);
           const bees = beesRateById.get(r.basketId);
           const vs = bees == null ? null : r.stats.cagr - bees;
           return (
@@ -350,20 +340,17 @@ export function BacktestView() {
                     {vs == null ? "—" : formatPct(vs)}
                   </dd>
                 </div>
-                <div className="league-metric">
-                  <dt>Max DD</dt>
-                  <dd className="num-loss">{formatPct(r.stats.mdd)}</dd>
-                </div>
-                <div className="league-metric">
-                  <dt>Vol</dt>
-                  <dd>
-                    {vol == null ? (
-                      <span className="num-empty">—</span>
-                    ) : (
-                      formatPct(vol)
-                    )}
-                  </dd>
-                </div>
+                {LEAGUE_METRICS.map((id) => {
+                  const value = METRICS[id].compute(r, {});
+                  return (
+                    <div key={id} className="league-metric">
+                      <dt>{metricLabel(id, r)}</dt>
+                      <dd className={metricClass(id, value)}>
+                        {metricText(id, value)}
+                      </dd>
+                    </div>
+                  );
+                })}
               </dl>
             </li>
           );
@@ -380,14 +367,20 @@ export function BacktestView() {
                 <dt>vs BeES</dt>
                 <dd>—</dd>
               </div>
-              <div className="league-metric">
-                <dt>Max DD</dt>
-                <dd className="num-loss">—</dd>
-              </div>
-              <div className="league-metric">
-                <dt>Vol</dt>
-                <dd>{beesVol == null ? "—" : formatPct(beesVol)}</dd>
-              </div>
+              {LEAGUE_METRICS.map((id) => {
+                const value =
+                  id === "mdd"
+                    ? null
+                    : METRICS[id].compute(beesResult, {});
+                return (
+                  <div key={id} className="league-metric">
+                    <dt>{metricLabel(id)}</dt>
+                    <dd className={metricClass(id, value)}>
+                      {metricText(id, value)}
+                    </dd>
+                  </div>
+                );
+              })}
             </dl>
           </li>
         ) : null}

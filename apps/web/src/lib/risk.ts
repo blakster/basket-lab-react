@@ -4,6 +4,12 @@ export type CashflowSpec = {
   mode: "lumpsum" | "sip";
   amount: number;
   startIso: string;
+  /** Annual installment step-up as a decimal (0.1 = +10%/year). */
+  stepUp?: number;
+  /** Months inside this window get no installment. */
+  skipStartIso?: string;
+  skipEndIso?: string;
+  skipEndInclusive?: boolean;
 };
 
 export type DatedReturn = { date: string; r: number };
@@ -24,7 +30,7 @@ function isFinitePositive(n: number): boolean {
   return Number.isFinite(n) && n > 0;
 }
 
-/** Daily time-weighted returns. SIP cash is stripped: `y_t / (y_{t-1} + sip_t) - 1`. */
+/** Daily time-weighted returns. SIP cash is stripped: `(y_t - sip_t) / y_{t-1} - 1`. */
 export function dailyTwrs(
   series: TimePoint[],
   cashflow?: CashflowSpec,
@@ -33,6 +39,11 @@ export function dailyTwrs(
 
   const sip = cashflow?.mode === "sip";
   const amount = cashflow?.amount ?? 0;
+  const stepUp = cashflow?.stepUp ?? 0;
+  const skipStart =
+    cashflow?.skipStartIso != null ? parseDay(cashflow.skipStartIso) : null;
+  const skipEnd =
+    cashflow?.skipEndIso != null ? parseDay(cashflow.skipEndIso) : null;
   let nextSip = sip && cashflow ? parseDay(cashflow.startIso) : null;
   let sipCount = 0;
   const out: DatedReturn[] = [];
@@ -43,7 +54,16 @@ export function dailyTwrs(
     if (nextSip && cashflow) {
       const day = parseDay(curr.x);
       if (day >= nextSip) {
-        add = amount;
+        // Mirrors runBacktest: skipped months advance the schedule but add
+        // nothing; step-up applies on the installment's calendar year.
+        const inSkip =
+          skipStart != null &&
+          skipEnd != null &&
+          day >= skipStart &&
+          (cashflow.skipEndInclusive ? day <= skipEnd : day < skipEnd);
+        if (!inSkip) {
+          add = amount * Math.pow(1 + stepUp, Math.floor(sipCount / 12));
+        }
         sipCount += 1;
         nextSip = parseDay(cashflow.startIso);
         nextSip.setMonth(nextSip.getMonth() + sipCount);
@@ -51,16 +71,18 @@ export function dailyTwrs(
     }
     if (i === 0) continue;
     const prev = series[i - 1]!;
-    const base = prev.y + add;
+    // The installment is bought at the day's NAV, so it earns no return that
+    // day: strip it from the end value. Dividing the base by it instead would
+    // dilute the market return by however large the contribution was.
+    const end = curr.y - add;
     if (
       !Number.isFinite(prev.y) ||
-      !Number.isFinite(curr.y) ||
-      !Number.isFinite(base) ||
-      base === 0
+      !Number.isFinite(end) ||
+      prev.y === 0
     ) {
       continue;
     }
-    const r = curr.y / base - 1;
+    const r = end / prev.y - 1;
     if (!Number.isFinite(r)) continue;
     out.push({ date: curr.x, r });
   }
