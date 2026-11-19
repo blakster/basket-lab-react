@@ -97,7 +97,7 @@ export function BasketList() {
             type="button"
             variant="ghost"
             size="sm"
-            className="basket-reset"
+            className="basket-reset text-[0.8125rem]"
             onClick={resetDefaults}
           >
             Reset defaults
@@ -106,7 +106,7 @@ export function BasketList() {
             type="button"
             variant="outline"
             size="sm"
-            className="basket-create"
+            className="basket-create border-0 bg-transparent px-3 py-[0.35rem] text-[0.8125rem]"
             onClick={createNew}
           >
             + New basket
@@ -132,7 +132,7 @@ export function BasketList() {
                   id={inputId}
                   checked={basket.active}
                   onCheckedChange={() => toggleActive(basket.id)}
-                  className="basket-check cursor-pointer"
+                  className="basket-check cursor-pointer border-0"
                 />
                 <label htmlFor={inputId} className="basket-card-label">
                   <span className="basket-card-name">{basket.name}</span>
@@ -187,7 +187,7 @@ export function BasketList() {
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="basket-delete"
+                  className="basket-delete hover:text-[var(--loss)]"
                   disabled={baskets.length <= 1}
                   onClick={() => remove(basket.id)}
                 >

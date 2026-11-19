@@ -33,7 +33,7 @@ function AmountInput() {
           value={draft}
           aria-invalid={settings.amount < 100}
           aria-describedby={settings.amount < 100 ? "amount-error" : undefined}
-          className="h-auto border-0 bg-transparent px-0 text-left shadow-none dark:bg-transparent focus-visible:border-0 focus-visible:ring-0"
+          className="h-auto border-0 bg-transparent px-0 py-[0.2rem] min-w-[7rem] rounded-none text-left text-inherit shadow-none dark:bg-transparent focus-visible:border-0 focus-visible:ring-0"
           onFocus={(event) => {
             focusedRef.current = true;
             event.currentTarget.select();
@@ -129,7 +129,7 @@ export function InvestmentSettings() {
             <Input
               type="date"
               value={settings.customStart ?? ""}
-              className="rounded-md border-0 border-b bg-transparent shadow-none"
+              className="rounded-[var(--r-sm)] border-0 bg-[var(--paper)] px-[0.65rem] py-[0.45rem] min-w-[8rem] shadow-[var(--shadow-border)]"
               onChange={(e) =>
                 setSettings({
                   ...settings,
@@ -143,7 +143,7 @@ export function InvestmentSettings() {
             <Input
               type="date"
               value={settings.customEnd ?? ""}
-              className="rounded-md border-0 border-b bg-transparent shadow-none"
+              className="rounded-[var(--r-sm)] border-0 bg-[var(--paper)] px-[0.65rem] py-[0.45rem] min-w-[8rem] shadow-[var(--shadow-border)]"
               onChange={(e) =>
                 setSettings({
                   ...settings,
