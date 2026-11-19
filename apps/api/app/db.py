@@ -60,6 +60,40 @@ CREATE TABLE IF NOT EXISTS mixes (
   weight_pct REAL NOT NULL,
   PRIMARY KEY (as_of, scheme_code, kind, label)
 );
+-- Portfolio domain tables (redesign proposal Phase 1). IDs are prefixed
+-- strings: "amfi:122639", "nse:GOLDCASE", "manual:epf".
+CREATE TABLE IF NOT EXISTS instruments (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN ('mf','etf','stock','gold','epf','cash','ulip','other')),
+  name TEXT NOT NULL,
+  isin TEXT,
+  symbol TEXT
+);
+CREATE TABLE IF NOT EXISTS accounts (
+  id TEXT PRIMARY KEY,
+  provider TEXT NOT NULL CHECK (provider IN ('zerodha','cams','kfintech','bank','epfo','manual')),
+  label TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS transactions (
+  id TEXT PRIMARY KEY,
+  account_id TEXT NOT NULL REFERENCES accounts(id),
+  instrument_id TEXT NOT NULL REFERENCES instruments(id),
+  date TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('buy','sell','sip','dividend','switch-in','switch-out')),
+  units REAL NOT NULL,
+  amount REAL NOT NULL,
+  import_id TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS transactions_position
+  ON transactions (account_id, instrument_id, date);
+CREATE TABLE IF NOT EXISTS snapshots (
+  date TEXT NOT NULL,
+  account_id TEXT NOT NULL REFERENCES accounts(id),
+  instrument_id TEXT NOT NULL REFERENCES instruments(id),
+  units REAL NOT NULL,
+  value REAL NOT NULL,
+  PRIMARY KEY (date, account_id, instrument_id)
+);
 """
 
 
