@@ -18,15 +18,13 @@ import {
 } from "@/components/ui/table";
 import { useEffect, useRef, useState } from "react";
 import { BASKET_COLORS } from "../lib/theme";
-import { applyWeightChange } from "../lib/weights";
+import { applyWeightChange, WEIGHT_TOLERANCE } from "../lib/weights";
 import { useLab } from "../state/LabContext";
 import type { Basket, SearchHit } from "../types";
 import { FundSearch } from "./FundSearch";
 import { WeightField } from "./WeightField";
 
 const SWATCHES = BASKET_COLORS;
-
-const WEIGHT_TOLERANCE = 0.1;
 
 function cloneBasket(basket: Basket): Basket {
   return structuredClone(basket);

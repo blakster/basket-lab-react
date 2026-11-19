@@ -41,6 +41,7 @@ import {
 } from "../lib/risk";
 import { computeMetrics } from "../lib/backtest/metrics";
 import { resolveRange } from "../lib/resolveSettings";
+import { seriesKey } from "../lib/series";
 import { runIsStale } from "../lib/runFreshness";
 import { inkAlpha } from "../lib/theme";
 import { useLab } from "../state/LabContext";
@@ -126,10 +127,6 @@ function formatFixed(n: number): string {
 
 function formatRolling(w: { min: number; median: number; max: number }): string {
   return `${formatFixed(w.min)} / ${formatFixed(w.median)} / ${formatFixed(w.max)}%`;
-}
-
-function seriesKey(id: string): string {
-  return `b_${id.replace(/[^a-zA-Z0-9]/g, "")}`;
 }
 
 function topCategories(

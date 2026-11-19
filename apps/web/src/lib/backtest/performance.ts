@@ -6,6 +6,7 @@ import type {
   TimePoint,
 } from "../../types";
 import { calculateXirr } from "./xirr";
+import { firstIso } from "../series";
 
 export { resolveRange } from "../resolveSettings";
 
@@ -28,10 +29,6 @@ function navOnOrBefore(history: NavPoint[], iso: string): number | null {
     else hi = mid;
   }
   return lo > 0 ? history[lo - 1]!.nav : null;
-}
-
-function firstIso(points: NavPoint[]): string {
-  return points.reduce((a, p) => (p.date < a ? p.date : a), points[0].date);
 }
 
 const emptyStats = { initial: 0, final: 0, abs: 0, cagr: 0, mdd: 0 };

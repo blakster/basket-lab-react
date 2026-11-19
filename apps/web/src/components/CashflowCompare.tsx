@@ -21,6 +21,7 @@ import {
 } from "../lib/backtest/performance";
 import { formatInr, formatInrGroup } from "../lib/format";
 import { resolveRange } from "../lib/resolveSettings";
+import { navsForBasket } from "../lib/series";
 import { runIsStale } from "../lib/runFreshness";
 import { useLab } from "../state/LabContext";
 import type { BacktestResult, Basket, NavPoint } from "../types";
@@ -81,18 +82,6 @@ function formatPct(n: number): string {
 
 
 const CELL_METRICS: MetricId[] = ["mdd", "sharpe", "sortino"];
-
-function navsForBasket(
-  basket: Basket,
-  navs: Record<string, NavPoint[]>,
-): Record<string, NavPoint[]> {
-  const out: Record<string, NavPoint[]> = {};
-  for (const f of basket.funds) {
-    if (f.weight <= 0) continue;
-    out[f.schemeCode] = navs[f.schemeCode] ?? [];
-  }
-  return out;
-}
 
 function runPlan(
   basket: Basket,

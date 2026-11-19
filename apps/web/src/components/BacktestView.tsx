@@ -14,6 +14,7 @@ import { benchmarkForResult } from "../lib/portfolioDetails";
 import { yearlyRanking } from "../lib/ranking";
 import { resolveRange } from "../lib/resolveSettings";
 import { runIsStale } from "../lib/runFreshness";
+import { unionDates } from "../lib/series";
 import { useLab } from "../state/LabContext";
 import type { BacktestResult, Basket } from "../types";
 import { CashflowCompare } from "./CashflowCompare";
@@ -62,14 +63,6 @@ function formatAsOf(iso: string): string {
 
 // Registry metrics shown under each league card after the bespoke vs-BeES cell.
 const LEAGUE_METRICS: MetricId[] = ["mdd", "vol", "sharpe", "sortino"];
-
-function unionLabels(results: BacktestResult[]): string[] {
-  const dates = new Set<string>();
-  for (const r of results) {
-    for (const p of r.series) dates.add(p.x);
-  }
-  return [...dates].sort();
-}
 
 function LeadStory({ beesRateById }: { beesRateById: Map<string, number> }) {
   const { results, baskets, settings, analyzing, runAnalysis, setWorkspace } =
@@ -199,7 +192,7 @@ export function BacktestView() {
     return () => window.clearTimeout(t);
   }, [runAnalysis, settings.mode]);
 
-  const labels = unionLabels(results);
+  const labels = unionDates(results);
   const range = useMemo(
     () =>
       resolveRange(settings.period, settings.customStart, settings.customEnd),

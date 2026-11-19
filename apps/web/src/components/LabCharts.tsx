@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { YearlyRank } from "../lib/ranking";
+import { seriesKey, unionDates } from "../lib/series";
 import type { BacktestResult, Basket, TimePoint } from "../types";
 import { type MixSeries } from "./chartFormat";
 import {
@@ -13,10 +14,6 @@ export type { MixSeries };
 
 const MAX_POINTS = 120;
 
-function seriesKey(id: string): string {
-  return `b_${id.replace(/[^a-zA-Z0-9]/g, "")}`;
-}
-
 function downsample<T>(points: T[], max = MAX_POINTS): T[] {
   if (points.length <= max) return points;
   const step = (points.length - 1) / (max - 1);
@@ -25,15 +22,6 @@ function downsample<T>(points: T[], max = MAX_POINTS): T[] {
     out.push(points[Math.round(i * step)]!);
   }
   return out;
-}
-
-function unionDates(results: BacktestResult[]): string[] {
-  const dates = new Set<string>();
-  for (const r of results) {
-    if (r.error === "no-nav") continue;
-    for (const p of r.series) dates.add(p.x);
-  }
-  return [...dates].sort();
 }
 
 function chartable(results: BacktestResult[], baskets: Basket[]) {
