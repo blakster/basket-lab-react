@@ -15,9 +15,18 @@ function compoundPct(returns: number[]): number {
   return (wealth - 1) * 100;
 }
 
+// NAV series carry trading days only, so "covered" tolerates weekend/holiday
+// drift: a run covering a year starts within January's first days and ends
+// within December's last days. Month-day comparison keeps mid-month starts
+// and ends from passing as full.
+const FULL_START_MM_DD = "01-05";
+const FULL_END_MM_DD = "12-27";
+
 function yearKind(year: number, firstIso: string, lastIso: string): YearKind {
-  const startsHere = yearOf(firstIso) === year && firstIso.slice(5, 7) > "01";
-  const endsHere = yearOf(lastIso) === year && lastIso.slice(5, 7) < "12";
+  const startsHere =
+    yearOf(firstIso) === year && firstIso.slice(5, 10) > FULL_START_MM_DD;
+  const endsHere =
+    yearOf(lastIso) === year && lastIso.slice(5, 10) < FULL_END_MM_DD;
   if (endsHere) return "ytd";
   if (startsHere) return "partial";
   return "full";

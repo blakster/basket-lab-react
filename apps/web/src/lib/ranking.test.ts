@@ -37,6 +37,86 @@ describe("yearlyRanking", () => {
     expect(ranking[0].order[1].ret).toBeCloseTo(5, 6);
   });
 
+  it("labels the first year partial when the run starts mid-January", () => {
+    const results: BacktestResult[] = [
+      {
+        basketId: "A",
+        series: [
+          { x: "2024-01-15", y: 100, drawdown: 0 },
+          { x: "2024-12-30", y: 112, drawdown: 0 },
+        ],
+        stats: { ...emptyStats },
+      },
+    ];
+
+    const ranking = yearlyRanking(results);
+
+    expect(ranking).toHaveLength(1);
+    expect(ranking[0].year).toBe(2024);
+    expect(ranking[0].kind).toBe("partial");
+  });
+
+  it("labels the last year ytd when the run ends mid-December", () => {
+    const results: BacktestResult[] = [
+      {
+        basketId: "A",
+        series: [
+          { x: "2024-01-02", y: 100, drawdown: 0 },
+          { x: "2024-12-15", y: 108, drawdown: 0 },
+        ],
+        stats: { ...emptyStats },
+      },
+    ];
+
+    const ranking = yearlyRanking(results);
+
+    expect(ranking).toHaveLength(1);
+    expect(ranking[0].year).toBe(2024);
+    expect(ranking[0].kind).toBe("ytd");
+  });
+
+  it("keeps interior years full when only the boundaries are partial", () => {
+    const results: BacktestResult[] = [
+      {
+        basketId: "A",
+        series: [
+          { x: "2023-01-20", y: 100, drawdown: 0 },
+          { x: "2023-06-30", y: 105, drawdown: 0 },
+          { x: "2024-06-28", y: 110, drawdown: 0 },
+          { x: "2025-11-14", y: 121, drawdown: 0 },
+        ],
+        stats: { ...emptyStats },
+      },
+    ];
+
+    const ranking = yearlyRanking(results);
+
+    expect(ranking.map((r) => [r.year, r.kind])).toEqual([
+      [2023, "partial"],
+      [2024, "full"],
+      [2025, "ytd"],
+    ]);
+  });
+
+  it("keeps full for a run spanning the year's trading-day edges", () => {
+    const results: BacktestResult[] = [
+      {
+        basketId: "A",
+        // NAVs skip weekends/holidays: 2023-01-01 was a Sunday, its last
+        // trading day Friday 2023-12-29 (Dec 31 also a Sunday).
+        series: [
+          { x: "2023-01-02", y: 100, drawdown: 0 },
+          { x: "2023-12-29", y: 110, drawdown: 0 },
+        ],
+        stats: { ...emptyStats },
+      },
+    ];
+
+    const ranking = yearlyRanking(results);
+
+    expect(ranking[0].kind).toBe("full");
+  });
+
   it("does not treat SIP deposits as yearly return", () => {
     const results: BacktestResult[] = [
       {
