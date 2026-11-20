@@ -94,6 +94,7 @@ async function copyShareLink(): Promise<URL> {
 describe("statusLabel", () => {
   it("maps each kind to banner copy", () => {
     expect(statusLabel({ kind: "ready" })).toBe("LIVE");
+    expect(statusLabel({ kind: "idle" })).toBe("SETUP");
     expect(statusLabel({ kind: "cached-nav", detail: "2024-01-15" })).toBe(
       "SAVED NAV 2024-01-15",
     );
