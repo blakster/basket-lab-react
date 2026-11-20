@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -8,6 +9,10 @@ from app.filing_status import FilingStatus, filing_statuses, record_filing_statu
 from app.ingest.amc_fetch import missing_scheme_codes
 from app.ingest.foliyo import FoliyoError, fetch_fund_details, persist_fund_details
 from app.ingest.scheme_master import SchemeMaster
+
+# Filings are fetched concurrently but bounded; SQLite writes stay on the
+# caller's connection and thread.
+FETCH_WORKERS = 8
 
 
 def scheme_codes_from_body(body: dict[str, Any]) -> list[str]:
@@ -38,12 +43,22 @@ def ensure_filings(
     pending = [code for code in codes if existing[code].state != "fresh"]
     fetch_fn = fetch or fetch_fund_details
 
+    fetched_payloads = _fetch_all(fetch_fn, pending)
+
     outcomes: dict[str, tuple[str, str | None, str | None, str | None]] = {}
     houses: list[str] = []
     fetched = 0
     for code in pending:
+        payload = fetched_payloads[code]
+        if isinstance(payload, FoliyoError):
+            outcomes[code] = (payload.failure, None, None, payload.reason)
+            continue
+        if isinstance(payload, Exception):
+            # Unexpected fetch error: abort here, after earlier codes persisted,
+            # exactly as the sequential loop did.
+            raise payload
         try:
-            saved = persist_fund_details(conn, code, fetch_fn(code))
+            saved = persist_fund_details(conn, code, payload)
         except FoliyoError as exc:
             outcomes[code] = (exc.failure, None, None, exc.reason)
             continue
@@ -67,6 +82,34 @@ def ensure_filings(
         "amcs": list(dict.fromkeys(houses)),
         "filings": [_serialize_status(status) for status in statuses],
     }
+
+
+def _fetch_all(
+    fetch_fn: Callable[[str], dict[str, Any]], codes: list[str]
+) -> dict[str, dict[str, Any] | Exception]:
+    """Fetch every code concurrently. FoliyoError (and any unexpected error)
+    comes back as a value so one fund's failure never stops or reorders the
+    others; ensure_filings re-raises unexpected errors in pending order."""
+    if not codes:
+        return {}
+    with ThreadPoolExecutor(max_workers=min(len(codes), FETCH_WORKERS)) as pool:
+        futures = {code: pool.submit(_fetch_one, fetch_fn, code) for code in codes}
+        results: dict[str, dict[str, Any] | Exception] = {}
+        for code in codes:
+            try:
+                results[code] = futures[code].result()
+            except Exception as exc:
+                results[code] = exc
+        return results
+
+
+def _fetch_one(
+    fetch_fn: Callable[[str], dict[str, Any]], code: str
+) -> dict[str, Any] | FoliyoError:
+    try:
+        return fetch_fn(code)
+    except FoliyoError as exc:
+        return exc
 
 
 def _status_for(
