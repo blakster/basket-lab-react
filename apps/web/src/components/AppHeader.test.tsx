@@ -162,4 +162,57 @@ describe("AppHeader", () => {
     expect(decoded?.settings).toEqual(saved.settings);
     expect(decoded?.baskets).toEqual(saved.baskets);
   });
+
+  it("flashes Copied and shows no fallback on a successful copy", async () => {
+    mockClipboard();
+    renderHeader();
+
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+
+    expect(
+      await screen.findByRole("button", { name: "Copied" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "Share URL" })).toBeNull();
+  });
+
+  it("shows a selectable share URL when the clipboard rejects the copy", async () => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: () => Promise.reject(new DOMException("Write denied")),
+      },
+    });
+    renderHeader();
+
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Could not copy");
+    const field = screen.getByRole<HTMLInputElement>("textbox", {
+      name: "Share URL",
+    });
+    const decoded = decodeShare(new URL(field.value).searchParams.get("s") ?? "");
+    expect(decoded?.settings).toEqual(SETTINGS);
+    expect(decoded?.baskets?.length).toBeGreaterThan(0);
+    // The button does not claim the copy succeeded.
+    expect(screen.getByRole("button", { name: "Share" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("shows a selectable share URL when the clipboard API is unavailable", async () => {
+    delete (navigator as { clipboard?: unknown }).clipboard;
+    renderHeader();
+
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Clipboard unavailable");
+    const field = screen.getByRole<HTMLInputElement>("textbox", {
+      name: "Share URL",
+    });
+    expect(new URL(field.value).searchParams.get("s")).toBeTruthy();
+  });
 });

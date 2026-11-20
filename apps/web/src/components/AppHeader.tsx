@@ -44,6 +44,10 @@ export function AppHeader() {
     useLab();
   const { theme, toggleTheme } = useTheme();
   const [copied, setCopied] = useState(false);
+  const [shareError, setShareError] = useState<{
+    note: string;
+    url: string;
+  } | null>(null);
   const banner =
     status.kind === "insights-down" ? { kind: "ready" as const } : status;
 
@@ -51,13 +55,25 @@ export function AppHeader() {
     const url = new URL(window.location.href);
     url.searchParams.set("s", encodeShare({ settings, baskets }));
     const write = navigator.clipboard?.writeText?.(url.href);
-    if (!write) return;
+    if (!write) {
+      setShareError({
+        note: "Clipboard unavailable — select the URL and copy it",
+        url: url.href,
+      });
+      return;
+    }
     void write
       .then(() => {
         setCopied(true);
+        setShareError(null);
         setTimeout(() => setCopied(false), 2000);
       })
-      .catch(() => {});
+      .catch(() =>
+        setShareError({
+          note: "Could not copy — select the URL instead",
+          url: url.href,
+        }),
+      );
   }
 
   return (
@@ -126,6 +142,28 @@ export function AppHeader() {
           </Badge>
         ) : null}
       </div>
+      {shareError ? (
+        <div className="share-fallback" role="alert">
+          <span className="share-fallback-note">{shareError.note}</span>
+          <input
+            className="share-fallback-url"
+            type="text"
+            readOnly
+            value={shareError.url}
+            aria-label="Share URL"
+            onFocus={(event) => event.currentTarget.select()}
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            className="share-fallback-dismiss"
+            onClick={() => setShareError(null)}
+          >
+            Dismiss
+          </Button>
+        </div>
+      ) : null}
     </header>
   );
 }
