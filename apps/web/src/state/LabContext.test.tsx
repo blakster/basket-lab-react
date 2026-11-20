@@ -1,9 +1,8 @@
 import { act, render } from "@testing-library/react";
-import { StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import defaults from "../data/defaults.json";
 import { LabProvider, useLab } from "./LabContext";
-import { encodeShare } from "../lib/shareUrl";
-import type { Basket } from "../types";
+import type { Basket, LabSettings } from "../types";
 
 const { fetchNavMock, readNavCacheEntryMock, writeNavCacheMock } = vi.hoisted(
   () => ({
@@ -50,80 +49,9 @@ function Consumer({
   return null;
 }
 
-function clearShareQuery(): void {
-  const url = new URL(window.location.href);
-  url.searchParams.delete("s");
-  window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
-}
-
-describe("LabContext share hydrate", () => {
+describe("LabContext persisted baskets", () => {
   beforeEach(() => {
     window.localStorage.removeItem("basket-lab-v1");
-    clearShareQuery();
-  });
-
-  it("corrupt ?s= preserves the warning and saved baskets under StrictMode", () => {
-    const saved = {
-      settings: {
-        mode: "lumpsum" as const,
-        amount: 9999,
-        period: "1Y" as const,
-        customStart: "2020-01-01",
-        customEnd: "2021-01-01",
-      },
-      baskets: [makeBasket(100)],
-    };
-    window.localStorage.setItem("basket-lab-v1", JSON.stringify(saved));
-
-    const url = new URL(window.location.href);
-    url.searchParams.set("s", "%%%");
-    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
-
-    const api: { current: ReturnType<typeof useLab> | null } = { current: null };
-    render(
-      <StrictMode>
-        <LabProvider>
-          <Consumer api={api} />
-        </LabProvider>
-      </StrictMode>,
-    );
-
-    expect(api.current!.shareHydrateError).toBe(true);
-    expect(api.current!.settings.amount).not.toBe(9999);
-
-    const raw = window.localStorage.getItem("basket-lab-v1");
-    expect(raw).toBeTruthy();
-    const persisted = JSON.parse(raw!) as typeof saved;
-    expect(persisted.settings.amount).toBe(9999);
-    expect(persisted.baskets).toHaveLength(1);
-    expect(persisted.baskets[0].id).toBe("test-1");
-  });
-
-  it("renames a blank-named basket from a shared ?s= link instead of keeping it nameless", () => {
-    const payload = {
-      settings: {
-        mode: "lumpsum" as const,
-        amount: 1000,
-        period: "1Y" as const,
-        customStart: "2020-01-01",
-        customEnd: "2021-01-01",
-      },
-      baskets: [{ ...makeBasket(100), name: "" }],
-    };
-    const url = new URL(window.location.href);
-    url.searchParams.set("s", encodeShare(payload));
-    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
-
-    const api: { current: ReturnType<typeof useLab> | null } = { current: null };
-    render(
-      <LabProvider>
-        <Consumer api={api} />
-      </LabProvider>,
-    );
-
-    expect(api.current!.shareHydrateError).toBe(false);
-    expect(api.current!.baskets).toHaveLength(1);
-    expect(api.current!.baskets[0].name.trim()).not.toBe("");
   });
 
   it("renames a blank-named basket persisted in localStorage", () => {
@@ -149,12 +77,67 @@ describe("LabContext share hydrate", () => {
     expect(api.current!.baskets).toHaveLength(1);
     expect(api.current!.baskets[0].name.trim()).not.toBe("");
   });
+
+  it("ignores a stale ?s= query and loads the persisted setup", () => {
+    const saved = {
+      settings: {
+        mode: "lumpsum" as const,
+        amount: 9999,
+        period: "1Y" as const,
+        customStart: "2020-01-01",
+        customEnd: "2021-01-01",
+      },
+      baskets: [makeBasket(100)],
+    };
+    window.localStorage.setItem("basket-lab-v1", JSON.stringify(saved));
+    const url = new URL(window.location.href);
+    url.searchParams.set("s", "%%%corrupt%%%");
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+
+    const api: { current: ReturnType<typeof useLab> | null } = { current: null };
+    render(
+      <LabProvider>
+        <Consumer api={api} />
+      </LabProvider>,
+    );
+
+    expect(api.current!.settings.amount).toBe(9999);
+    expect(api.current!.baskets).toHaveLength(1);
+    expect(api.current!.baskets[0].id).toBe("test-1");
+    // The stale query is ignored but left untouched in the address bar.
+    expect(new URL(window.location.href).searchParams.get("s")).toBe(
+      "%%%corrupt%%%",
+    );
+  });
+
+  it("ignores a stale ?s= query and falls back to defaults", () => {
+    const url = new URL(window.location.href);
+    url.searchParams.set(
+      "s",
+      "eJyNkctqwzAQRX9FTLcuWI7zaJZJ7WIKbiDpopQsVFuJRWTJ6NGkBP9",
+    );
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+
+    const api: { current: ReturnType<typeof useLab> | null } = { current: null };
+    render(
+      <LabProvider>
+        <Consumer api={api} />
+      </LabProvider>,
+    );
+
+    const fallback = defaults as { settings: LabSettings; baskets: Basket[] };
+    expect(api.current!.baskets.map((b) => b.id)).toEqual(
+      fallback.baskets.map((b) => b.id),
+    );
+    expect(new URL(window.location.href).searchParams.get("s")).toBe(
+      "eJyNkctqwzAQRX9FTLcuWI7zaJZJ7WIKbiDpopQsVFuJRWTJ6NGkBP9",
+    );
+  });
 });
 
 describe("LabContext saveBasket", () => {
   beforeEach(() => {
     window.localStorage.removeItem("basket-lab-v1");
-    clearShareQuery();
   });
 
   it("returns false when weights sum to 90 and true when they sum to 100", () => {
@@ -251,7 +234,6 @@ describe("LabContext saveBasket", () => {
 describe("LabContext runAnalysis", () => {
   beforeEach(() => {
     window.localStorage.removeItem("basket-lab-v1");
-    clearShareQuery();
     fetchNavMock.mockReset();
     readNavCacheEntryMock.mockReset();
     writeNavCacheMock.mockReset();
@@ -796,7 +778,6 @@ describe("LabContext runAnalysis", () => {
 describe("LabContext insights basket id", () => {
   beforeEach(() => {
     window.localStorage.removeItem("basket-lab-v1");
-    clearShareQuery();
     const url = new URL(window.location.href);
     url.hash = "";
     window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);

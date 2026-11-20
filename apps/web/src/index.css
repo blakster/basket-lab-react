@@ -407,7 +407,7 @@ button[data-static="true"]:active:not(:disabled) {
   box-shadow: inset 0 -2px 0 var(--ink);
 }
 
-.share-text {
+.theme-toggle {
   border: 0;
   background: transparent;
   padding: 0.4rem 0.7rem;
@@ -418,38 +418,20 @@ button[data-static="true"]:active:not(:disabled) {
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .share-text:hover:not(:disabled) {
+  .theme-toggle:hover:not(:disabled) {
     background: var(--ink-wash);
   }
 }
 
-.share-text:active:not(:disabled) {
+.theme-toggle:active:not(:disabled) {
   background: var(--ink-wash);
   color: var(--ink);
 }
 
-.share-text[aria-pressed="true"] {
+.theme-toggle[aria-pressed="true"] {
   background: var(--ink-wash);
   color: var(--ink);
   box-shadow: none;
-}
-
-.share-cta {
-  background: transparent;
-  color: var(--ink);
-  font-weight: 500;
-  border-radius: var(--r-btn);
-  min-height: 2.15rem;
-  padding: 0.35rem 0.65rem;
-  font-size: 0.8125rem;
-  box-shadow: inset 0 0 0 1px var(--ink);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .share-cta:hover:not(:disabled) {
-    background: var(--ink);
-    color: var(--paper);
-  }
 }
 
 .investment-settings h2 {
@@ -800,7 +782,6 @@ button[data-static="true"]:active:not(:disabled) {
 
 .backtest-view > h2,
 .insights-panel > h2,
-.share-bar > h2,
 .yearly-ranking > h3 {
   margin: 1.4rem 0 0.55rem;
   font-family: var(--sans);
@@ -2147,49 +2128,6 @@ button[data-static="true"]:active:not(:disabled) {
   color: var(--ink-soft);
 }
 
-.share-bar {
-  margin-top: 1.5rem;
-  padding: 1.15rem 0 0;
-  background: transparent;
-  border-radius: 0;
-  box-shadow: none;
-  border-top: 1px solid var(--rule);
-}
-
-.share-bar-field {
-  margin: 0;
-}
-
-.share-bar-row {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-}
-
-.share-bar-row input {
-  flex: 1;
-  min-width: 0;
-  border: 0;
-  border-bottom: 0;
-  border-radius: var(--r-md);
-  padding: 0.5rem 0.75rem;
-  background: var(--paper);
-  color: var(--ink-soft);
-  box-shadow: var(--shadow-border);
-}
-
-.share-toast {
-  margin: 0.5rem 0 0;
-  font-size: 0.875rem;
-}
-
-.share-disclaimer {
-  margin: 1rem 0 0;
-  font-size: 0.82rem;
-  color: var(--ink-soft);
-  max-width: 62ch;
-}
-
 @media (max-width: 800px) {
   .app-body {
     width: calc(100% - 1.5rem);
@@ -2382,8 +2320,7 @@ button[data-static="true"]:active:not(:disabled) {
   gap: 0.35rem;
 }
 
-.basket-list-actions button.basket-create,
-.share-bar-row button.share-copy {
+.basket-list-actions button.basket-create {
   min-height: 2.15rem;
   padding: 0.35rem 0.75rem;
   font-size: 0.8125rem;
@@ -2395,8 +2332,7 @@ button[data-static="true"]:active:not(:disabled) {
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .basket-list-actions button.basket-create:hover:not(:disabled),
-  .share-bar-row button.share-copy:hover:not(:disabled) {
+  .basket-list-actions button.basket-create:hover:not(:disabled) {
     background: var(--ink);
     color: var(--paper);
   }
@@ -2554,23 +2490,6 @@ button.basket-check[data-state="checked"] {
   .basket-actions button.basket-delete:hover:not(:disabled) {
     color: var(--loss);
   }
-}
-
-.basket-list + .share-bar {
-  margin-top: 2rem;
-  padding-top: 0;
-  border-top: 0;
-}
-
-.share-bar > h2 {
-  margin-top: 0;
-  font-size: 1.15rem;
-}
-
-.share-bar-row input {
-  font-family: var(--mono);
-  font-size: 0.8125rem;
-  letter-spacing: -0.02em;
 }
 
 /* Shared meters: ink on a deep-paper track, square, 4px. */

@@ -16,7 +16,7 @@ import type {
   LabSettings,
   NavPoint,
 } from "../types";
-import { writeShareQuery, weightSum } from "./basketStore";
+import { weightSum } from "./basketStore";
 import {
   IDLE_STATUS,
   READY_STATUS,
@@ -240,7 +240,6 @@ export function useNavQuery(
       }
       setResults(nextResults);
       setNavByCode(navs);
-      writeShareQuery(settings, baskets);
     });
     } catch {
       // Don't leave the previous run's NAV paired with the new settings.
