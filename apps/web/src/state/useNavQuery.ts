@@ -8,21 +8,19 @@ import {
   type NavCacheEntry,
 } from "../lib/navCache";
 import { resolveRange } from "../lib/resolveSettings";
+import { firstIso, lastIso, navsForBasket } from "../lib/series";
+import { WEIGHT_TOLERANCE } from "../lib/weights";
 import type {
   BacktestResult,
   Basket,
   LabSettings,
   NavPoint,
 } from "../types";
-import { WEIGHT_TOLERANCE, writeShareQuery, weightSum } from "./basketStore";
+import { writeShareQuery, weightSum } from "./basketStore";
 import { READY_STATUS, type LabStatus, type StatusSource } from "./labTypes";
 
 /** Last trading day before a weekend/holiday `to` still covers the range. */
 const RANGE_SLACK_DAYS = 4;
-
-function lastPointDate(points: NavPoint[]): string {
-  return points.reduce((a, p) => (p.date > a ? p.date : a), points[0].date);
-}
 
 function shiftIso(iso: string, days: number): string {
   const d = new Date(`${iso}T00:00:00Z`);
@@ -31,14 +29,6 @@ function shiftIso(iso: string, days: number): string {
   const m = String(d.getUTCMonth() + 1).padStart(2, "0");
   const day = String(d.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
-}
-
-function lastIso(points: NavPoint[]): string {
-  return points.reduce((a, p) => (p.date > a ? p.date : a), points[0].date);
-}
-
-function firstIso(points: NavPoint[]): string {
-  return points.reduce((a, p) => (p.date < a ? p.date : a), points[0].date);
 }
 
 function coversEnd(points: NavPoint[], to: string): boolean {
@@ -85,20 +75,6 @@ function cacheUsable(
   const freshSince = since < min ? min : since;
   const freshTo = to > max ? max : to;
   return isNavCacheFresh(entry.points, freshSince, freshTo, entry.writtenAt);
-}
-
-/** Per-basket map: only that basket's codes, empty series omitted. */
-function navsForBasket(
-  basket: Basket,
-  navs: Record<string, NavPoint[]>,
-): Record<string, NavPoint[]> {
-  const subset: Record<string, NavPoint[]> = {};
-  for (const f of basket.funds) {
-    if (f.weight <= 0) continue;
-    const series = navs[f.schemeCode];
-    if (series?.length) subset[f.schemeCode] = series;
-  }
-  return subset;
 }
 
 function mergeNav(a: NavPoint[], b: NavPoint[]): NavPoint[] {
@@ -244,7 +220,7 @@ export function useNavQuery(
         for (const code of staleCacheCodes) {
           const pts = navs[code];
           if (!pts?.length) continue;
-          const last = lastPointDate(pts);
+          const last = lastIso(pts);
           if (last > detail) detail = last;
         }
         reportStatus("nav", { kind: "cached-nav", detail: detail || undefined });

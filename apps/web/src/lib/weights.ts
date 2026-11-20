@@ -1,5 +1,8 @@
 import type { FundLine } from "../types";
 
+/** Tolerance around the 100% weight total when validating a basket. */
+export const WEIGHT_TOLERANCE = 0.1;
+
 export type WeightDraft =
   | { status: "empty" }
   | { status: "partial"; text: string }

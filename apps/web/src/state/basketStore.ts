@@ -9,10 +9,10 @@ import {
 import defaults from "../data/defaults.json";
 import { ensureFilings } from "../lib/api/insights";
 import { decodeShare, encodeShare } from "../lib/shareUrl";
+import { WEIGHT_TOLERANCE } from "../lib/weights";
 import type { Basket, LabSettings } from "../types";
 
 const STORAGE_KEY = "basket-lab-v1";
-export const WEIGHT_TOLERANCE = 0.1;
 
 function cloneDefaults(): { settings: LabSettings; baskets: Basket[] } {
   return structuredClone(defaults) as { settings: LabSettings; baskets: Basket[] };
