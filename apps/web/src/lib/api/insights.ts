@@ -159,7 +159,7 @@ export async function ensureFilings(
   return request;
 }
 
-const FILING_FILE_REJECT =
+export const FILING_FILE_REJECT_MESSAGE =
   "Use an AMC portfolio file under 5 MB (.xlsx, .xls, or .csv).";
 
 export function filingFileRejected(file: File): boolean {
@@ -168,7 +168,7 @@ export function filingFileRejected(file: File): boolean {
 
 export async function uploadFiling(schemeCode: string, file: File): Promise<FilingStatus> {
   if (filingFileRejected(file)) {
-    throw new Error(FILING_FILE_REJECT);
+    throw new Error(FILING_FILE_REJECT_MESSAGE);
   }
   const body = new FormData();
   body.set("schemeCode", schemeCode);

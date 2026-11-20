@@ -12,6 +12,8 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { loadNiftyBeesNav, NIFTY_BEES_CODE } from "../lib/api/benchmarkNav";
 import {
   ensureFilings,
+  FILING_FILE_REJECT_MESSAGE,
+  filingFileRejected,
   insightsBasketSignature,
   postInsights,
   uploadFiling,
@@ -888,13 +890,6 @@ function InsightSection({
   );
 }
 
-const FILING_FILE_COPY =
-  "Use an AMC portfolio file under 5 MB (.xlsx, .xls, or .csv).";
-
-function clientRejectsFiling(file: File): boolean {
-  return file.size > 5 * 1024 * 1024 || !/\.(xlsx|xls|xlsm|csv)$/i.test(file.name);
-}
-
 function FilingCoverageBlock({
   ib,
   basket,
@@ -919,8 +914,8 @@ function FilingCoverageBlock({
   async function handleFile(schemeCode: string, file: File | undefined) {
     if (!file) return;
     if (inflight.current.has(schemeCode)) return;
-    if (clientRejectsFiling(file)) {
-      setErrors((prev) => ({ ...prev, [schemeCode]: FILING_FILE_COPY }));
+    if (filingFileRejected(file)) {
+      setErrors((prev) => ({ ...prev, [schemeCode]: FILING_FILE_REJECT_MESSAGE }));
       return;
     }
     inflight.current.add(schemeCode);
