@@ -181,18 +181,92 @@ function renderPanel() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, retryDelay: 0 } },
   });
-  return render(
+  const renderTree = () => (
     <ThemeProvider>
       <QueryClientProvider client={client}>
         <InsightsPanel />
       </QueryClientProvider>
-    </ThemeProvider>,
+    </ThemeProvider>
   );
+  const utils = render(renderTree());
+  return { ...utils, rerenderPanel: () => utils.rerender(renderTree()) };
+}
+
+const defaultMatchMedia = window.matchMedia;
+const defaultScrollIntoView = Element.prototype.scrollIntoView;
+const defaultScrollBy = Element.prototype.scrollBy;
+
+function mockMatchMedia(reducedMotion: boolean) {
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    writable: true,
+    value: (query: string) => ({
+      matches: query.includes("prefers-reduced-motion") ? reducedMotion : false,
+      media: query,
+      onchange: null,
+      addListener() {},
+      removeListener() {},
+      addEventListener() {},
+      removeEventListener() {},
+      dispatchEvent() {
+        return false;
+      },
+    }),
+  });
+}
+
+function stubScrollIntoView() {
+  const spy = vi.fn();
+  Object.defineProperty(Element.prototype, "scrollIntoView", {
+    configurable: true,
+    writable: true,
+    value: spy,
+  });
+  return spy;
+}
+
+function stubScrollBy() {
+  const spy = vi.fn();
+  Object.defineProperty(Element.prototype, "scrollBy", {
+    configurable: true,
+    writable: true,
+    value: spy,
+  });
+  return spy;
+}
+
+function rect(left: number, right: number): DOMRect {
+  return {
+    left,
+    right,
+    top: 0,
+    bottom: 0,
+    width: right - left,
+    height: 0,
+    x: left,
+    y: 0,
+    toJSON: () => ({}),
+  } as DOMRect;
 }
 
 describe("InsightsPanel", () => {
   afterEach(() => {
     cleanup();
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      writable: true,
+      value: defaultMatchMedia,
+    });
+    Object.defineProperty(Element.prototype, "scrollIntoView", {
+      configurable: true,
+      writable: true,
+      value: defaultScrollIntoView,
+    });
+    Object.defineProperty(Element.prototype, "scrollBy", {
+      configurable: true,
+      writable: true,
+      value: defaultScrollBy,
+    });
   });
 
   beforeEach(() => {
@@ -598,5 +672,93 @@ describe("InsightsPanel", () => {
     expect(screen.getByText("Name 10")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Show top 10" }));
     expect(screen.queryByText("Name 10")).toBeNull();
+  });
+
+  it("jumps to a section instantly when reduced motion is requested", async () => {
+    mockMatchMedia(true);
+    const scrollIntoView = stubScrollIntoView();
+    postInsightsMock.mockResolvedValue(emptyFiling);
+    renderPanel();
+    fireEvent.click(await screen.findByRole("button", { name: "Snapshot" }));
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "auto", block: "start" });
+  });
+
+  it("scrolls to a section smoothly by default", async () => {
+    mockMatchMedia(false);
+    const scrollIntoView = stubScrollIntoView();
+    postInsightsMock.mockResolvedValue(emptyFiling);
+    renderPanel();
+    fireEvent.click(await screen.findByRole("button", { name: "Snapshot" }));
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
+  });
+
+  it("keeps the focused basket tab in view instantly when reduced motion is requested", async () => {
+    mockMatchMedia(true);
+    const scrollBy = stubScrollBy();
+    const other: Basket = {
+      ...basket,
+      id: "2",
+      name: "Sat",
+      funds: [
+        {
+          schemeCode: "B",
+          schemeName: "Fund B",
+          isin: null,
+          weight: 100,
+          locked: false,
+        },
+      ],
+    };
+    labState.baskets = [basket, other];
+    labState.insightsBasketId = "1";
+    postInsightsMock.mockResolvedValue(emptyFiling);
+    const { rerenderPanel } = renderPanel();
+
+    const strip = document.querySelector(".insights-switch") as HTMLElement;
+    const tabs = Array.from(strip.querySelectorAll('[role="tab"]')) as HTMLElement[];
+    expect(tabs).toHaveLength(2);
+    strip.getBoundingClientRect = () => rect(0, 200);
+    tabs[0]!.getBoundingClientRect = () => rect(0, 80);
+    tabs[1]!.getBoundingClientRect = () => rect(150, 230);
+
+    labState.insightsBasketId = "2";
+    rerenderPanel();
+
+    expect(scrollBy).toHaveBeenCalledWith({ left: 42, behavior: "auto" });
+  });
+
+  it("scrolls the focused basket tab smoothly by default", async () => {
+    mockMatchMedia(false);
+    const scrollBy = stubScrollBy();
+    const other: Basket = {
+      ...basket,
+      id: "2",
+      name: "Sat",
+      funds: [
+        {
+          schemeCode: "B",
+          schemeName: "Fund B",
+          isin: null,
+          weight: 100,
+          locked: false,
+        },
+      ],
+    };
+    labState.baskets = [basket, other];
+    labState.insightsBasketId = "1";
+    postInsightsMock.mockResolvedValue(emptyFiling);
+    const { rerenderPanel } = renderPanel();
+
+    const strip = document.querySelector(".insights-switch") as HTMLElement;
+    const tabs = Array.from(strip.querySelectorAll('[role="tab"]')) as HTMLElement[];
+    expect(tabs).toHaveLength(2);
+    strip.getBoundingClientRect = () => rect(0, 200);
+    tabs[0]!.getBoundingClientRect = () => rect(0, 80);
+    tabs[1]!.getBoundingClientRect = () => rect(150, 230);
+
+    labState.insightsBasketId = "2";
+    rerenderPanel();
+
+    expect(scrollBy).toHaveBeenCalledWith({ left: 42, behavior: "smooth" });
   });
 });
