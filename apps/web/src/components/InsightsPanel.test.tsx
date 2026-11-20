@@ -37,12 +37,16 @@ const { postInsightsMock, ensureFilingsMock, uploadFilingMock, loadBeesMock, lab
   },
 }));
 
-vi.mock("../lib/api/insights", () => ({
-  insightsBasketSignature: () => "sig",
-  postInsights: (...args: unknown[]) => postInsightsMock(...args),
-  ensureFilings: (...args: unknown[]) => ensureFilingsMock(...args),
-  uploadFiling: (...args: unknown[]) => uploadFilingMock(...args),
-}));
+vi.mock("../lib/api/insights", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/api/insights")>();
+  return {
+    ...actual,
+    insightsBasketSignature: () => "sig",
+    postInsights: (...args: unknown[]) => postInsightsMock(...args),
+    ensureFilings: (...args: unknown[]) => ensureFilingsMock(...args),
+    uploadFiling: (...args: unknown[]) => uploadFilingMock(...args),
+  };
+});
 
 vi.mock("../lib/api/benchmarkNav", () => ({
   NIFTY_BEES_CODE: "140084",
