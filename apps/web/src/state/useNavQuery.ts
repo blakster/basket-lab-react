@@ -8,12 +8,7 @@ import {
   type NavCacheEntry,
 } from "../lib/navCache";
 import { resolveRange } from "../lib/resolveSettings";
-import {
-  firstIso,
-  lastIso,
-  navsForBasket,
-  shiftIso,
-} from "../lib/series";
+import { firstIso, lastIso, navsForBasket } from "../lib/series";
 import { WEIGHT_TOLERANCE } from "../lib/weights";
 import type {
   BacktestResult,
@@ -26,6 +21,15 @@ import { READY_STATUS, type LabStatus, type StatusSource } from "./labTypes";
 
 /** Last trading day before a weekend/holiday `to` still covers the range. */
 const RANGE_SLACK_DAYS = 4;
+
+function shiftIso(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 
 function coversEnd(points: NavPoint[], to: string): boolean {
   if (points.some((p) => p.date >= to)) return true;

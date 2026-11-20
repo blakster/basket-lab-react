@@ -5,7 +5,6 @@ import type {
   OverlapName,
 } from "./api/insights";
 import { backtestPlan } from "./backtest/performance";
-import { shiftIso } from "./series";
 
 export type GrowthSplit = {
   invested: number;
@@ -56,6 +55,15 @@ const BENCH_BASKET: Basket = {
 
 /** Benchmark NAV may start a few days late (weekend / holiday start). */
 const BENCH_START_SLACK_DAYS = 7;
+
+function shiftIso(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 
 export type BenchmarkRun = {
   mode: "lumpsum" | "sip";
