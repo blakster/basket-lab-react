@@ -9,14 +9,13 @@ import {
 
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { loadNiftyBeesNav } from "../lib/api/benchmarkNav";
+import { loadNiftyBeesNav, NIFTY_BEES_CODE } from "../lib/api/benchmarkNav";
 import {
   ensureFilings,
   insightsBasketSignature,
   postInsights,
   uploadFiling,
   type FilingState,
-  type FundMetric,
   type InsightsBasket,
 } from "../lib/api/insights";
 import {
@@ -293,7 +292,7 @@ function useInsightsDesk() {
   }, [ensureQuery.dataUpdatedAt, ensureQuery.isSuccess, refetch]);
 
   const benchQuery = useQuery({
-    queryKey: ["nav", "140084", range.start, range.end],
+    queryKey: ["nav", NIFTY_BEES_CODE, range.start, range.end],
     queryFn: () => loadNiftyBeesNav(range.start, range.end),
     retry: 1,
     enabled: hasSeries,
@@ -652,7 +651,6 @@ function InsightsDesk({
                 baskets={baskets}
                 filingById={filingById}
                 riskRows={riskRows}
-                hasFilings={Boolean(data)}
               />
             </InsightSection>
             {data && (
@@ -995,28 +993,14 @@ function formatTurnover(value: number | null | undefined): string {
   return `${value}×`;
 }
 
-function snapshotFundMetric(
-  filing: InsightsBasket | undefined,
-  basket: Basket | undefined,
-): FundMetric | undefined {
-  const scheme = basket?.funds[0]?.schemeCode;
-  if (scheme) {
-    const match = filing?.fundMetrics?.find((m) => m.schemeCode === scheme);
-    if (match) return match;
-  }
-  return filing?.fundMetrics?.[0];
-}
-
 function SnapshotBlock({
   baskets,
   filingById,
   riskRows,
-  hasFilings,
 }: {
   baskets: Basket[];
   filingById: Map<string, InsightsBasket>;
   riskRows: RiskRow[];
-  hasFilings: boolean;
 }) {
   const ids = new Set([
     ...filingById.keys(),
@@ -1026,22 +1010,17 @@ function SnapshotBlock({
   const rows = [...ids].map((id) => {
     const filing = filingById.get(id);
     const risk = riskById.get(id);
-    const metric = snapshotFundMetric(filing, baskets.find((b) => b.id === id));
-    const aum = filing?.aumCr ?? metric?.aumCr ?? null;
-    const turnover = filing?.turnover ?? metric?.turnover ?? null;
+    const aum = filing?.aumCr ?? null;
+    const turnover = filing?.turnover ?? null;
     return {
       id,
       name: basketName(id, baskets),
       expense: filing
         ? formatFilingMetric(filing.expenseRatio, filing.expenseIncomplete)
-        : hasFilings
-          ? "—"
-          : "—",
+        : "—",
       pe: filing
         ? formatFilingMetric(filing.pe, filing.peIncomplete)
-        : hasFilings
-          ? "—"
-          : "—",
+        : "—",
       aum: formatAum(aum),
       turnover: formatTurnover(turnover),
       vol: risk?.vol,
