@@ -565,6 +565,14 @@ function InsightsDesk({
   }, [data, showRisk, showOverlap]);
 
   const focusedName = focusedId ? basketName(focusedId, baskets) : "Insights";
+  // The panel is labelled by the focused basket's tab only when that tab is
+  // actually rendered (≥2 switchable baskets and the focused one among them).
+  const selectedTabId =
+    switchable.length > 1 &&
+    focusedId != null &&
+    switchable.some((b) => b.id === focusedId)
+      ? basketSwitchTabId("insights-switch", focusedId)
+      : undefined;
   const showDesk = Boolean(data || showRisk || focusedId);
   const overlapRows = useMemo(
     () => overlapForBasket(focusedId, overlap, overlapHoldings, baskets),
@@ -657,11 +665,7 @@ function InsightsDesk({
             ref={bodyRef}
             role="tabpanel"
             id="insights-desk-panel"
-            aria-labelledby={
-              switchable.length > 1 && focusedId
-                ? basketSwitchTabId("insights-switch", focusedId)
-                : undefined
-            }
+            aria-labelledby={selectedTabId}
             tabIndex={0}
           >
             {data?.baskets.map((ib) =>

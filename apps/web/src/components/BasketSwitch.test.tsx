@@ -98,6 +98,22 @@ describe("BasketSwitch", () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
+  it("keeps the first tab reachable when selectedId is not in the strip", () => {
+    render(
+      <BasketSwitch
+        baskets={baskets}
+        selectedId="inactive-basket"
+        onSelect={() => {}}
+        idPrefix="switch"
+        panelId="switch-panel"
+      />,
+    );
+    const [first, second] = tabs();
+    expect(first).toHaveAttribute("tabindex", "0");
+    expect(first).toHaveAttribute("aria-selected", "false");
+    expect(second).toHaveAttribute("tabindex", "-1");
+  });
+
   it("still selects on click", () => {
     render(<Harness />);
     fireEvent.click(tabs()[1]!);

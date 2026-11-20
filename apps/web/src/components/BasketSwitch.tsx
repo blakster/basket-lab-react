@@ -54,6 +54,11 @@ export function BasketSwitch({
     onSelect(baskets[next]!.id);
   };
 
+  // Keep the strip in the tab order even when selectedId names a basket the
+  // strip does not show (e.g. an inactive basket deep-linked in Insights):
+  // nothing is selected, but the first tab stays reachable.
+  const tabbable = Math.max(0, baskets.findIndex((b) => b.id === selectedId));
+
   return (
     <div
       className="insights-switch"
@@ -64,21 +69,23 @@ export function BasketSwitch({
       data-scroll-right={fades?.right}
       onKeyDown={onKeyDown}
     >
-      {baskets.map((basket) => (
-        <button
-          key={basket.id}
-          type="button"
-          role="tab"
-          id={`${idPrefix}-tab-${basket.id}`}
-          aria-selected={basket.id === selectedId}
-          aria-controls={panelId}
-          tabIndex={basket.id === selectedId ? 0 : -1}
-          className="insights-switch-item"
-          onClick={() => onSelect(basket.id)}
-        >
-          {basket.name}
-        </button>
-      ))}
+      {baskets.map((basket, i) => {
+        return (
+          <button
+            key={basket.id}
+            type="button"
+            role="tab"
+            id={`${idPrefix}-tab-${basket.id}`}
+            aria-selected={basket.id === selectedId}
+            aria-controls={panelId}
+            tabIndex={i === tabbable ? 0 : -1}
+            className="insights-switch-item"
+            onClick={() => onSelect(basket.id)}
+          >
+            {basket.name}
+          </button>
+        );
+      })}
     </div>
   );
 }
