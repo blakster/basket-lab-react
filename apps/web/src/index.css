@@ -1114,6 +1114,27 @@ button[data-static="true"]:active:not(:disabled) {
   color: var(--ink-soft);
 }
 
+@media (max-width: 600px) {
+  .rank-year {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.35rem;
+  }
+
+  .rank-year-label {
+    padding-top: 0;
+  }
+
+  .rank-year li {
+    grid-template-columns: 1.5rem minmax(0, 1fr) auto;
+  }
+
+  .rank-year .rank-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
 .mix-strips {
   display: flex;
   flex-direction: column;
