@@ -100,6 +100,7 @@ describe("statusLabel", () => {
     );
     expect(statusLabel({ kind: "cached-nav" })).toBe("SAVED NAV");
     expect(statusLabel({ kind: "no-nav" })).toBe("BLACKOUT");
+    expect(statusLabel({ kind: "bad-range" })).toBe("Check dates");
     expect(statusLabel({ kind: "search-busy" })).toBe("Search busy…");
     expect(statusLabel({ kind: "search-down" })).toBe("Search unavailable");
     expect(statusLabel({ kind: "insights-down" })).toBe("Insights unavailable");

@@ -16,6 +16,8 @@ export function statusLabel(status: LabStatus): string {
       return status.detail ? `SAVED NAV ${status.detail}` : "SAVED NAV";
     case "no-nav":
       return "BLACKOUT";
+    case "bad-range":
+      return "Check dates";
     case "search-busy":
       return "Search busy…";
     case "search-down":

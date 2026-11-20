@@ -96,6 +96,27 @@ describe("BacktestView table", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("names the inverted Custom dates instead of blaming NAV", () => {
+    labState.settings = {
+      mode: "lumpsum",
+      amount: 100_000,
+      period: "Custom",
+      customStart: "2025-12-31",
+      customEnd: "2020-01-01",
+    };
+    labState.baskets = [basket];
+    labState.results = [];
+    labState.analyzing = false;
+    renderView();
+    expect(screen.getByText(/is after End/)).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Try again when the data source/),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Retry NAV" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("keeps missing NAV values unavailable and offers retry", () => {
     labState.baskets = [basket];
     labState.results = [

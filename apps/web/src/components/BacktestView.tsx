@@ -72,6 +72,21 @@ function LeadStory({ beesRateById }: { beesRateById: Map<string, number> }) {
 
   if (!results.length) {
     if (analyzing) return null;
+    const { start, end } = resolveRange(
+      settings.period,
+      settings.customStart,
+      settings.customEnd,
+    );
+    if (start > end) {
+      return (
+        <div className="lead-story lead-empty">
+          <p>
+            Start {formatAsOf(start)} is after End {formatAsOf(end)}.
+          </p>
+          <p>Pick an End on or after the Start to run the comparison.</p>
+        </div>
+      );
+    }
     const active = baskets.filter((basket) => basket.active);
     const invalidWeights = active.some(
       (basket) =>

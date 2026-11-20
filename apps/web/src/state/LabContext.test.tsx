@@ -335,6 +335,33 @@ describe("LabContext runAnalysis", () => {
     expect(api.current!.status.kind).toBe("idle");
   });
 
+  it("reports bad-range without fetching when Custom start is after end", async () => {
+    const api: { current: ReturnType<typeof useLab> | null } = { current: null };
+    render(
+      <LabProvider>
+        <Consumer api={api} />
+      </LabProvider>,
+    );
+
+    act(() => {
+      api.current!.setBaskets([makeBasket(100)]);
+      api.current!.setSettings({
+        mode: "lumpsum",
+        amount: 1000,
+        period: "Custom",
+        customStart: "2025-12-31",
+        customEnd: "2020-01-01",
+      });
+    });
+    await act(async () => {
+      await api.current!.runAnalysis();
+    });
+
+    expect(api.current!.status).toEqual({ kind: "bad-range" });
+    expect(api.current!.results).toEqual([]);
+    expect(fetchNavMock).not.toHaveBeenCalled();
+  });
+
   it("sets no-nav when fetch fails and cache does not cover the range", async () => {
     fetchNavMock.mockResolvedValue({ "118741": [] });
     readNavCacheEntryMock.mockResolvedValue({
