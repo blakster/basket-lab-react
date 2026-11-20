@@ -1,7 +1,17 @@
-from app.filing_status import FilingStatus, record_filing_status
+import threading
+from datetime import datetime, timezone
+
+from app.db import init_db
+from app.filing_status import FilingStatus, filing_statuses, record_filing_status
 from app.ingest.amc_fetch import missing_scheme_codes, pick_latest_monthly_url
-from app.ingest.ensure import ensure_filings
-from app.ingest.foliyo import FoliyoError
+from app.ingest.ensure import (
+    _serialize_status,
+    _status_for,
+    ensure_filings,
+)
+from app.ingest.foliyo import FoliyoError, persist_fund_details
+from app.ingest.parse import load_holdings, parse_holdings_csv
+from conftest import SAMPLE_CSV
 from test_foliyo import PAYLOAD
 
 
@@ -185,6 +195,124 @@ def test_ensure_mixed_codes_preserves_fresh_fund_provenance(db):
     assert by_code["111111"]["reason"] == "already current"
     assert by_code["111111"]["amc"] == "PPFAS Mutual Fund"
     assert by_code["999999"]["state"] == "unmapped"
+
+
+def test_ensure_fetches_pending_codes_concurrently(db):
+    # A barrier that only releases when all three fetches are in flight at
+    # once: the sequential loop would break it (and raise) instead.
+    barrier = threading.Barrier(3, timeout=10)
+
+    def fetch(_code: str):
+        barrier.wait()
+        return PAYLOAD
+
+    result = ensure_filings(db, ["118741", "122639", "999999"], month="2026-09", fetch=fetch)
+
+    assert result["fetched"] == 3
+
+
+def _sequential_ensure(conn, scheme_codes, *, month, fetch):
+    """Reference: the pre-parallel loop, one fetch and persist at a time."""
+    codes = list(dict.fromkeys(str(code).strip() for code in scheme_codes if str(code).strip()))
+    existing = filing_statuses(conn, codes, month)
+    pending = [code for code in codes if existing[code].state != "fresh"]
+
+    outcomes = {}
+    houses: list[str] = []
+    fetched = 0
+    for code in pending:
+        try:
+            saved = persist_fund_details(conn, code, fetch(code))
+        except FoliyoError as exc:
+            outcomes[code] = (exc.failure, None, None, exc.reason)
+            continue
+        fetched += 1
+        if saved.amc:
+            houses.append(saved.amc)
+        outcomes[code] = ("fresh", saved.amc, saved.source_url, None)
+
+    now = datetime.now(timezone.utc).isoformat()
+    statuses = []
+    for code in codes:
+        if code not in pending:
+            statuses.append(existing[code])
+            continue
+        statuses.append(_status_for(conn, code, month, now, existing[code], outcomes.get(code)))
+        record_filing_status(conn, statuses[-1])
+
+    return {
+        "fetched": fetched,
+        "missing": missing_scheme_codes(conn, codes),
+        "amcs": list(dict.fromkeys(houses)),
+        "filings": [_serialize_status(status) for status in statuses],
+    }
+
+
+def _seeded_db(tmp_path, name):
+    conn = init_db(tmp_path / name)
+    load_holdings(conn, parse_holdings_csv(SAMPLE_CSV))
+    conn.execute(
+        """
+        INSERT INTO holdings (
+            as_of, scheme_code, isin, instrument_name, asset_class, sector, rating,
+            market_cap_bucket, weight_pct
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        ("2026-07-31", "555555", "INE000000555", "Cached Holding", None, None, None, None, 10.0),
+    )
+    conn.commit()
+    return conn
+
+
+def _dump_db(conn):
+    tables = ("holdings", "mixes", "fundamentals", "filing_status", "schemes", "ingest_runs")
+    dump = {}
+    for table in tables:
+        cur = conn.execute(f"SELECT * FROM {table}")
+        cols = [desc[0] for desc in cur.description]
+        rows = []
+        for row in cur.fetchall():
+            values = tuple(
+                "<ts>" if col in {"attempted_at", "finished_at"} else "" if value is None else str(value)
+                for col, value in zip(cols, row)
+            )
+            rows.append(values)
+        dump[table] = sorted(rows)
+    return dump
+
+
+def _scrubbed_response(result):
+    scrubbed = dict(result)
+    scrubbed["filings"] = [
+        {k: v for k, v in filing.items() if k not in {"attemptedAt", "finishedAt"}}
+        for filing in result["filings"]
+    ]
+    return scrubbed
+
+
+def test_ensure_parallel_matches_sequential_reference(tmp_path):
+    # fresh, failing-without-history, stale-with-history, and fresh-with-history.
+    codes = ["118741", "999999", "555555", "140084"]
+
+    def fetch(code: str):
+        if code in {"999999", "555555"}:
+            raise FoliyoError("download-failed", "foliyo request failed")
+        return PAYLOAD
+
+    reference_conn = _seeded_db(tmp_path, "reference.sqlite")
+    reference = _sequential_ensure(reference_conn, codes, month="2026-08", fetch=fetch)
+
+    parallel_conn = _seeded_db(tmp_path, "parallel.sqlite")
+    parallel = ensure_filings(parallel_conn, codes, month="2026-08", fetch=fetch)
+
+    assert _scrubbed_response(parallel) == _scrubbed_response(reference)
+    assert _dump_db(parallel_conn) == _dump_db(reference_conn)
+    assert [f["state"] for f in parallel["filings"]] == [
+        "fresh",
+        "download-failed",
+        "stale",
+        "fresh",
+    ]
 
 
 def test_post_insights_does_not_call_ensure_filings(client, monkeypatch):
