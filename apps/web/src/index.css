@@ -2224,10 +2224,6 @@ button[data-static="true"]:active:not(:disabled) {
     display: none;
   }
 
-  .status-plate[data-kind="insights-down"] {
-    display: none;
-  }
-
   .backtest-table .col-invested,
   .backtest-table .col-cagr,
   .backtest-table .col-vol {
