@@ -7,7 +7,6 @@ import {
   DrawdownLineChart,
   GrowthPathChart,
   MixStripChart,
-  RiskRadarChart,
 } from "./LabPlots";
 
 export type { MixSeries };
@@ -222,22 +221,6 @@ type MixCompareProps = {
 
 export function MixCompareChart({ series, categories }: MixCompareProps) {
   return <MixStripChart series={series} categories={categories} />;
-}
-
-type MetricPoint = {
-  key: string;
-  label: string;
-  color: string;
-  values: Record<string, number | null>;
-};
-
-type MetricCompareProps = {
-  metrics: { key: string; label: string }[];
-  series: MetricPoint[];
-};
-
-export function MetricCompareChart({ metrics, series }: MetricCompareProps) {
-  return <RiskRadarChart metrics={metrics} series={series} />;
 }
 
 type StackSegment = {
