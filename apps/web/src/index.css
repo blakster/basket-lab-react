@@ -2871,13 +2871,14 @@ button.basket-check[data-state="checked"] {
   }
 
   .insights-switch {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    scrollbar-width: none;
+    flex-wrap: wrap;
+    overflow-x: visible;
   }
 
   .insights-switch-item {
     flex: 0 0 auto;
+    max-width: 100%;
+    padding-left: 0;
   }
 
   .desk-mix,
