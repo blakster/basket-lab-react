@@ -43,6 +43,7 @@ import { resolveRange } from "../lib/resolveSettings";
 import { seriesKey } from "../lib/series";
 import { runIsStale } from "../lib/runFreshness";
 import { inkAlpha } from "../lib/theme";
+import { scriptScrollBehavior } from "../lib/motion";
 import { useLab } from "../state/LabContext";
 import type { BacktestResult, Basket, LabSettings } from "../types";
 import {
@@ -168,7 +169,9 @@ function mixSeries(
 }
 
 function scrollToSection(id: string) {
-  document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  document
+    .getElementById(id)
+    ?.scrollIntoView({ behavior: scriptScrollBehavior(), block: "start" });
 }
 
 type RiskRow = {
@@ -523,9 +526,9 @@ function InsightsDesk({
     const overflowLeft = stripRect.left - tabRect.left;
     const overflowRight = tabRect.right - stripRect.right;
     if (overflowLeft > 0) {
-      el.scrollBy({ left: -(overflowLeft + 12), behavior: "smooth" });
+      el.scrollBy({ left: -(overflowLeft + 12), behavior: scriptScrollBehavior() });
     } else if (overflowRight > 0) {
-      el.scrollBy({ left: overflowRight + 12, behavior: "smooth" });
+      el.scrollBy({ left: overflowRight + 12, behavior: scriptScrollBehavior() });
     }
   }, [focusedId]);
 
