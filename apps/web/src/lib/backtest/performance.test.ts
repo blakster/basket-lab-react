@@ -486,6 +486,57 @@ describe("parity with the pre-indexing implementation", () => {
   });
 });
 
+describe("fund-order independence", () => {
+  // S trades three times; D trades on two extra dates (a +100% spike then a
+  // -50% crash). The basket must see every date either fund trades on, so
+  // granularity, drawdowns and SIP timing can't depend on which fund's
+  // series happens to be `navs`' first entry.
+  const SPARSE: NavPoint[] = [
+    { date: "2023-01-02", nav: 10 },
+    { date: "2023-06-01", nav: 10 },
+    { date: "2024-01-01", nav: 10 },
+  ];
+  const DENSE: NavPoint[] = [
+    { date: "2023-01-02", nav: 10 },
+    { date: "2023-03-01", nav: 20 },
+    { date: "2023-04-01", nav: 10 },
+    { date: "2024-01-01", nav: 10 },
+  ];
+  const mixed: Basket = {
+    ...basket,
+    funds: [
+      { schemeCode: "S", schemeName: "S", isin: null, weight: 50, locked: false },
+      { schemeCode: "D", schemeName: "D", isin: null, weight: 50, locked: false },
+    ],
+  };
+
+  it("lumpsum output is identical in either navs order", () => {
+    const sd = backtestBasket(mixed, { S: SPARSE, D: DENSE }, settings);
+    const ds = backtestBasket(mixed, { D: DENSE, S: SPARSE }, settings);
+    expect(sd).toEqual(ds);
+    // Union timeline: the D-only dates 2023-03-01 and 2023-04-01 appear.
+    expect(sd.series.map((p) => p.x)).toEqual([
+      "2023-01-02",
+      "2023-03-01",
+      "2023-04-01",
+      "2023-06-01",
+      "2024-01-01",
+    ]);
+    // 1500 peak on 2023-03-01 -> 1000 on 2023-04-01.
+    expect(sd.stats.mdd).toBeCloseTo(-100 / 3, 6);
+  });
+
+  it("sip output is identical in either navs order", () => {
+    const sip = { ...settings, mode: "sip" as const };
+    const sd = backtestBasket(mixed, { S: SPARSE, D: DENSE }, sip);
+    const ds = backtestBasket(mixed, { D: DENSE, S: SPARSE }, sip);
+    expect(sd).toEqual(ds);
+    // SIPs land on the first union date at/after each monthly anniversary:
+    // 01-02, 03-01, 04-01, 06-01, 01-01.
+    expect(sd.stats.initial).toBe(5 * sip.amount);
+  });
+});
+
 describe("calculateXirr", () => {
   it("one year -1000 then +1100 is ~10%", () => {
     const rate = calculateXirr([
