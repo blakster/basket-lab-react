@@ -8,7 +8,6 @@ from app.db import init_db
 from app.filing_status import FilingStatus, filing_statuses, record_filing_status
 from app.ingest.amc_fetch import missing_scheme_codes, pick_latest_monthly_url
 from app.ingest.ensure import (
-    FETCH_WORKERS,
     _serialize_status,
     _status_for,
     ensure_filings,
@@ -220,7 +219,9 @@ def test_ensure_fetch_concurrency_is_bounded(db):
     result = ensure_filings(db, codes, month="2026-09", fetch=fetch)
 
     assert result["fetched"] == 12
-    assert 2 <= peak <= FETCH_WORKERS
+    # 12 pending codes with the fixed 8-worker cap: real overlap, never more
+    # than 8 fetches in flight (asserted against the literal contract).
+    assert 2 <= peak <= 8
 
 
 def test_ensure_unexpected_fetch_error_aborts_after_earlier_persists(db):
