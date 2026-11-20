@@ -10,28 +10,46 @@
     {
       "id": "1",
       "name": "Nifty 50 Index",
-      "color": "#121212",
+      "color": "var(--chart-7)",
       "active": true,
       "funds": [
-        { "schemeCode": "118741", "schemeName": "UTI Nifty 50 Index Fund", "isin": null, "weight": 100, "locked": false }
+        {
+          "schemeCode": "118741",
+          "schemeName": "UTI Nifty 50 Index Fund",
+          "isin": null,
+          "weight": 100,
+          "locked": false
+        }
       ]
     },
     {
       "id": "2",
       "name": "Flexi Cap",
-      "color": "#5E5E5E",
+      "color": "var(--chart-8)",
       "active": true,
       "funds": [
-        { "schemeCode": "122639", "schemeName": "Parag Parikh Flexi Cap Fund - Direct Plan - Growth", "isin": "INF879O01027", "weight": 100, "locked": false }
+        {
+          "schemeCode": "122639",
+          "schemeName": "Parag Parikh Flexi Cap Fund - Direct Plan - Growth",
+          "isin": "INF879O01027",
+          "weight": 100,
+          "locked": false
+        }
       ]
     },
     {
       "id": "3",
       "name": "Nifty 50 ETF",
-      "color": "#6B6B6B",
+      "color": "var(--chart-9)",
       "active": true,
       "funds": [
-        { "schemeCode": "140084", "schemeName": "Nippon India ETF Nifty 50 BeES", "isin": "INF204KB14I2", "weight": 100, "locked": false }
+        {
+          "schemeCode": "140084",
+          "schemeName": "Nippon India ETF Nifty 50 BeES",
+          "isin": "INF204KB14I2",
+          "weight": 100,
+          "locked": false
+        }
       ]
     }
   ]

@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
+import defaults from "../data/defaults.json";
 import {
+  AUTO_BASKET_COLORS,
   INK_DARK,
   INK_LIGHT,
   PAPER_DARK,
@@ -8,6 +10,7 @@ import {
   applyTheme,
   contrastRatio,
   inkAlpha,
+  nextBasketColor,
   paintOnPaper,
   persistTheme,
   readStoredTheme,
@@ -90,6 +93,48 @@ describe("seriesPair", () => {
       light: ["#B33A2B"],
       dark: ["#E07064"],
     });
+  });
+});
+
+describe("nextBasketColor", () => {
+  it("hands out every hue and ink before any gray repeats, never red", () => {
+    const auto = AUTO_BASKET_COLORS.map((c) => c.label);
+    expect(auto).not.toContain("Red");
+    expect(auto.filter((l) => l.startsWith("Gray")).slice(0, 1)).toEqual(
+      auto.slice(-4).slice(0, 1),
+    );
+    expect(auto.slice(0, 5)).toEqual(["Ink", "Blue", "Green", "Amber", "Violet"]);
+    expect(auto.slice(5)).toEqual(["Gray 1", "Gray 2", "Gray 3", "Gray 4"]);
+  });
+
+  it("gives the three default baskets clearly different hues", () => {
+    const colors = defaults.baskets.map((b) => b.color);
+    expect(new Set(colors).size).toBe(colors.length);
+    expect(colors).toEqual([
+      "var(--chart-7)",
+      "var(--chart-8)",
+      "var(--chart-9)",
+    ]);
+  });
+
+  it("picks the first hue no basket uses, counting colors saved as hex", () => {
+    const taken = [
+      { color: "var(--chart-7)" }, // Blue
+      { color: "#121212" }, // Ink saved on an older basket
+    ];
+    expect(nextBasketColor(taken)).toBe("var(--chart-8)"); // Green
+    expect(nextBasketColor([])).toBe("var(--chart-1)"); // Ink first
+  });
+
+  it("never auto-assigns red, even as a manual pick elsewhere", () => {
+    const all = AUTO_BASKET_COLORS.map((s) => ({ color: s.value }));
+    expect(nextBasketColor(all)).toBe("var(--chart-1)"); // cycle restarts at Ink
+    for (let i = 0; i < 12; i++) {
+      const baskets = AUTO_BASKET_COLORS.slice(0, i % AUTO_BASKET_COLORS.length);
+      expect(nextBasketColor(baskets.map((s) => ({ color: s.value })))).not.toBe(
+        "var(--chart-3)",
+      );
+    }
   });
 });
 

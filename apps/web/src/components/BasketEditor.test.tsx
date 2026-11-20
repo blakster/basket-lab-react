@@ -101,15 +101,15 @@ describe("chart color swatches", () => {
     const swatches = within(group).getAllByRole("button");
     expect(swatches.map((s) => s.getAttribute("aria-label"))).toEqual([
       "Ink",
-      "Gray 1",
-      "Gray 2",
-      "Red",
-      "Gray 3",
-      "Gray 4",
       "Blue",
       "Green",
       "Amber",
       "Violet",
+      "Red",
+      "Gray 1",
+      "Gray 2",
+      "Gray 3",
+      "Gray 4",
     ]);
     for (const swatch of swatches) {
       expect(swatch.getAttribute("aria-label")).not.toMatch(/var\(--/);
