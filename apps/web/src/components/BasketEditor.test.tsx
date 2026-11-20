@@ -106,6 +106,10 @@ describe("chart color swatches", () => {
       "Red",
       "Gray 3",
       "Gray 4",
+      "Blue",
+      "Green",
+      "Amber",
+      "Violet",
     ]);
     for (const swatch of swatches) {
       expect(swatch.getAttribute("aria-label")).not.toMatch(/var\(--/);

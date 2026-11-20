@@ -34,6 +34,10 @@ export const BASKET_COLORS: BasketColor[] = [
   { value: "var(--chart-3)", hex: "#B33A2B", label: "Red" },
   { value: "var(--chart-4)", hex: "#8A8A8A", label: "Gray 3" },
   { value: "var(--chart-5)", hex: "#3A3A3A", label: "Gray 4" },
+  { value: "var(--chart-7)", label: "Blue" },
+  { value: "var(--chart-8)", label: "Green" },
+  { value: "var(--chart-9)", label: "Amber" },
+  { value: "var(--chart-10)", label: "Violet" },
 ];
 
 const MIN_SERIES_CONTRAST = 4.5;
