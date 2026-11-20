@@ -2871,14 +2871,44 @@ button.basket-check[data-state="checked"] {
   }
 
   .insights-switch {
-    flex-wrap: wrap;
-    overflow-x: visible;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .insights-switch::-webkit-scrollbar {
+    display: none;
+  }
+
+  .insights-switch[data-scroll-right="true"] {
+    -webkit-mask-image: linear-gradient(to left, transparent, #000 2rem);
+    mask-image: linear-gradient(to left, transparent, #000 2rem);
+  }
+
+  .insights-switch[data-scroll-left="true"] {
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 2rem);
+    mask-image: linear-gradient(to right, transparent, #000 2rem);
+  }
+
+  .insights-switch[data-scroll-left="true"][data-scroll-right="true"] {
+    -webkit-mask-image: linear-gradient(
+      to right,
+      transparent,
+      #000 2rem,
+      #000 calc(100% - 2rem),
+      transparent
+    );
+    mask-image: linear-gradient(
+      to right,
+      transparent,
+      #000 2rem,
+      #000 calc(100% - 2rem),
+      transparent
+    );
   }
 
   .insights-switch-item {
     flex: 0 0 auto;
-    max-width: 100%;
-    padding-left: 0;
   }
 
   .desk-mix,
