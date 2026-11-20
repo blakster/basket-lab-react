@@ -2881,6 +2881,18 @@ button.basket-check[data-state="checked"] {
   background: transparent;
   transform: none;
 }
+
+.workspace-loading {
+  display: grid;
+  place-items: center;
+  min-height: 50vh;
+}
+
+.workspace-loading-text {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--ink-soft);
+}
 }
 
 /* Forced colors drops box-shadows, so the unchecked toggle needs a real border

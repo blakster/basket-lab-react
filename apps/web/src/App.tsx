@@ -1,10 +1,28 @@
+import { Suspense, lazy } from "react";
 import { AppHeader } from "./components/AppHeader";
 import { BacktestView } from "./components/BacktestView";
 import { BasketEditor } from "./components/BasketEditor";
-import { BasketList } from "./components/BasketList";
-import { InsightsPanel } from "./components/InsightsPanel";
 import { InvestmentSettings } from "./components/InvestmentSettings";
 import { useLab } from "./state/LabContext";
+
+const BasketList = lazy(() =>
+  import("./components/BasketList").then((m) => ({ default: m.BasketList })),
+);
+const InsightsPanel = lazy(() =>
+  import("./components/InsightsPanel").then((m) => ({
+    default: m.InsightsPanel,
+  })),
+);
+
+function WorkspaceLoading() {
+  return (
+    <section className="workspace-loading" aria-busy="true">
+      <p className="workspace-loading-text" role="status">
+        Loading workspace…
+      </p>
+    </section>
+  );
+}
 
 export default function App() {
   const { workspace } = useLab();
@@ -19,8 +37,10 @@ export default function App() {
             <BacktestView />
           </>
         )}
-        {workspace === "baskets" && <BasketList />}
-        {workspace === "insights" && <InsightsPanel />}
+        <Suspense fallback={<WorkspaceLoading />}>
+          {workspace === "baskets" && <BasketList />}
+          {workspace === "insights" && <InsightsPanel />}
+        </Suspense>
       </main>
       <BasketEditor />
     </div>

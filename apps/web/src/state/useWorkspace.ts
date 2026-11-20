@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { startTransition, useCallback, useEffect, useState } from "react";
 import type { Basket } from "../types";
 import type { Workspace } from "./labTypes";
 
@@ -66,16 +66,17 @@ export function useWorkspace(baskets: Basket[]) {
     [baskets],
   );
 
+  // Workspace panels lazy-load their chunks; a transition keeps the current
+  // screen on display until the next one is ready instead of flashing a
+  // loading state on every switch.
   const setWorkspace = useCallback(
     (next: Workspace) => {
-      setWorkspaceState(next);
-      if (next !== "insights") {
-        writeWorkspaceHash(next);
-        return;
-      }
-      const id = pickInsightsId(insightsBasketId);
-      setInsightsBasketId(id);
-      writeWorkspaceHash("insights", id);
+      const id = next === "insights" ? pickInsightsId(insightsBasketId) : null;
+      writeWorkspaceHash(next, id);
+      startTransition(() => {
+        setWorkspaceState(next);
+        if (next === "insights") setInsightsBasketId(id);
+      });
     },
     [pickInsightsId, insightsBasketId],
   );
@@ -85,9 +86,11 @@ export function useWorkspace(baskets: Basket[]) {
       const asked =
         typeof basketId === "string" && basketId ? basketId : undefined;
       const id = pickInsightsId(insightsBasketId, asked);
-      setInsightsBasketId(id);
       writeWorkspaceHash("insights", id);
-      setWorkspaceState("insights");
+      startTransition(() => {
+        setInsightsBasketId(id);
+        setWorkspaceState("insights");
+      });
     },
     [pickInsightsId, insightsBasketId],
   );
