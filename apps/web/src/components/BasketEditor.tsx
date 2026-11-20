@@ -56,6 +56,8 @@ export function BasketEditor() {
   const open = Boolean(editingId && draft);
   const sum = draft?.funds.reduce((s, f) => s + f.weight, 0) ?? 0;
   const balanced = Math.abs(sum - 100) < WEIGHT_TOLERANCE;
+  const named = Boolean(draft?.name.trim());
+  const canSave = balanced && named;
   const creating = !baskets.some((basket) => basket.id === editingId);
 
   function addFund(hit: SearchHit) {
@@ -113,7 +115,7 @@ export function BasketEditor() {
   }
 
   function onSave() {
-    if (!draft || !balanced) return;
+    if (!draft || !canSave) return;
     if (saveBasket(draft)) closeEditor();
   }
 
@@ -271,7 +273,9 @@ export function BasketEditor() {
                 </strong>
                 <span>
                   {balanced
-                    ? "Ready to save"
+                    ? named
+                      ? "Ready to save"
+                      : "Add a name to save"
                     : draft.funds.length
                       ? "Adjust weights to reach 100%"
                       : "Add a fund to begin"}
@@ -281,7 +285,7 @@ export function BasketEditor() {
                 <Button type="button" variant="outline" onClick={closeEditor}>
                   Cancel
                 </Button>
-                <Button type="button" disabled={!balanced} onClick={onSave}>
+                <Button type="button" disabled={!canSave} onClick={onSave}>
                   Save basket
                 </Button>
               </div>

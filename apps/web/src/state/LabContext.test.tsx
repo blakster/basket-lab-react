@@ -2,6 +2,7 @@ import { act, render } from "@testing-library/react";
 import { StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LabProvider, useLab } from "./LabContext";
+import { encodeShare } from "../lib/shareUrl";
 import type { Basket } from "../types";
 
 const { fetchNavMock, readNavCacheEntryMock, writeNavCacheMock } = vi.hoisted(
@@ -97,6 +98,57 @@ describe("LabContext share hydrate", () => {
     expect(persisted.baskets).toHaveLength(1);
     expect(persisted.baskets[0].id).toBe("test-1");
   });
+
+  it("renames a blank-named basket from a shared ?s= link instead of keeping it nameless", () => {
+    const payload = {
+      settings: {
+        mode: "lumpsum" as const,
+        amount: 1000,
+        period: "1Y" as const,
+        customStart: "2020-01-01",
+        customEnd: "2021-01-01",
+      },
+      baskets: [{ ...makeBasket(100), name: "" }],
+    };
+    const url = new URL(window.location.href);
+    url.searchParams.set("s", encodeShare(payload));
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+
+    const api: { current: ReturnType<typeof useLab> | null } = { current: null };
+    render(
+      <LabProvider>
+        <Consumer api={api} />
+      </LabProvider>,
+    );
+
+    expect(api.current!.shareHydrateError).toBe(false);
+    expect(api.current!.baskets).toHaveLength(1);
+    expect(api.current!.baskets[0].name.trim()).not.toBe("");
+  });
+
+  it("renames a blank-named basket persisted in localStorage", () => {
+    const saved = {
+      settings: {
+        mode: "lumpsum" as const,
+        amount: 9999,
+        period: "1Y" as const,
+        customStart: "2020-01-01",
+        customEnd: "2021-01-01",
+      },
+      baskets: [{ ...makeBasket(100), name: "   " }],
+    };
+    window.localStorage.setItem("basket-lab-v1", JSON.stringify(saved));
+
+    const api: { current: ReturnType<typeof useLab> | null } = { current: null };
+    render(
+      <LabProvider>
+        <Consumer api={api} />
+      </LabProvider>,
+    );
+
+    expect(api.current!.baskets).toHaveLength(1);
+    expect(api.current!.baskets[0].name.trim()).not.toBe("");
+  });
 });
 
 describe("LabContext saveBasket", () => {
@@ -129,6 +181,24 @@ describe("LabContext saveBasket", () => {
     expect(saved).toBeDefined();
     expect(saved!.name).toBe("Test");
     expect(saved!.funds.reduce((s, f) => s + f.weight, 0)).toBe(100);
+  });
+
+  it("returns false for a blank or whitespace-only name at 100% weights", () => {
+    const api: { current: ReturnType<typeof useLab> | null } = { current: null };
+    render(
+      <LabProvider>
+        <Consumer api={api} />
+      </LabProvider>,
+    );
+
+    for (const name of ["", "   ", "\t\n"]) {
+      let ok = true;
+      act(() => {
+        ok = api.current!.saveBasket({ ...makeBasket(100), id: `blank-${name.length}`, name });
+      });
+      expect(ok).toBe(false);
+    }
+    expect(api.current!.baskets.every((b) => b.name.trim() !== "")).toBe(true);
   });
 
   it("create-new draft cancel leaves baskets unchanged and does not persist a 0% basket", () => {
