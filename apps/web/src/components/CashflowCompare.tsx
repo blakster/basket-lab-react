@@ -20,6 +20,7 @@ import {
   type CashflowPlan,
 } from "../lib/backtest/performance";
 import { formatInr, formatInrGroup } from "../lib/format";
+import { BasketSwitch, basketSwitchTabId } from "./BasketSwitch";
 import { resolveRange } from "../lib/resolveSettings";
 import { navsForBasket } from "../lib/series";
 import { runIsStale } from "../lib/runFreshness";
@@ -209,22 +210,25 @@ export function CashflowCompare() {
         {settings.period}. Invested totals differ on purpose.
       </p>
       {active.length > 1 && (
-        <div className="insights-switch" role="tablist" aria-label="Basket">
-          {active.map((b) => (
-            <button
-              key={b.id}
-              type="button"
-              role="tab"
-              aria-selected={b.id === basket.id}
-              className="insights-switch-item"
-              onClick={() => setFocusedId(b.id)}
-            >
-              {b.name}
-            </button>
-          ))}
-        </div>
+        <BasketSwitch
+          baskets={active}
+          selectedId={basket.id}
+          onSelect={setFocusedId}
+          idPrefix="cashflow-switch"
+          panelId="cashflow-compare-panel"
+        />
       )}
-      <div className="table-scroll">
+      <div
+        className="table-scroll"
+        role="tabpanel"
+        id="cashflow-compare-panel"
+        aria-labelledby={
+          active.length > 1
+            ? basketSwitchTabId("cashflow-switch", basket.id)
+            : undefined
+        }
+        tabIndex={0}
+      >
         <Table className="backtest-table cashflow-table">
           <TableHeader>
             <TableRow>

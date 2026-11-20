@@ -50,6 +50,7 @@ import {
   type MixSeries,
 } from "./LabCharts";
 
+import { BasketSwitch, basketSwitchTabId } from "./BasketSwitch";
 import { OverlapBlock, PortfolioDesk } from "./PortfolioDesk";
 
 const EQUITY_ORDER = ["large", "mid", "small", "unclassified"] as const;
@@ -604,27 +605,15 @@ function InsightsDesk({
           </p>
         </header>
         {switchable.length > 1 && (
-          <div
-            className="insights-switch"
-            role="tablist"
-            aria-label="Basket"
-            ref={switchRef}
-            data-scroll-left={switchFade.left}
-            data-scroll-right={switchFade.right}
-          >
-            {switchable.map((basket) => (
-              <button
-                key={basket.id}
-                type="button"
-                role="tab"
-                aria-selected={basket.id === focusedId}
-                className="insights-switch-item"
-                onClick={() => openInsights(basket.id)}
-              >
-                {basket.name}
-              </button>
-            ))}
-          </div>
+          <BasketSwitch
+            baskets={switchable}
+            selectedId={focusedId}
+            onSelect={openInsights}
+            idPrefix="insights-switch"
+            panelId="insights-desk-panel"
+            listRef={switchRef}
+            fades={switchFade}
+          />
         )}
         {isError && (
           <p className="insight-empty insight-alert" role="status">
@@ -663,7 +652,18 @@ function InsightsDesk({
       )}
       {showDesk && (
         <>
-          <div className="insights-sections" ref={bodyRef}>
+          <div
+            className="insights-sections"
+            ref={bodyRef}
+            role="tabpanel"
+            id="insights-desk-panel"
+            aria-labelledby={
+              switchable.length > 1 && focusedId
+                ? basketSwitchTabId("insights-switch", focusedId)
+                : undefined
+            }
+            tabIndex={0}
+          >
             {data?.baskets.map((ib) =>
               ib.filingCoverage ? (
                 <FilingCoverageBlock
