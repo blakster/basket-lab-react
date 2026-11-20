@@ -489,6 +489,46 @@ function InsightsDesk({
   const switchable = baskets.filter((b) => b.active);
   const showOverlap = switchable.length >= 2;
 
+  const switchRef = useRef<HTMLDivElement>(null);
+  const [switchFade, setSwitchFade] = useState({ left: false, right: false });
+
+  // Fade the strip's edge only on sides that actually hide tabs.
+  useEffect(() => {
+    const el = switchRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const update = () => {
+      const maxScroll = el.scrollWidth - el.clientWidth;
+      setSwitchFade({
+        left: el.scrollLeft > 1,
+        right: el.scrollLeft < maxScroll - 1,
+      });
+    };
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => {
+      el.removeEventListener("scroll", update);
+      observer.disconnect();
+    };
+  }, [switchable.length]);
+
+  // Keep the focused tab fully inside the scrollable strip.
+  useEffect(() => {
+    const el = switchRef.current;
+    const tab = el?.querySelector('[aria-selected="true"]');
+    if (!el || !tab) return;
+    const tabRect = tab.getBoundingClientRect();
+    const stripRect = el.getBoundingClientRect();
+    const overflowLeft = stripRect.left - tabRect.left;
+    const overflowRight = tabRect.right - stripRect.right;
+    if (overflowLeft > 0) {
+      el.scrollBy({ left: -(overflowLeft + 12), behavior: "smooth" });
+    } else if (overflowRight > 0) {
+      el.scrollBy({ left: overflowRight + 12, behavior: "smooth" });
+    }
+  }, [focusedId]);
+
   useEffect(() => {
     const root = bodyRef.current;
     if (!root || typeof IntersectionObserver === "undefined") return;
@@ -564,7 +604,14 @@ function InsightsDesk({
           </p>
         </header>
         {switchable.length > 1 && (
-          <div className="insights-switch" role="tablist" aria-label="Basket">
+          <div
+            className="insights-switch"
+            role="tablist"
+            aria-label="Basket"
+            ref={switchRef}
+            data-scroll-left={switchFade.left}
+            data-scroll-right={switchFade.right}
+          >
             {switchable.map((basket) => (
               <button
                 key={basket.id}
