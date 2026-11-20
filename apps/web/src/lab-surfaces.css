@@ -45,8 +45,7 @@ button[data-slot="checkbox"]:hover:not(:disabled) {
 
 .editor-description,
 .editor-help,
-.fund-search-hint,
-.share-note {
+.fund-search-hint {
   margin: 0;
   font-size: 0.8125rem;
   color: var(--ink-soft);
@@ -277,32 +276,6 @@ button[data-slot="checkbox"]:hover:not(:disabled) {
   display: grid;
   place-items: center;
   padding: 0;
-}
-
-.share-bar > h2 {
-  margin: 0 0 0.25rem;
-}
-
-.share-note {
-  margin-bottom: 1rem;
-}
-
-.share-bar-row input {
-  font-family: var(--mono);
-  font-size: 0.8125rem;
-  border: 1px solid var(--rule);
-  box-shadow: none;
-}
-
-.share-toast,
-.share-error {
-  padding: 0.6rem 0;
-  border-bottom: 1px solid var(--rule);
-  font-size: 0.875rem;
-}
-
-.share-error {
-  color: var(--loss);
 }
 
 .lead-empty {

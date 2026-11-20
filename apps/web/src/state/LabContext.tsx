@@ -35,8 +35,6 @@ type LabContextValue = {
   navByCode: Record<string, NavPoint[]>;
   analyzing: boolean;
   runAnalysis: () => Promise<void>;
-  /** True when `?s=` was present but could not be decoded. */
-  shareHydrateError: boolean;
   status: LabStatus;
   insightsStatus: LabStatus;
   reportStatus: (source: StatusSource, next: LabStatus) => void;
@@ -61,7 +59,6 @@ export function LabProvider({ children }: { children: ReactNode }) {
     openEditor,
     closeEditor,
     saveBasket,
-    shareHydrateError,
   } = useBasketStore();
   const { status, insightsStatus, reportStatus } = useLabStatus();
   const { results, navByCode, analyzing, runAnalysis } = useNavQuery(
@@ -93,7 +90,6 @@ export function LabProvider({ children }: { children: ReactNode }) {
       navByCode,
       analyzing,
       runAnalysis,
-      shareHydrateError,
       status,
       insightsStatus,
       reportStatus,
@@ -118,7 +114,6 @@ export function LabProvider({ children }: { children: ReactNode }) {
       navByCode,
       analyzing,
       runAnalysis,
-      shareHydrateError,
       status,
       insightsStatus,
       reportStatus,

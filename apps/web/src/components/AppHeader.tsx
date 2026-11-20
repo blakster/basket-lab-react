@@ -1,8 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Moon, Sun } from "lucide-react";
-import { useState } from "react";
-import { encodeShare } from "../lib/shareUrl";
 import { useLab, type LabStatus, type Workspace } from "../state/LabContext";
 import { useTheme } from "../state/ThemeContext";
 
@@ -40,25 +38,10 @@ const WORKSPACES: { id: Workspace; label: string }[] = [
 ];
 
 export function AppHeader() {
-  const { status, insightsStatus, workspace, setWorkspace, settings, baskets } =
-    useLab();
+  const { status, insightsStatus, workspace, setWorkspace } = useLab();
   const { theme, toggleTheme } = useTheme();
-  const [copied, setCopied] = useState(false);
   const banner =
     status.kind === "insights-down" ? { kind: "ready" as const } : status;
-
-  function handleShare() {
-    const url = new URL(window.location.href);
-    url.searchParams.set("s", encodeShare({ settings, baskets }));
-    const write = navigator.clipboard?.writeText?.(url.href);
-    if (!write) return;
-    void write
-      .then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      })
-      .catch(() => {});
-  }
 
   return (
     <header className="app-header">
@@ -94,7 +77,7 @@ export function AppHeader() {
           type="button"
           variant="ghost"
           size="icon-sm"
-          className="share-text text-[0.88rem]"
+          className="theme-toggle text-[0.88rem]"
           aria-pressed={theme === "dark"}
           aria-label="Night edition"
           onClick={toggleTheme}
@@ -108,14 +91,6 @@ export function AppHeader() {
         >
           {statusLabel(banner)}
         </Badge>
-        <Button
-          type="button"
-          variant="outline"
-          className="share-cta h-auto bg-transparent px-[0.65rem] py-[0.35rem] text-[0.8125rem]"
-          onClick={handleShare}
-        >
-          {copied ? "Copied" : "Share"}
-        </Button>
         {insightsStatus.kind === "insights-down" ? (
           <Badge
             variant="ghost"
