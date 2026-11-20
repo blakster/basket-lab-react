@@ -21,7 +21,7 @@ from app.ingest.ensure import ensure_filings
 
 LATENCY = 0.25
 REPS = 5
-SIZES = (1, 3, 8)
+SIZES = (1, 3, 8, 16)
 
 
 def _payload() -> dict:

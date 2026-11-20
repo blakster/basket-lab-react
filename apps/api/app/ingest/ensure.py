@@ -53,6 +53,10 @@ def ensure_filings(
         if isinstance(payload, FoliyoError):
             outcomes[code] = (payload.failure, None, None, payload.reason)
             continue
+        if isinstance(payload, Exception):
+            # Unexpected fetch error: abort here, after earlier codes persisted,
+            # exactly as the sequential loop did.
+            raise payload
         try:
             saved = persist_fund_details(conn, code, payload)
         except FoliyoError as exc:
@@ -82,14 +86,21 @@ def ensure_filings(
 
 def _fetch_all(
     fetch_fn: Callable[[str], dict[str, Any]], codes: list[str]
-) -> dict[str, dict[str, Any] | FoliyoError]:
-    """Fetch every code concurrently; FoliyoError comes back as a value so one
-    fund's failure never stops or reorders the others. Anything else raises."""
+) -> dict[str, dict[str, Any] | Exception]:
+    """Fetch every code concurrently. FoliyoError (and any unexpected error)
+    comes back as a value so one fund's failure never stops or reorders the
+    others; ensure_filings re-raises unexpected errors in pending order."""
     if not codes:
         return {}
     with ThreadPoolExecutor(max_workers=min(len(codes), FETCH_WORKERS)) as pool:
         futures = {code: pool.submit(_fetch_one, fetch_fn, code) for code in codes}
-        return {code: futures[code].result() for code in codes}
+        results: dict[str, dict[str, Any] | Exception] = {}
+        for code in codes:
+            try:
+                results[code] = futures[code].result()
+            except Exception as exc:
+                results[code] = exc
+        return results
 
 
 def _fetch_one(

@@ -1,10 +1,14 @@
 import threading
+import time
 from datetime import datetime, timezone
+
+import pytest
 
 from app.db import init_db
 from app.filing_status import FilingStatus, filing_statuses, record_filing_status
 from app.ingest.amc_fetch import missing_scheme_codes, pick_latest_monthly_url
 from app.ingest.ensure import (
+    FETCH_WORKERS,
     _serialize_status,
     _status_for,
     ensure_filings,
@@ -195,6 +199,47 @@ def test_ensure_mixed_codes_preserves_fresh_fund_provenance(db):
     assert by_code["111111"]["reason"] == "already current"
     assert by_code["111111"]["amc"] == "PPFAS Mutual Fund"
     assert by_code["999999"]["state"] == "unmapped"
+
+
+def test_ensure_fetch_concurrency_is_bounded(db):
+    lock = threading.Lock()
+    current = 0
+    peak = 0
+
+    def fetch(_code: str):
+        nonlocal current, peak
+        with lock:
+            current += 1
+            peak = max(peak, current)
+        time.sleep(0.05)
+        with lock:
+            current -= 1
+        return PAYLOAD
+
+    codes = [f"9{i:05d}" for i in range(12)]
+    result = ensure_filings(db, codes, month="2026-09", fetch=fetch)
+
+    assert result["fetched"] == 12
+    assert 2 <= peak <= FETCH_WORKERS
+
+
+def test_ensure_unexpected_fetch_error_aborts_after_earlier_persists(db):
+    def fetch(code: str):
+        if code == "122639":
+            raise ValueError("boom")
+        return PAYLOAD
+
+    with pytest.raises(ValueError, match="boom"):
+        ensure_filings(db, ["118741", "122639", "999999"], month="2026-09", fetch=fetch)
+
+    # As in the sequential loop: the fund before the failure is persisted,
+    # the one after it is not.
+    assert db.execute(
+        "SELECT COUNT(*) FROM holdings WHERE scheme_code='118741'"
+    ).fetchone()[0] > 0
+    assert db.execute(
+        "SELECT COUNT(*) FROM holdings WHERE scheme_code='999999'"
+    ).fetchone()[0] == 0
 
 
 def test_ensure_fetches_pending_codes_concurrently(db):
