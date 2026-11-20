@@ -18,13 +18,16 @@ function parseDay(iso: string): Date {
   return new Date(`${iso}T00:00:00`);
 }
 
-function navOnOrBefore(history: NavPoint[], day: Date): number | null {
-  let hit: NavPoint | null = null;
-  for (const p of history) {
-    if (parseDay(p.date) <= day) hit = p;
-    else break;
+/** NAV series are sorted ascending by ISO date (normalized at fetch time). */
+function navOnOrBefore(history: NavPoint[], iso: string): number | null {
+  let lo = 0;
+  let hi = history.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (history[mid]!.date <= iso) lo = mid + 1;
+    else hi = mid;
   }
-  return hit ? hit.nav : null;
+  return lo > 0 ? history[lo - 1]!.nav : null;
 }
 
 function firstIso(points: NavPoint[]): string {
@@ -177,7 +180,7 @@ function runBacktest(
     const holdings: Record<string, number> = {};
     for (const f of basket.funds) {
       if (f.weight <= 0) continue;
-      const px = navOnOrBefore(navs[f.schemeCode], startDate);
+      const px = navOnOrBefore(navs[f.schemeCode], startIso);
       if (px == null || px === 0) {
         return noNav(basket.id);
       }
@@ -187,11 +190,10 @@ function runBacktest(
     let peak = 0;
     let mdd = 0;
     for (const iso of timeline) {
-      const day = parseDay(iso);
       let value = 0;
       for (const f of basket.funds) {
         if (f.weight <= 0) continue;
-        const px = navOnOrBefore(navs[f.schemeCode], day);
+        const px = navOnOrBefore(navs[f.schemeCode], iso);
         if (px == null) {
           value = NaN;
           break;
@@ -263,7 +265,7 @@ function runBacktest(
         let priced = true;
         for (const f of basket.funds) {
           if (f.weight <= 0) continue;
-          const px = navOnOrBefore(navs[f.schemeCode], day);
+          const px = navOnOrBefore(navs[f.schemeCode], iso);
           if (px == null || px === 0) {
             priced = false;
             break;
@@ -284,7 +286,7 @@ function runBacktest(
     let value = 0;
     for (const f of basket.funds) {
       if (f.weight <= 0) continue;
-      const px = navOnOrBefore(navs[f.schemeCode], day);
+      const px = navOnOrBefore(navs[f.schemeCode], iso);
       if (px == null) {
         value = NaN;
         break;
