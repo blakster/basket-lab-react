@@ -262,6 +262,7 @@ select {
 
 .status-plate[data-kind="idle"],
 .status-plate[data-kind="cached-nav"],
+.status-plate[data-kind="bad-range"],
 .status-plate[data-kind="search-busy"],
 .status-plate[data-kind="insights-down"] {
   background: transparent;

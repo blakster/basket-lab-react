@@ -3,6 +3,7 @@ export type LabStatusKind =
   | "idle"
   | "cached-nav"
   | "no-nav"
+  | "bad-range"
   | "search-busy"
   | "search-down"
   | "insights-down";
@@ -15,6 +16,7 @@ export const READY_STATUS: LabStatus = { kind: "ready" };
 export const IDLE_STATUS: LabStatus = { kind: "idle" };
 
 const STATUS_PRIORITY: Record<LabStatusKind, number> = {
+  "bad-range": 7,
   "no-nav": 6,
   "cached-nav": 5,
   "search-down": 4,

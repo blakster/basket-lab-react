@@ -405,6 +405,55 @@ describe("LabContext runAnalysis", () => {
     expect(api.current!.status.kind).toBe("idle");
   });
 
+  it("reports bad-range and clears data when Custom start is after end", async () => {
+    fetchNavMock.mockResolvedValue({
+      "118741": [
+        { date: "2023-01-01", nav: 10 },
+        { date: "2024-01-01", nav: 12 },
+      ],
+    });
+
+    const api: { current: ReturnType<typeof useLab> | null } = { current: null };
+    render(
+      <LabProvider>
+        <Consumer api={api} />
+      </LabProvider>,
+    );
+
+    act(() => {
+      api.current!.setBaskets([makeBasket(100)]);
+      api.current!.setSettings({
+        mode: "lumpsum",
+        amount: 1000,
+        period: "Custom",
+        customStart: "2023-01-01",
+        customEnd: "2024-01-01",
+      });
+    });
+    await act(async () => {
+      await api.current!.runAnalysis();
+    });
+    expect(api.current!.results).toHaveLength(1);
+    expect(api.current!.navByCode["118741"]).toHaveLength(2);
+    fetchNavMock.mockClear();
+
+    act(() => {
+      api.current!.setSettings({
+        ...api.current!.settings,
+        customStart: "2025-12-31",
+        customEnd: "2020-01-01",
+      });
+    });
+    await act(async () => {
+      await api.current!.runAnalysis();
+    });
+
+    expect(api.current!.status).toEqual({ kind: "bad-range" });
+    expect(api.current!.results).toEqual([]);
+    expect(api.current!.navByCode).toEqual({});
+    expect(fetchNavMock).not.toHaveBeenCalled();
+  });
+
   it("sets no-nav when fetch fails and cache does not cover the range", async () => {
     fetchNavMock.mockResolvedValue({ "118741": [] });
     readNavCacheEntryMock.mockResolvedValue({

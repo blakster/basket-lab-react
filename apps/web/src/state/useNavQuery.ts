@@ -115,6 +115,26 @@ export function useNavQuery(
       setResults([]);
       setNavByCode({});
     };
+    const { start, end } = resolveRange(
+      settings.period,
+      settings.customStart,
+      settings.customEnd,
+    );
+    // A Custom window whose start is after its end is a settings error, not a
+    // NAV outage: skip the fetch and flag the dates instead of BLACKOUT.
+    if (start > end) {
+      finish(() => {
+        reportStatus("nav", { kind: "bad-range" });
+        setResults([]);
+        setNavByCode({});
+      });
+      return;
+    }
+    const resolved: LabSettings = {
+      ...settings,
+      customStart: start,
+      customEnd: end,
+    };
     if (settings.amount < 100) {
       finish(clearRun);
       return;
@@ -131,17 +151,6 @@ export function useNavQuery(
       finish(clearRun);
       return;
     }
-
-    const { start, end } = resolveRange(
-      settings.period,
-      settings.customStart,
-      settings.customEnd,
-    );
-    const resolved: LabSettings = {
-      ...settings,
-      customStart: start,
-      customEnd: end,
-    };
 
     const codes = [
       ...new Set(
