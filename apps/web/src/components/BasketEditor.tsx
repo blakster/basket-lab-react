@@ -158,7 +158,7 @@ export function BasketEditor() {
                       type="button"
                       className="swatch"
                       style={{ background: swatch.value }}
-                      aria-label={swatch.value}
+                      aria-label={swatch.label}
                       aria-pressed={
                         draft.color === swatch.value ||
                         (!!swatch.hex && draft.color.toUpperCase() === swatch.hex)

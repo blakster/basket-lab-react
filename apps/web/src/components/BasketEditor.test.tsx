@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { LabProvider, useLab } from "../state/LabContext";
 import { ThemeProvider } from "../state/ThemeContext";
@@ -91,5 +91,46 @@ describe("BasketEditor name gate", () => {
     const saved = api.current!.baskets.find((b) => b.id === "edit-1");
     expect(saved?.name).toBe("My Renamed Basket");
     expect(api.current!.editingId).toBeNull();
+  });
+});
+
+describe("chart color swatches", () => {
+  it("names every swatch with a human label, not a CSS variable", () => {
+    openEditor(makeBasket("Nifty 50 Index"));
+    const group = screen.getByRole("group", { name: "Chart color" });
+    const swatches = within(group).getAllByRole("button");
+    expect(swatches.map((s) => s.getAttribute("aria-label"))).toEqual([
+      "Ink",
+      "Gray 1",
+      "Gray 2",
+      "Red",
+      "Gray 3",
+      "Gray 4",
+    ]);
+    for (const swatch of swatches) {
+      expect(swatch.getAttribute("aria-label")).not.toMatch(/var\(--/);
+    }
+  });
+
+  it("announces the selected swatch as pressed", () => {
+    openEditor({ ...makeBasket("Nifty 50 Index"), color: "#121212" });
+    expect(screen.getByRole("button", { name: "Ink" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "Red" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Red" }));
+    expect(screen.getByRole("button", { name: "Red" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "Ink" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
   });
 });
