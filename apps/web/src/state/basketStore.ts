@@ -18,6 +18,16 @@ function cloneDefaults(): { settings: LabSettings; baskets: Basket[] } {
   return structuredClone(defaults) as { settings: LabSettings; baskets: Basket[] };
 }
 
+const FALLBACK_BASKET_NAME = "Untitled basket";
+
+function withFallbackNames(baskets: Basket[]): Basket[] {
+  return baskets.map((basket) =>
+    typeof basket.name === "string" && basket.name.trim()
+      ? basket
+      : { ...basket, name: FALLBACK_BASKET_NAME },
+  );
+}
+
 function loadPersisted(): { settings: LabSettings; baskets: Basket[] } {
   const fallback = cloneDefaults();
   try {
@@ -28,7 +38,7 @@ function loadPersisted(): { settings: LabSettings; baskets: Basket[] } {
       baskets?: Basket[];
     };
     if (!parsed.settings || !Array.isArray(parsed.baskets)) return fallback;
-    return { settings: parsed.settings, baskets: parsed.baskets };
+    return { settings: parsed.settings, baskets: withFallbackNames(parsed.baskets) };
   } catch {
     return fallback;
   }
@@ -47,7 +57,7 @@ function loadInitial(): {
       if (decoded) {
         return {
           settings: decoded.settings,
-          baskets: decoded.baskets,
+          baskets: withFallbackNames(decoded.baskets),
           shareHydrateError: false,
         };
       }
@@ -132,6 +142,7 @@ export function useBasketStore() {
   const saveBasket = useCallback((basket: Basket): boolean => {
     const sum = weightSum(basket);
     if (Math.abs(sum - 100) >= WEIGHT_TOLERANCE) return false;
+    if (typeof basket.name !== "string" || !basket.name.trim()) return false;
     blockPersistRef.current = false;
     setBasketsState((prev) => {
       const idx = prev.findIndex((b) => b.id === basket.id);
