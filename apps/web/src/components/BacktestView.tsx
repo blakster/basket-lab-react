@@ -15,6 +15,7 @@ import { yearlyRanking } from "../lib/ranking";
 import { resolveRange } from "../lib/resolveSettings";
 import { runIsStale } from "../lib/runFreshness";
 import { unionDates } from "../lib/series";
+import { WEIGHT_TOLERANCE } from "../lib/weights";
 import { useLab } from "../state/LabContext";
 import type { BacktestResult, Basket } from "../types";
 import { CashflowCompare } from "./CashflowCompare";
@@ -92,7 +93,7 @@ function LeadStory({ beesRateById }: { beesRateById: Map<string, number> }) {
       (basket) =>
         Math.abs(
           basket.funds.reduce((sum, fund) => sum + fund.weight, 0) - 100,
-        ) >= 0.1,
+        ) >= WEIGHT_TOLERANCE,
     );
     const needsBaskets = !active.length || invalidWeights;
     return (
