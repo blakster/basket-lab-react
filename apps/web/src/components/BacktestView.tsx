@@ -79,7 +79,7 @@ function LeadStory({ beesRateById }: { beesRateById: Map<string, number> }) {
     );
     if (start > end) {
       return (
-        <div className="lead-story lead-empty">
+        <div className="lead-story lead-empty" role="status">
           <p>
             Start {formatAsOf(start)} is after End {formatAsOf(end)}.
           </p>

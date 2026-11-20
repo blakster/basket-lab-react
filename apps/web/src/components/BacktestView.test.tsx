@@ -81,6 +81,16 @@ describe("BacktestView table", () => {
   beforeEach(() => {
     loadBeesMock.mockReset();
     loadBeesMock.mockResolvedValue([] as NavPoint[]);
+    labState.baskets = [];
+    labState.results = [];
+    labState.analyzing = false;
+    labState.settings = {
+      mode: "lumpsum",
+      amount: 100_000,
+      period: "3Y",
+      customStart: null,
+      customEnd: null,
+    };
   });
 
   it("offers basket activation rather than an empty run or charts", () => {

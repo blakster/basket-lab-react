@@ -115,23 +115,6 @@ export function useNavQuery(
       setResults([]);
       setNavByCode({});
     };
-    if (settings.amount < 100) {
-      finish(clearRun);
-      return;
-    }
-
-    const active = baskets.filter((b) => b.active);
-    if (
-      active.some((b) => Math.abs(weightSum(b) - 100) >= WEIGHT_TOLERANCE)
-    ) {
-      finish(clearRun);
-      return;
-    }
-    if (!active.length) {
-      finish(clearRun);
-      return;
-    }
-
     const { start, end } = resolveRange(
       settings.period,
       settings.customStart,
@@ -152,6 +135,22 @@ export function useNavQuery(
       customStart: start,
       customEnd: end,
     };
+    if (settings.amount < 100) {
+      finish(clearRun);
+      return;
+    }
+
+    const active = baskets.filter((b) => b.active);
+    if (
+      active.some((b) => Math.abs(weightSum(b) - 100) >= WEIGHT_TOLERANCE)
+    ) {
+      finish(clearRun);
+      return;
+    }
+    if (!active.length) {
+      finish(clearRun);
+      return;
+    }
 
     const codes = [
       ...new Set(
