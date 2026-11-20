@@ -1,5 +1,6 @@
 export type LabStatusKind =
   | "ready"
+  | "idle"
   | "cached-nav"
   | "no-nav"
   | "search-busy"
@@ -11,12 +12,14 @@ export type LabStatus = { kind: LabStatusKind; detail?: string };
 export type StatusSource = "nav" | "search" | "insights";
 
 export const READY_STATUS: LabStatus = { kind: "ready" };
+export const IDLE_STATUS: LabStatus = { kind: "idle" };
 
 const STATUS_PRIORITY: Record<LabStatusKind, number> = {
-  "no-nav": 5,
-  "cached-nav": 4,
-  "search-down": 3,
-  "search-busy": 2,
+  "no-nav": 6,
+  "cached-nav": 5,
+  "search-down": 4,
+  "search-busy": 3,
+  idle: 2,
   "insights-down": 1,
   ready: 0,
 };

@@ -10,6 +10,8 @@ export function statusLabel(status: LabStatus): string {
   switch (status.kind) {
     case "ready":
       return "LIVE";
+    case "idle":
+      return "SETUP";
     case "cached-nav":
       return status.detail ? `SAVED NAV ${status.detail}` : "SAVED NAV";
     case "no-nav":

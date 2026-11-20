@@ -263,6 +263,78 @@ describe("LabContext runAnalysis", () => {
     expect(api.current!.results).toEqual([]);
   });
 
+  it("drops the header status off LIVE whenever a cleared run leaves nothing shown", async () => {
+    fetchNavMock.mockResolvedValue({
+      "118741": [
+        { date: "2023-01-01", nav: 10 },
+        { date: "2024-01-01", nav: 12 },
+      ],
+    });
+
+    const api: { current: ReturnType<typeof useLab> | null } = { current: null };
+    render(
+      <LabProvider>
+        <Consumer api={api} />
+      </LabProvider>,
+    );
+
+    const liveSettings = () => ({
+      mode: "lumpsum" as const,
+      amount: 1000,
+      period: "Custom" as const,
+      customStart: "2023-01-01",
+      customEnd: "2024-01-01",
+    });
+    act(() => {
+      api.current!.setBaskets([makeBasket(100)]);
+      api.current!.setSettings(liveSettings());
+    });
+    await act(async () => {
+      await api.current!.runAnalysis();
+    });
+    expect(api.current!.results).toHaveLength(1);
+    expect(api.current!.status.kind).toBe("ready");
+
+    // Clearing the amount empties the page; the badge must not stay LIVE.
+    act(() => {
+      api.current!.setSettings({ ...api.current!.settings, amount: 50 });
+    });
+    await act(async () => {
+      await api.current!.runAnalysis();
+    });
+    expect(api.current!.results).toEqual([]);
+    expect(api.current!.status.kind).not.toBe("ready");
+    expect(api.current!.status.kind).toBe("idle");
+
+    // A normal run afterwards restores LIVE exactly as before.
+    act(() => {
+      api.current!.setSettings(liveSettings());
+    });
+    await act(async () => {
+      await api.current!.runAnalysis();
+    });
+    expect(api.current!.status.kind).toBe("ready");
+
+    // Unbalanced weights and no active baskets clear the run the same way.
+    act(() => {
+      api.current!.setBaskets([{ ...makeBasket(100), funds: [{ ...makeBasket(100).funds[0]!, weight: 50 }] }]);
+    });
+    await act(async () => {
+      await api.current!.runAnalysis();
+    });
+    expect(api.current!.results).toEqual([]);
+    expect(api.current!.status.kind).toBe("idle");
+
+    act(() => {
+      api.current!.setBaskets([{ ...makeBasket(100), active: false }]);
+    });
+    await act(async () => {
+      await api.current!.runAnalysis();
+    });
+    expect(api.current!.results).toEqual([]);
+    expect(api.current!.status.kind).toBe("idle");
+  });
+
   it("sets no-nav when fetch fails and cache does not cover the range", async () => {
     fetchNavMock.mockResolvedValue({ "118741": [] });
     readNavCacheEntryMock.mockResolvedValue({

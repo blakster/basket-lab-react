@@ -17,7 +17,12 @@ import type {
   NavPoint,
 } from "../types";
 import { writeShareQuery, weightSum } from "./basketStore";
-import { READY_STATUS, type LabStatus, type StatusSource } from "./labTypes";
+import {
+  IDLE_STATUS,
+  READY_STATUS,
+  type LabStatus,
+  type StatusSource,
+} from "./labTypes";
 
 /** Last trading day before a weekend/holiday `to` still covers the range. */
 const RANGE_SLACK_DAYS = 4;
@@ -104,11 +109,14 @@ export function useNavQuery(
       apply?.();
       setAnalyzing(false);
     };
+    // A guard that empties the page must also drop the header status off LIVE.
+    const clearRun = () => {
+      reportStatus("nav", IDLE_STATUS);
+      setResults([]);
+      setNavByCode({});
+    };
     if (settings.amount < 100) {
-      finish(() => {
-        setResults([]);
-        setNavByCode({});
-      });
+      finish(clearRun);
       return;
     }
 
@@ -116,17 +124,11 @@ export function useNavQuery(
     if (
       active.some((b) => Math.abs(weightSum(b) - 100) >= WEIGHT_TOLERANCE)
     ) {
-      finish(() => {
-        setResults([]);
-        setNavByCode({});
-      });
+      finish(clearRun);
       return;
     }
     if (!active.length) {
-      finish(() => {
-        setResults([]);
-        setNavByCode({});
-      });
+      finish(clearRun);
       return;
     }
 
