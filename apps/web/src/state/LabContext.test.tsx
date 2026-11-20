@@ -723,6 +723,98 @@ describe("LabContext runAnalysis", () => {
     expect(api.current!.analyzing).toBe(false);
   });
 
+  it("clears results and flags the run when a run throws", async () => {
+    fetchNavMock.mockResolvedValue({
+      "118741": [
+        { date: "2023-01-01", nav: 10 },
+        { date: "2024-01-01", nav: 12 },
+      ],
+    });
+
+    const api: { current: ReturnType<typeof useLab> | null } = { current: null };
+    render(
+      <LabProvider>
+        <Consumer api={api} />
+      </LabProvider>,
+    );
+
+    act(() => {
+      api.current!.setBaskets([makeBasket(100)]);
+      api.current!.setSettings({
+        mode: "lumpsum",
+        amount: 1000,
+        period: "Custom",
+        customStart: "2023-01-01",
+        customEnd: "2024-01-01",
+      });
+    });
+    await act(async () => {
+      await api.current!.runAnalysis();
+    });
+    expect(api.current!.results).toHaveLength(1);
+    expect(api.current!.status.kind).toBe("ready");
+    expect(api.current!.navByCode["118741"]).toHaveLength(2);
+
+    // An unexpected throw mid-run must not leave the previous run's numbers
+    // on screen under a LIVE badge.
+    fetchNavMock.mockRejectedValueOnce(new Error("boom"));
+    act(() => {
+      api.current!.setSettings({
+        ...api.current!.settings,
+        customStart: "2021-01-01",
+      });
+    });
+    await act(async () => {
+      await api.current!.runAnalysis();
+    });
+    expect(api.current!.analyzing).toBe(false);
+    expect(api.current!.results).toEqual([]);
+    expect(api.current!.navByCode).toEqual({});
+    expect(api.current!.status.kind).toBe("no-nav");
+
+    // The clearing paths still report their own status after a failure.
+    act(() => {
+      api.current!.setSettings({ ...api.current!.settings, amount: 50 });
+    });
+    await act(async () => {
+      await api.current!.runAnalysis();
+    });
+    expect(api.current!.status.kind).toBe("idle");
+
+    act(() => {
+      api.current!.setSettings({
+        ...api.current!.settings,
+        amount: 1000,
+        customStart: "2025-12-31",
+        customEnd: "2020-01-01",
+      });
+    });
+    await act(async () => {
+      await api.current!.runAnalysis();
+    });
+    expect(api.current!.status).toEqual({ kind: "bad-range" });
+
+    // A good run restores LIVE.
+    fetchNavMock.mockResolvedValue({
+      "118741": [
+        { date: "2021-01-01", nav: 8 },
+        { date: "2024-01-01", nav: 12 },
+      ],
+    });
+    act(() => {
+      api.current!.setSettings({
+        ...api.current!.settings,
+        customStart: "2021-01-01",
+        customEnd: "2024-01-01",
+      });
+    });
+    await act(async () => {
+      await api.current!.runAnalysis();
+    });
+    expect(api.current!.results).toHaveLength(1);
+    expect(api.current!.status.kind).toBe("ready");
+  });
+
   it("replaces navByCode with the expanded window after a successful refetch", async () => {
     fetchNavMock.mockResolvedValueOnce({
       "118741": [
