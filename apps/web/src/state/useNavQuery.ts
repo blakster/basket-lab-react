@@ -242,8 +242,11 @@ export function useNavQuery(
       setNavByCode(navs);
     });
     } catch {
-      // Don't leave the previous run's NAV paired with the new settings.
+      // Don't leave the previous run's numbers on screen under a LIVE badge:
+      // a failed run clears like the guard paths and reports the NAV failure.
       finish(() => {
+        reportStatus("nav", { kind: "no-nav" });
+        setResults([]);
         setNavByCode({});
       });
     }
