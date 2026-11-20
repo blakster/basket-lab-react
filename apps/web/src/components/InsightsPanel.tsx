@@ -51,6 +51,7 @@ import {
   type MixSeries,
 } from "./LabCharts";
 
+import { BasketSwitch, basketSwitchTabId } from "./BasketSwitch";
 import { OverlapBlock, PortfolioDesk } from "./PortfolioDesk";
 
 const EQUITY_ORDER = ["large", "mid", "small", "unclassified"] as const;
@@ -567,6 +568,14 @@ function InsightsDesk({
   }, [data, showRisk, showOverlap]);
 
   const focusedName = focusedId ? basketName(focusedId, baskets) : "Insights";
+  // The panel is labelled by the focused basket's tab only when that tab is
+  // actually rendered (≥2 switchable baskets and the focused one among them).
+  const selectedTabId =
+    switchable.length > 1 &&
+    focusedId != null &&
+    switchable.some((b) => b.id === focusedId)
+      ? basketSwitchTabId("insights-switch", focusedId)
+      : undefined;
   const showDesk = Boolean(data || showRisk || focusedId);
   const overlapRows = useMemo(
     () => overlapForBasket(focusedId, overlap, overlapHoldings, baskets),
@@ -607,27 +616,15 @@ function InsightsDesk({
           </p>
         </header>
         {switchable.length > 1 && (
-          <div
-            className="insights-switch"
-            role="tablist"
-            aria-label="Basket"
-            ref={switchRef}
-            data-scroll-left={switchFade.left}
-            data-scroll-right={switchFade.right}
-          >
-            {switchable.map((basket) => (
-              <button
-                key={basket.id}
-                type="button"
-                role="tab"
-                aria-selected={basket.id === focusedId}
-                className="insights-switch-item"
-                onClick={() => openInsights(basket.id)}
-              >
-                {basket.name}
-              </button>
-            ))}
-          </div>
+          <BasketSwitch
+            baskets={switchable}
+            selectedId={focusedId}
+            onSelect={openInsights}
+            idPrefix="insights-switch"
+            panelId="insights-desk-panel"
+            listRef={switchRef}
+            fades={switchFade}
+          />
         )}
         {isError && (
           <p className="insight-empty insight-alert" role="status">
@@ -666,7 +663,14 @@ function InsightsDesk({
       )}
       {showDesk && (
         <>
-          <div className="insights-sections" ref={bodyRef}>
+          <div
+            className="insights-sections"
+            ref={bodyRef}
+            role="tabpanel"
+            id="insights-desk-panel"
+            aria-labelledby={selectedTabId}
+            tabIndex={0}
+          >
             {data?.baskets.map((ib) =>
               ib.filingCoverage ? (
                 <FilingCoverageBlock

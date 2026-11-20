@@ -363,6 +363,42 @@ describe("InsightsPanel", () => {
     expect(card.textContent).not.toMatch(/Vol\s*0\.00%/);
   });
 
+  it("drives the basket switcher from the keyboard", async () => {
+    const other: Basket = {
+      ...basket,
+      id: "2",
+      name: "Sat",
+      funds: [
+        {
+          schemeCode: "B",
+          schemeName: "Fund B",
+          isin: null,
+          weight: 100,
+          locked: false,
+        },
+      ],
+    };
+    labState.baskets = [basket, other];
+    postInsightsMock.mockResolvedValue(emptyFiling);
+    renderPanel();
+    await waitFor(() => {
+      expect(screen.getAllByRole("tab")).toHaveLength(2);
+    });
+    const [first, second] = screen.getAllByRole("tab");
+    expect(first).toHaveAttribute("aria-selected", "true");
+    expect(first).toHaveAttribute("tabindex", "0");
+    expect(second).toHaveAttribute("tabindex", "-1");
+    first.focus();
+    fireEvent.keyDown(first, { key: "ArrowRight" });
+    expect(labState.openInsights).toHaveBeenCalledWith("2");
+    expect(second).toHaveFocus();
+    const panel = screen.getByRole("tabpanel");
+    expect(panel).toHaveAttribute(
+      "aria-labelledby",
+      "insights-switch-tab-1",
+    );
+  });
+
   it("shows pairwise correlation when two baskets have series", async () => {
     postInsightsMock.mockRejectedValue(new Error("down"));
     const other: Basket = {

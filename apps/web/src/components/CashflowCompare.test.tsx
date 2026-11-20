@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { BacktestResult, Basket, LabSettings, NavPoint } from "../types";
 import { CashflowCompare } from "./CashflowCompare";
@@ -146,5 +146,22 @@ describe("CashflowCompare", () => {
     labState.navByCode = { S: nav.slice(0, 6) };
     render(<CashflowCompare />);
     expect(screen.getByText("Need a window past year two")).toBeInTheDocument();
+  });
+
+  it("switches the compared basket from the keyboard", () => {
+    const sat: Basket = { ...basket, id: "2", name: "Sat" };
+    labState.baskets = [basket, sat];
+    labState.navByCode = { S: nav };
+    render(<CashflowCompare />);
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs).toHaveLength(2);
+    expect(screen.getByText(/Core · ₹1,000/)).toBeInTheDocument();
+    tabs[0]!.focus();
+    fireEvent.keyDown(tabs[0]!, { key: "ArrowRight" });
+    expect(tabs[1]).toHaveFocus();
+    expect(tabs[1]).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText(/Sat · ₹1,000/)).toBeInTheDocument();
+    const panel = screen.getByRole("tabpanel");
+    expect(panel).toHaveAttribute("aria-labelledby", "cashflow-switch-tab-2");
   });
 });
