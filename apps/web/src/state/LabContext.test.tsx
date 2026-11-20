@@ -1,7 +1,8 @@
 import { act, render } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import defaults from "../data/defaults.json";
 import { LabProvider, useLab } from "./LabContext";
-import type { Basket } from "../types";
+import type { Basket, LabSettings } from "../types";
 
 const { fetchNavMock, readNavCacheEntryMock, writeNavCacheMock } = vi.hoisted(
   () => ({
@@ -75,6 +76,62 @@ describe("LabContext persisted baskets", () => {
 
     expect(api.current!.baskets).toHaveLength(1);
     expect(api.current!.baskets[0].name.trim()).not.toBe("");
+  });
+
+  it("ignores a stale ?s= query and loads the persisted setup", () => {
+    const saved = {
+      settings: {
+        mode: "lumpsum" as const,
+        amount: 9999,
+        period: "1Y" as const,
+        customStart: "2020-01-01",
+        customEnd: "2021-01-01",
+      },
+      baskets: [makeBasket(100)],
+    };
+    window.localStorage.setItem("basket-lab-v1", JSON.stringify(saved));
+    const url = new URL(window.location.href);
+    url.searchParams.set("s", "%%%corrupt%%%");
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+
+    const api: { current: ReturnType<typeof useLab> | null } = { current: null };
+    render(
+      <LabProvider>
+        <Consumer api={api} />
+      </LabProvider>,
+    );
+
+    expect(api.current!.settings.amount).toBe(9999);
+    expect(api.current!.baskets).toHaveLength(1);
+    expect(api.current!.baskets[0].id).toBe("test-1");
+    // The stale query is ignored but left untouched in the address bar.
+    expect(new URL(window.location.href).searchParams.get("s")).toBe(
+      "%%%corrupt%%%",
+    );
+  });
+
+  it("ignores a stale ?s= query and falls back to defaults", () => {
+    const url = new URL(window.location.href);
+    url.searchParams.set(
+      "s",
+      "eJyNkctqwzAQRX9FTLcuWI7zaJZJ7WIKbiDpopQsVFuJRWTJ6NGkBP9",
+    );
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+
+    const api: { current: ReturnType<typeof useLab> | null } = { current: null };
+    render(
+      <LabProvider>
+        <Consumer api={api} />
+      </LabProvider>,
+    );
+
+    const fallback = defaults as { settings: LabSettings; baskets: Basket[] };
+    expect(api.current!.baskets.map((b) => b.id)).toEqual(
+      fallback.baskets.map((b) => b.id),
+    );
+    expect(new URL(window.location.href).searchParams.get("s")).toBe(
+      "eJyNkctqwzAQRX9FTLcuWI7zaJZJ7WIKbiDpopQsVFuJRWTJ6NGkBP9",
+    );
   });
 });
 
