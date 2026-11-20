@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import defaults from "../data/defaults.json";
-import { BASKET_COLORS, tintTowardWell } from "../lib/theme";
+import { nextBasketColor, tintTowardWell } from "../lib/theme";
 import { useLab } from "../state/LabContext";
 import { useTheme } from "../state/ThemeContext";
 import type { Basket, LabSettings } from "../types";
@@ -55,7 +55,7 @@ export function BasketList() {
     const basket: Basket = {
       id: newId(),
       name: "New Basket",
-      color: BASKET_COLORS[baskets.length % BASKET_COLORS.length].value,
+      color: nextBasketColor(baskets),
       active: true,
       funds: [],
     };

@@ -29,12 +29,41 @@ export interface BasketColor {
 
 export const BASKET_COLORS: BasketColor[] = [
   { value: "var(--chart-1)", hex: "#121212", label: "Ink" },
+  { value: "var(--chart-7)", label: "Blue" },
+  { value: "var(--chart-8)", label: "Green" },
+  { value: "var(--chart-9)", label: "Amber" },
+  { value: "var(--chart-10)", label: "Violet" },
+  { value: "var(--chart-3)", hex: "#B33A2B", label: "Red" },
   { value: "var(--chart-2)", hex: "#6B6B6B", label: "Gray 1" },
   { value: "var(--chart-6)", hex: "#5E5E5E", label: "Gray 2" },
-  { value: "var(--chart-3)", hex: "#B33A2B", label: "Red" },
   { value: "var(--chart-4)", hex: "#8A8A8A", label: "Gray 3" },
   { value: "var(--chart-5)", hex: "#3A3A3A", label: "Gray 4" },
 ];
+
+/** Colors handed out automatically, in order: every hue first, then ink, then
+ * grays. Red stays picker-only — it doubles as the loss color on charts. */
+export const AUTO_BASKET_COLORS: BasketColor[] = BASKET_COLORS.filter(
+  (color) => color.label !== "Red",
+);
+
+function swatchMatches(color: string, swatch: BasketColor): boolean {
+  return (
+    color === swatch.value || color.toUpperCase() === swatch.hex?.toUpperCase()
+  );
+}
+
+/** First auto color no basket uses yet; once all are taken, cycle by position. */
+export function nextBasketColor(
+  baskets: ReadonlyArray<{ color: string }>,
+): string {
+  const taken = baskets.map((basket) => basket.color);
+  const free = AUTO_BASKET_COLORS.find(
+    (swatch) => !taken.some((color) => swatchMatches(color, swatch)),
+  );
+  return (
+    free ?? AUTO_BASKET_COLORS[baskets.length % AUTO_BASKET_COLORS.length]
+  ).value;
+}
 
 const MIN_SERIES_CONTRAST = 4.5;
 

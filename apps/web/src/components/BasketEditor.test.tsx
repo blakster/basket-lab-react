@@ -101,9 +101,13 @@ describe("chart color swatches", () => {
     const swatches = within(group).getAllByRole("button");
     expect(swatches.map((s) => s.getAttribute("aria-label"))).toEqual([
       "Ink",
+      "Blue",
+      "Green",
+      "Amber",
+      "Violet",
+      "Red",
       "Gray 1",
       "Gray 2",
-      "Red",
       "Gray 3",
       "Gray 4",
     ]);
