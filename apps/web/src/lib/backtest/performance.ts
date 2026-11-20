@@ -141,9 +141,16 @@ export function backtestPlan(
   );
   if (!inRange) return noNav(basket.id);
 
-  const timeline = Object.values(navs)[0]
-    .map((p) => p.date)
-    .filter((d) => d >= startIso && d <= endIso);
+  // Union of every weighted fund's in-range dates: a sparse first fund must
+  // not coarsen the basket, and the result cannot depend on fund order.
+  const days = new Set<string>();
+  for (const f of basket.funds) {
+    if (f.weight <= 0) continue;
+    for (const p of navs[f.schemeCode] ?? []) {
+      if (p.date >= startIso && p.date <= endIso) days.add(p.date);
+    }
+  }
+  const timeline = [...days].sort();
   if (timeline[0] !== startIso) timeline.unshift(startIso);
 
   return runBacktest(
