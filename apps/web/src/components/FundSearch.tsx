@@ -136,14 +136,13 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
                 );
               } else if (event.key === "Enter" && !stale) {
                 event.preventDefault();
-                const hit =
-                  activeIndex >= 0
-                    ? hits[activeIndex]
-                    : hits.find(
-                        (row) => !selectedCodes.includes(row.schemeCode),
-                      );
-                if (hit && !selectedCodes.includes(hit.schemeCode)) {
-                  selectHit(hit);
+                if (activeIndex < 0) {
+                  setActiveIndex(0);
+                } else {
+                  const hit = hits[activeIndex];
+                  if (hit && !selectedCodes.includes(hit.schemeCode)) {
+                    selectHit(hit);
+                  }
                 }
               } else if (event.key === "Escape") {
                 event.preventDefault();

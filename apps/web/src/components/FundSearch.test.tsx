@@ -146,6 +146,24 @@ describe("FundSearch feedback", () => {
     expect(input).toHaveFocus();
   });
 
+  it("highlights the first option on Enter instead of adding it", async () => {
+    const hits: SearchHit[] = [
+      { schemeCode: "1", schemeName: "Alpha Fund", isin: null },
+      { schemeCode: "2", schemeName: "Beta Fund", isin: null },
+    ];
+    searchMock.mockResolvedValueOnce(hits);
+    const onSelect = vi.fn();
+    render(<FundSearch onSelect={onSelect} />);
+    const input = screen.getByRole("combobox");
+    fireEvent.change(input, { target: { value: "fund" } });
+    await debounce();
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("option", { name: /Alpha Fund/ }),
+    ).toHaveAttribute("aria-selected", "true");
+  });
+
   it("collapses the list on Escape and keeps the query", async () => {
     searchMock.mockResolvedValueOnce([fund]);
     render(<FundSearch onSelect={vi.fn()} />);
