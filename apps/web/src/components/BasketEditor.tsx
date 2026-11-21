@@ -126,7 +126,17 @@ export function BasketEditor() {
         if (!next) closeEditor();
       }}
     >
-      <DialogContent className="basket-editor flex flex-col gap-0 p-0 w-[min(48rem,calc(100%-2rem))] max-w-none sm:max-w-none">
+      <DialogContent
+        className="basket-editor flex flex-col gap-0 p-0 w-[min(48rem,calc(100%-2rem))] max-w-none sm:max-w-none"
+        onEscapeKeyDown={(event) => {
+          const combo = (event.target as HTMLElement).closest(
+            '[role="combobox"]',
+          );
+          if (combo?.getAttribute("aria-expanded") === "true") {
+            event.preventDefault();
+          }
+        }}
+      >
         <DialogHeader className="editor-header gap-[0.35rem] text-left">
           <DialogTitle id="basket-editor-title" className="editor-title text-[1.25rem] font-medium tracking-[var(--display-tracking)]">
             {creating ? "New basket" : "Edit basket"}

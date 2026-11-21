@@ -65,9 +65,16 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
 
   useEffect(() => {
     if (!listOpen || activeIndex < 0) return;
-    document
-      .getElementById(`${listId}-${activeIndex}`)
-      ?.scrollIntoView({ block: "nearest" });
+    const list = document.getElementById(listId);
+    const option = document.getElementById(`${listId}-${activeIndex}`);
+    if (!list || !option) return;
+    const listRect = list.getBoundingClientRect();
+    const optionRect = option.getBoundingClientRect();
+    if (optionRect.top < listRect.top) {
+      list.scrollTop += optionRect.top - listRect.top;
+    } else if (optionRect.bottom > listRect.bottom) {
+      list.scrollTop += optionRect.bottom - listRect.bottom;
+    }
   }, [activeIndex, listOpen, listId]);
 
   function selectHit(hit: SearchHit) {
@@ -125,6 +132,7 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
                 selectHit(hit);
               }
             } else if (event.key === "Escape") {
+              event.preventDefault();
               event.stopPropagation();
               setHits([]);
               setActiveIndex(-1);

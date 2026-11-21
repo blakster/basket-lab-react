@@ -97,4 +97,48 @@ describe("FundSearch feedback", () => {
       screen.getByText("No funds found. Try another name."),
     ).toBeInTheDocument();
   });
+
+  it("navigates options with arrows and selects with Enter", async () => {
+    const hits: SearchHit[] = [
+      { schemeCode: "1", schemeName: "Alpha Fund", isin: null },
+      { schemeCode: "2", schemeName: "Beta Fund", isin: null },
+      { schemeCode: "3", schemeName: "Gamma Fund", isin: null },
+    ];
+    searchMock.mockResolvedValueOnce(hits);
+    const onSelect = vi.fn();
+    render(<FundSearch onSelect={onSelect} />);
+    const input = screen.getByRole("combobox");
+    fireEvent.change(input, { target: { value: "fund" } });
+    await debounce();
+    expect(screen.getAllByRole("option")).toHaveLength(3);
+
+    fireEvent.keyDown(input, { key: "ArrowUp" });
+    expect(
+      screen.getByRole("option", { name: /Gamma Fund/ }),
+    ).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(
+      screen.getByRole("option", { name: /Alpha Fund/ }),
+    ).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onSelect).toHaveBeenCalledWith(hits[1]);
+    expect(input).toHaveFocus();
+  });
+
+  it("collapses the list on Escape and keeps the query", async () => {
+    searchMock.mockResolvedValueOnce([fund]);
+    render(<FundSearch onSelect={vi.fn()} />);
+    const input = screen.getByRole("combobox");
+    fireEvent.change(input, { target: { value: "nifty" } });
+    await debounce();
+    expect(screen.getByRole("listbox")).not.toHaveAttribute("hidden");
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(
+      screen.getByRole("listbox", { hidden: true }),
+    ).toHaveAttribute("hidden");
+    expect(input).toHaveValue("nifty");
+  });
 });
