@@ -34,6 +34,7 @@ describe("FundSearch feedback", () => {
     vi.useFakeTimers();
     searchMock.mockReset();
     reportStatus.mockReset();
+    Element.prototype.scrollIntoView = vi.fn();
   });
   afterEach(() => {
     cleanup();

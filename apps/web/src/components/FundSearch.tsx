@@ -65,24 +65,21 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
 
   useEffect(() => {
     if (!listOpen || activeIndex < 0) return;
-    const list = document.getElementById(listId);
-    const option = document.getElementById(`${listId}-${activeIndex}`);
-    if (!list || !option) return;
-    const listRect = list.getBoundingClientRect();
-    const optionRect = option.getBoundingClientRect();
-    if (optionRect.top < listRect.top) {
-      list.scrollTop += optionRect.top - listRect.top;
-    } else if (optionRect.bottom > listRect.bottom) {
-      list.scrollTop += optionRect.bottom - listRect.bottom;
-    }
+    document
+      .getElementById(`${listId}-${activeIndex}`)
+      ?.scrollIntoView({ block: "nearest" });
   }, [activeIndex, listOpen, listId]);
+
+  function closeList() {
+    setHits([]);
+    setActiveIndex(-1);
+    setState("idle");
+  }
 
   function selectHit(hit: SearchHit) {
     onSelect(hit);
     setQuery("");
-    setHits([]);
-    setActiveIndex(-1);
-    setState("idle");
+    closeList();
     inputRef.current?.focus();
   }
 
@@ -109,9 +106,7 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
           onChange={(event) => {
             const next = event.target.value;
             setQuery(next);
-            setHits([]);
-            setActiveIndex(-1);
-            setState("idle");
+            closeList();
           }}
           onKeyDown={(event) => {
             if (!listOpen) return;
@@ -134,9 +129,7 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
             } else if (event.key === "Escape") {
               event.preventDefault();
               event.stopPropagation();
-              setHits([]);
-              setActiveIndex(-1);
-              setState("idle");
+              closeList();
             }
           }}
         />
@@ -162,7 +155,6 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
               variant="outline"
               size="sm"
               onClick={() => {
-                setState("loading");
                 setAttempt((value) => value + 1);
               }}
             >

@@ -1591,14 +1591,9 @@ button[data-static="true"]:active:not(:disabled) {
   cursor: not-allowed;
 }
 
-.fund-search-code,
-.fund-search-empty {
+.fund-search-code {
   color: var(--ink-soft);
   font-size: 0.8rem;
-}
-
-.fund-search-empty {
-  padding: 0.5rem;
 }
 
 .fund-table input[type="number"] {
