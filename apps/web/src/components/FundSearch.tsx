@@ -52,6 +52,7 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
           if (err instanceof DOMException && err.name === "AbortError") return;
           reportStatus("search", { kind: "search-down" });
           setHits([]);
+          setHitsQuery(query.trim());
           setState("error");
         });
     }, 300);
@@ -162,7 +163,7 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
       </p>
       <div className="fund-search-feedback" role="status">
         {state === "loading" && <p>Searching funds…</p>}
-        {state === "ready" && hits.length === 0 && (
+        {state === "ready" && hits.length === 0 && !stale && (
           <p>No funds found. Try another name.</p>
         )}
         {state === "ready" && hits.length > 0 && (
@@ -172,7 +173,7 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
               : `${hits.length} ${hits.length === 1 ? "fund" : "funds"} found`}
           </p>
         )}
-        {state === "error" && (
+        {state === "error" && !stale && (
           <div className="fund-search-error">
             <p>Search unavailable. Your basket is unchanged.</p>
             <Button
