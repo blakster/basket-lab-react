@@ -37,20 +37,6 @@ button[data-slot="checkbox"]:hover:not(:disabled) {
   border-bottom: 1px solid var(--rule);
 }
 
-.editor-title {
-  font-size: 1.25rem;
-  font-weight: 500;
-  letter-spacing: var(--display-tracking);
-}
-
-.editor-description,
-.editor-help,
-.fund-search-hint {
-  margin: 0;
-  font-size: 0.8125rem;
-  color: var(--ink-soft);
-}
-
 .editor-body {
   min-height: 0;
   overflow-y: auto;
@@ -83,10 +69,6 @@ button[data-slot="checkbox"]:hover:not(:disabled) {
   outline-offset: 4px;
 }
 
-.fund-search-hint {
-  margin-top: 0.4rem;
-}
-
 .fund-search-feedback p {
   margin: 0.5rem 0 0;
   font-size: 0.8125rem;
@@ -116,7 +98,7 @@ button[data-slot="checkbox"]:hover:not(:disabled) {
   overscroll-behavior: contain;
 }
 
-.fund-search-list button {
+.fund-search-list li[role="option"] {
   align-items: center;
   min-height: 3.25rem;
   padding: 0.6rem 0.75rem;
@@ -225,10 +207,6 @@ button[data-slot="checkbox"]:hover:not(:disabled) {
 
 .editor-delete {
   color: var(--loss);
-}
-
-.editor-help {
-  margin-top: 0.75rem;
 }
 
 .editor-footer {
@@ -393,4 +371,29 @@ button[data-slot="checkbox"]:hover:not(:disabled) {
     color: var(--ink-soft);
   }
 }
+}
+
+/* Unlayered so these beat shadcn's baked-in DialogTitle/Description
+   utilities (text-lg, font-semibold, text-sm, text-muted-foreground),
+   which live in the utilities layer. */
+.editor-title {
+  font-size: 1.25rem;
+  font-weight: 500;
+  letter-spacing: var(--display-tracking);
+}
+
+.editor-description,
+.editor-help,
+.fund-search-hint {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--ink-soft);
+}
+
+.editor-help {
+  margin-top: 0.75rem;
+}
+
+.fund-search-hint {
+  margin-top: 0.4rem;
 }
