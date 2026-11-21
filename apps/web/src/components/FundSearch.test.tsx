@@ -92,7 +92,7 @@ describe("FundSearch feedback", () => {
     expect(screen.getByRole("option", { name: /UTI Nifty 50/ })).toHaveAttribute("aria-disabled", "true");
     expect(screen.getByText("Added")).toBeInTheDocument();
     fireEvent.change(input, { target: { value: "unknown" } });
-    expect(screen.queryByText("Added")).not.toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /UTI Nifty 50/ })).toBeInTheDocument();
     await debounce();
     expect(
       screen.getByText("No funds found. Try another name."),

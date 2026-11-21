@@ -138,10 +138,10 @@ export function BasketEditor() {
         }}
       >
         <DialogHeader className="editor-header gap-[0.35rem] text-left">
-          <DialogTitle id="basket-editor-title" className="editor-title text-[1.25rem] font-medium tracking-[var(--display-tracking)]">
+          <DialogTitle id="basket-editor-title" className="editor-title">
             {creating ? "New basket" : "Edit basket"}
           </DialogTitle>
-          <DialogDescription className="editor-description text-[0.8125rem] text-[var(--ink-soft)]">
+          <DialogDescription className="editor-description">
             Add funds, set weights, and lock allocations you want to keep.
           </DialogDescription>
         </DialogHeader>

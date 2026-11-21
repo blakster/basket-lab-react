@@ -106,7 +106,8 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
           onChange={(event) => {
             const next = event.target.value;
             setQuery(next);
-            closeList();
+            setActiveIndex(-1);
+            if (next.trim().length < 2) closeList();
           }}
           onKeyDown={(event) => {
             if (!listOpen) return;
