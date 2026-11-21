@@ -169,4 +169,32 @@ describe("fund search Escape coordination", () => {
     fireEvent.keyDown(input, { key: "Escape" });
     expect(api.current!.editingId).toBeNull();
   });
+
+  it("keeps results mounted on blur so allocation buttons act on first click", async () => {
+    vi.useFakeTimers();
+    searchMock.mockResolvedValueOnce([
+      { schemeCode: "135320", schemeName: "UTI Nifty 50 ETF", isin: null },
+    ]);
+    openEditor(makeBasket("Nifty 50 Index"));
+    const input = screen.getByRole("combobox");
+    input.focus();
+    fireEvent.change(input, { target: { value: "nifty" } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(400);
+    });
+    const lockBtn = screen.getByRole("button", {
+      name: /Lock UTI Nifty 50 Index Fund/,
+    });
+    fireEvent.mouseDown(lockBtn);
+    fireEvent.blur(input);
+    expect(screen.getByRole("listbox")).not.toHaveAttribute("hidden");
+
+    fireEvent.click(lockBtn);
+    expect(
+      screen.getByRole("button", { name: /Unlock UTI Nifty 50 Index Fund/ }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      screen.getByRole("listbox", { hidden: true }),
+    ).toHaveAttribute("hidden");
+  });
 });

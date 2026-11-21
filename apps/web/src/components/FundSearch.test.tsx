@@ -257,9 +257,14 @@ describe("FundSearch feedback", () => {
     expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
   });
 
-  it("flushes search immediately on form submit and collapses on blur", async () => {
-    searchMock.mockResolvedValueOnce([fund]);
-    render(<FundSearch onSelect={vi.fn()} />);
+  it("flushes search immediately on form submit and dismisses on Tab or outside click", async () => {
+    searchMock.mockResolvedValue([fund]);
+    render(
+      <div>
+        <FundSearch onSelect={vi.fn()} />
+        <button type="button">Outside</button>
+      </div>,
+    );
     const input = screen.getByRole("combobox");
     fireEvent.change(input, { target: { value: "nifty" } });
     fireEvent.submit(input.closest("form")!);
@@ -269,9 +274,69 @@ describe("FundSearch feedback", () => {
     expect(searchMock).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("listbox")).not.toHaveAttribute("hidden");
 
-    fireEvent.blur(input);
+    fireEvent.keyDown(input, { key: "Tab" });
     expect(
       screen.getByRole("listbox", { hidden: true }),
     ).toHaveAttribute("hidden");
+
+    fireEvent.submit(input.closest("form")!);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10);
+    });
+    expect(screen.getByRole("listbox")).not.toHaveAttribute("hidden");
+
+    fireEvent.click(screen.getByRole("button", { name: "Outside" }));
+    expect(
+      screen.getByRole("listbox", { hidden: true }),
+    ).toHaveAttribute("hidden");
+  });
+
+  it("aborts an in-flight search on Escape or Tab so dismissed results do not reopen", async () => {
+    const nextFund: SearchHit = {
+      schemeCode: "2",
+      schemeName: "Nifty Midcap 150",
+      isin: null,
+    };
+    let finishSecond!: (hits: SearchHit[]) => void;
+    let finishThird!: (hits: SearchHit[]) => void;
+    searchMock
+      .mockResolvedValueOnce([fund])
+      .mockImplementationOnce(
+        () =>
+          new Promise<SearchHit[]>((resolve) => {
+            finishSecond = resolve;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<SearchHit[]>((resolve) => {
+            finishThird = resolve;
+          }),
+      );
+    render(<FundSearch onSelect={vi.fn()} />);
+    const input = screen.getByRole("combobox");
+    fireEvent.change(input, { target: { value: "nifty" } });
+    await debounce();
+    fireEvent.change(input, { target: { value: "nifty midcap" } });
+    await debounce();
+    fireEvent.keyDown(input, { key: "Escape" });
+    await act(async () => {
+      finishSecond([nextFund]);
+    });
+    expect(
+      screen.getByRole("listbox", { hidden: true }),
+    ).toHaveAttribute("hidden");
+    expect(reportStatus).toHaveBeenLastCalledWith("search", { kind: "ready" });
+
+    fireEvent.change(input, { target: { value: "flexi" } });
+    await debounce();
+    fireEvent.keyDown(input, { key: "Tab" });
+    await act(async () => {
+      finishThird([nextFund]);
+    });
+    expect(
+      screen.getByRole("listbox", { hidden: true }),
+    ).toHaveAttribute("hidden");
+    expect(reportStatus).toHaveBeenLastCalledWith("search", { kind: "ready" });
   });
 });
