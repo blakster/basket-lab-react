@@ -116,7 +116,7 @@ button[data-slot="checkbox"]:hover:not(:disabled) {
   overscroll-behavior: contain;
 }
 
-.fund-search-list button {
+.fund-search-list li[role="option"] {
   align-items: center;
   min-height: 3.25rem;
   padding: 0.6rem 0.75rem;

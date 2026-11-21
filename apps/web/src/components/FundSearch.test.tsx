@@ -75,7 +75,9 @@ describe("FundSearch feedback", () => {
     await act(async () => {
       finish([fund]);
     });
-    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("listbox", { hidden: true }),
+    ).toHaveAttribute("hidden");
     expect(screen.queryByText("Searching funds…")).not.toBeInTheDocument();
     expect(reportStatus).toHaveBeenLastCalledWith("search", { kind: "ready" });
   });

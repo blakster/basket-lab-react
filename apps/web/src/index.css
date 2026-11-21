@@ -327,8 +327,7 @@ button[data-state="on"] {
   border-color: transparent;
 }
 
-button:disabled,
-button[aria-disabled="true"] {
+button:disabled {
   opacity: 0.38;
   cursor: not-allowed;
 }
@@ -1566,7 +1565,7 @@ button[data-static="true"]:active:not(:disabled) {
   box-shadow: var(--shadow-border);
 }
 
-.fund-search-list button {
+.fund-search-list li[role="option"] {
   width: 100%;
   display: flex;
   justify-content: space-between;
@@ -1574,10 +1573,22 @@ button[data-static="true"]:active:not(:disabled) {
   text-align: left;
   border: 0;
   border-bottom: 1px solid var(--rule-faint);
+  cursor: pointer;
 }
 
-.fund-search-list button[aria-selected="true"] {
+.fund-search-list li[role="option"][aria-selected="true"] {
   background: var(--ink-wash-soft);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .fund-search-list li[role="option"]:hover:not([aria-disabled="true"]) {
+    background: var(--ink-wash);
+  }
+}
+
+.fund-search-list li[role="option"][aria-disabled="true"] {
+  opacity: 0.38;
+  cursor: not-allowed;
 }
 
 .fund-search-code,

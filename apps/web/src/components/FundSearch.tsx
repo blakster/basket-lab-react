@@ -63,6 +63,13 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
     };
   }, [reportStatus]);
 
+  useEffect(() => {
+    if (!listOpen || activeIndex < 0) return;
+    document
+      .getElementById(`${listId}-${activeIndex}`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex, listOpen, listId]);
+
   function selectHit(hit: SearchHit) {
     onSelect(hit);
     setQuery("");
@@ -104,8 +111,12 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
             if (event.key === "ArrowDown" || event.key === "ArrowUp") {
               event.preventDefault();
               const delta = event.key === "ArrowDown" ? 1 : -1;
-              setActiveIndex(
-                (index) => (index + delta + hits.length) % hits.length,
+              setActiveIndex((index) =>
+                index < 0
+                  ? delta > 0
+                    ? 0
+                    : hits.length - 1
+                  : (index + delta + hits.length) % hits.length,
               );
             } else if (event.key === "Enter" && activeIndex >= 0) {
               event.preventDefault();
@@ -114,6 +125,7 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
                 selectHit(hit);
               }
             } else if (event.key === "Escape") {
+              event.stopPropagation();
               setHits([]);
               setActiveIndex(-1);
               setState("idle");
@@ -162,26 +174,24 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
           hits.map((hit, index) => {
             const added = selectedCodes.includes(hit.schemeCode);
             return (
-              <li key={hit.schemeCode} role="none">
-                <button
-                  id={`${listId}-${index}`}
-                  type="button"
-                  role="option"
-                  tabIndex={-1}
-                  aria-selected={index === activeIndex}
-                  aria-disabled={added || undefined}
-                  onClick={() => {
-                    if (!added) selectHit(hit);
-                  }}
-                >
-                  <span className="fund-search-name">
-                    {hit.schemeName}
-                    <span className="fund-search-code">{hit.schemeCode}</span>
-                  </span>
-                  <span className="fund-search-action">
-                    {added ? "Added" : "+ Add"}
-                  </span>
-                </button>
+              <li
+                key={hit.schemeCode}
+                id={`${listId}-${index}`}
+                role="option"
+                tabIndex={-1}
+                aria-selected={index === activeIndex}
+                aria-disabled={added || undefined}
+                onClick={() => {
+                  if (!added) selectHit(hit);
+                }}
+              >
+                <span className="fund-search-name">
+                  {hit.schemeName}
+                  <span className="fund-search-code">{hit.schemeCode}</span>
+                </span>
+                <span className="fund-search-action">
+                  {added ? "Added" : "+ Add"}
+                </span>
               </li>
             );
           })}
