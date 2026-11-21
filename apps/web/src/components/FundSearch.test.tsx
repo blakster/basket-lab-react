@@ -52,6 +52,10 @@ describe("FundSearch feedback", () => {
     expect(screen.queryByText("Searching funds…")).not.toBeInTheDocument();
     await debounce();
     expect(screen.getByText(/Search unavailable/)).toBeInTheDocument();
+    fireEvent.keyDown(input, { key: "Tab" });
+    expect(
+      screen.getByRole("button", { name: "Retry search" }),
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Retry search" }));
     await debounce();
     fireEvent.click(screen.getByRole("option", { name: /UTI Nifty 50/ }));

@@ -180,7 +180,9 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
             }}
             onKeyDown={(event) => {
               if (event.key === "Tab") {
-                dismissSearch();
+                if (event.shiftKey || state !== "error" || stale) {
+                  dismissSearch();
+                }
                 return;
               }
               if (!listOpen) return;
