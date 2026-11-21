@@ -137,7 +137,10 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
               } else if (event.key === "Enter" && !stale) {
                 event.preventDefault();
                 if (activeIndex < 0) {
-                  setActiveIndex(0);
+                  const first = hits.findIndex(
+                    (row) => !selectedCodes.includes(row.schemeCode),
+                  );
+                  setActiveIndex(first < 0 ? 0 : first);
                 } else {
                   const hit = hits[activeIndex];
                   if (hit && !selectedCodes.includes(hit.schemeCode)) {

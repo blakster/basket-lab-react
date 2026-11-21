@@ -146,21 +146,21 @@ describe("FundSearch feedback", () => {
     expect(input).toHaveFocus();
   });
 
-  it("highlights the first option on Enter instead of adding it", async () => {
+  it("highlights the first addable option on Enter instead of adding it", async () => {
     const hits: SearchHit[] = [
       { schemeCode: "1", schemeName: "Alpha Fund", isin: null },
       { schemeCode: "2", schemeName: "Beta Fund", isin: null },
     ];
     searchMock.mockResolvedValueOnce(hits);
     const onSelect = vi.fn();
-    render(<FundSearch onSelect={onSelect} />);
+    render(<FundSearch onSelect={onSelect} selectedCodes={["1"]} />);
     const input = screen.getByRole("combobox");
     fireEvent.change(input, { target: { value: "fund" } });
     await debounce();
     fireEvent.keyDown(input, { key: "Enter" });
     expect(onSelect).not.toHaveBeenCalled();
     expect(
-      screen.getByRole("option", { name: /Alpha Fund/ }),
+      screen.getByRole("option", { name: /Beta Fund/ }),
     ).toHaveAttribute("aria-selected", "true");
   });
 
