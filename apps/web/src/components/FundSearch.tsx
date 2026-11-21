@@ -18,8 +18,11 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
     "idle",
   );
   const [attempt, setAttempt] = useState(0);
+  const [activeIndex, setActiveIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
   const hintId = useId();
+  const listId = `${hintId}-options`;
+  const listOpen = state === "ready" && hits.length > 0;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -30,11 +33,13 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
 
     const timer = window.setTimeout(() => {
       reportStatus("search", { kind: "search-busy" });
+      setState("loading");
       void searchFunds(query, fetch, controller.signal)
         .then((rows) => {
           if (controller.signal.aborted) return;
           reportStatus("search", { kind: "ready" });
           setHits(rows);
+          setActiveIndex(-1);
           setState("ready");
         })
         .catch((err: unknown) => {
@@ -44,7 +49,7 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
           setHits([]);
           setState("error");
         });
-    }, 200);
+    }, 300);
 
     return () => {
       window.clearTimeout(timer);
@@ -58,6 +63,15 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
     };
   }, [reportStatus]);
 
+  function selectHit(hit: SearchHit) {
+    onSelect(hit);
+    setQuery("");
+    setHits([]);
+    setActiveIndex(-1);
+    setState("idle");
+    inputRef.current?.focus();
+  }
+
   return (
     <div className="fund-search">
       <label className="field">
@@ -65,16 +79,45 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
         <Input
           ref={inputRef}
           type="search"
+          role="combobox"
           value={query}
           placeholder="Fund or ETF name"
-          className="border-0 rounded-[var(--r-sm)] bg-[var(--paper)] px-[0.65rem] py-[0.45rem] min-w-[8rem] shadow-[var(--shadow-border)]"
           aria-describedby={hintId}
+          aria-expanded={listOpen}
+          aria-controls={listId}
+          aria-autocomplete="list"
+          aria-activedescendant={
+            listOpen && activeIndex >= 0
+              ? `${listId}-${activeIndex}`
+              : undefined
+          }
           autoComplete="off"
           onChange={(event) => {
             const next = event.target.value;
             setQuery(next);
             setHits([]);
-            setState(next.trim().length >= 2 ? "loading" : "idle");
+            setActiveIndex(-1);
+            setState("idle");
+          }}
+          onKeyDown={(event) => {
+            if (!listOpen) return;
+            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+              event.preventDefault();
+              const delta = event.key === "ArrowDown" ? 1 : -1;
+              setActiveIndex(
+                (index) => (index + delta + hits.length) % hits.length,
+              );
+            } else if (event.key === "Enter" && activeIndex >= 0) {
+              event.preventDefault();
+              const hit = hits[activeIndex];
+              if (hit && !selectedCodes.includes(hit.schemeCode)) {
+                selectHit(hit);
+              }
+            } else if (event.key === "Escape") {
+              setHits([]);
+              setActiveIndex(-1);
+              setState("idle");
+            }
           }}
         />
       </label>
@@ -108,21 +151,27 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
           </div>
         )}
       </div>
-      {state === "ready" && hits.length > 0 && (
-        <ul className="fund-search-list" aria-label="Fund search results">
-          {hits.map((hit) => {
+      <ul
+        id={listId}
+        className="fund-search-list"
+        role="listbox"
+        aria-label="Fund search results"
+        hidden={!listOpen}
+      >
+        {listOpen &&
+          hits.map((hit, index) => {
             const added = selectedCodes.includes(hit.schemeCode);
             return (
-              <li key={hit.schemeCode}>
+              <li key={hit.schemeCode} role="none">
                 <button
+                  id={`${listId}-${index}`}
                   type="button"
-                  disabled={added}
+                  role="option"
+                  tabIndex={-1}
+                  aria-selected={index === activeIndex}
+                  aria-disabled={added || undefined}
                   onClick={() => {
-                    onSelect(hit);
-                    setQuery("");
-                    setHits([]);
-                    setState("idle");
-                    inputRef.current?.focus();
+                    if (!added) selectHit(hit);
                   }}
                 >
                   <span className="fund-search-name">
@@ -136,8 +185,7 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
               </li>
             );
           })}
-        </ul>
-      )}
+      </ul>
     </div>
   );
 }

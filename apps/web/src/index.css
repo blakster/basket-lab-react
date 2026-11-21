@@ -327,7 +327,8 @@ button[data-state="on"] {
   border-color: transparent;
 }
 
-button:disabled {
+button:disabled,
+button[aria-disabled="true"] {
   opacity: 0.38;
   cursor: not-allowed;
 }
@@ -1573,6 +1574,10 @@ button[data-static="true"]:active:not(:disabled) {
   text-align: left;
   border: 0;
   border-bottom: 1px solid var(--rule-faint);
+}
+
+.fund-search-list button[aria-selected="true"] {
+  background: var(--ink-wash-soft);
 }
 
 .fund-search-code,

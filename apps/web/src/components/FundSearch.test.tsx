@@ -25,7 +25,7 @@ const fund: SearchHit = {
 
 async function debounce() {
   await act(async () => {
-    await vi.advanceTimersByTimeAsync(200);
+    await vi.advanceTimersByTimeAsync(400);
   });
 }
 
@@ -46,14 +46,14 @@ describe("FundSearch feedback", () => {
       .mockResolvedValueOnce([fund]);
     const onSelect = vi.fn();
     render(<FundSearch onSelect={onSelect} />);
-    const input = screen.getByRole("searchbox");
+    const input = screen.getByRole("combobox");
     fireEvent.change(input, { target: { value: "nifty" } });
-    expect(screen.getByText("Searching funds…")).toBeInTheDocument();
+    expect(screen.queryByText("Searching funds…")).not.toBeInTheDocument();
     await debounce();
     expect(screen.getByText(/Search unavailable/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Retry search" }));
     await debounce();
-    fireEvent.click(screen.getByRole("button", { name: /UTI Nifty 50/ }));
+    fireEvent.click(screen.getByRole("option", { name: /UTI Nifty 50/ }));
     expect(onSelect).toHaveBeenCalledWith(fund);
     expect(input).toHaveValue("");
     expect(input).toHaveFocus();
@@ -68,14 +68,14 @@ describe("FundSearch feedback", () => {
         }),
     );
     render(<FundSearch onSelect={vi.fn()} />);
-    const input = screen.getByRole("searchbox");
+    const input = screen.getByRole("combobox");
     fireEvent.change(input, { target: { value: "nifty" } });
     await debounce();
     fireEvent.change(input, { target: { value: "n" } });
     await act(async () => {
       finish([fund]);
     });
-    expect(screen.queryByRole("list")).not.toBeInTheDocument();
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
     expect(screen.queryByText("Searching funds…")).not.toBeInTheDocument();
     expect(reportStatus).toHaveBeenLastCalledWith("search", { kind: "ready" });
   });
@@ -83,10 +83,10 @@ describe("FundSearch feedback", () => {
   it("marks existing funds as added and gives an explicit no-results state", async () => {
     searchMock.mockResolvedValueOnce([fund]).mockResolvedValueOnce([]);
     render(<FundSearch onSelect={vi.fn()} selectedCodes={[fund.schemeCode]} />);
-    const input = screen.getByRole("searchbox");
+    const input = screen.getByRole("combobox");
     fireEvent.change(input, { target: { value: "nifty" } });
     await debounce();
-    expect(screen.getByRole("button", { name: /UTI Nifty 50/ })).toBeDisabled();
+    expect(screen.getByRole("option", { name: /UTI Nifty 50/ })).toHaveAttribute("aria-disabled", "true");
     expect(screen.getByText("Added")).toBeInTheDocument();
     fireEvent.change(input, { target: { value: "unknown" } });
     expect(screen.queryByText("Added")).not.toBeInTheDocument();
