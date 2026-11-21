@@ -239,6 +239,7 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
                 dismissedQueryRef.current = null;
                 immediateRef.current = true;
                 setAttempt((value) => value + 1);
+                inputRef.current?.focus();
               }}
             >
               Retry search

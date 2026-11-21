@@ -53,10 +53,11 @@ describe("FundSearch feedback", () => {
     await debounce();
     expect(screen.getByText(/Search unavailable/)).toBeInTheDocument();
     fireEvent.keyDown(input, { key: "Tab" });
-    expect(
-      screen.getByRole("button", { name: "Retry search" }),
-    ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Retry search" }));
+    const retry = screen.getByRole("button", { name: "Retry search" });
+    expect(retry).toBeInTheDocument();
+    retry.focus();
+    fireEvent.click(retry);
+    expect(input).toHaveFocus();
     await debounce();
     fireEvent.click(screen.getByRole("option", { name: /UTI Nifty 50/ }));
     expect(onSelect).toHaveBeenCalledWith(fund);
