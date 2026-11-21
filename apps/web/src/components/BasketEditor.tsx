@@ -129,9 +129,10 @@ export function BasketEditor() {
       <DialogContent
         className="basket-editor flex flex-col gap-0 p-0 w-[min(48rem,calc(100%-2rem))] max-w-none sm:max-w-none"
         onEscapeKeyDown={(event) => {
-          const combo = (event.target as HTMLElement).closest(
-            '[role="combobox"]',
-          );
+          const combo =
+            event.target instanceof Element
+              ? event.target.closest('[role="combobox"]')
+              : null;
           if (combo?.getAttribute("aria-expanded") === "true") {
             event.preventDefault();
           }

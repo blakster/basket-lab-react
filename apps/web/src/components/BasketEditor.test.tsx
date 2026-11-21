@@ -1,12 +1,17 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { LabProvider, useLab } from "../state/LabContext";
 import { ThemeProvider } from "../state/ThemeContext";
 import { BasketEditor } from "./BasketEditor";
 import type { Basket } from "../types";
 
+const { searchMock } = vi.hoisted(() => ({ searchMock: vi.fn() }));
+vi.mock("../lib/api/search", () => ({ searchFunds: searchMock }));
+
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
+  searchMock.mockReset();
   window.localStorage.removeItem("basket-lab-v1");
 });
 
@@ -136,5 +141,60 @@ describe("chart color swatches", () => {
       "aria-pressed",
       "false",
     );
+  });
+});
+
+describe("fund search Escape coordination", () => {
+  it("collapses open search results on first Escape and closes editor on second", async () => {
+    vi.useFakeTimers();
+    searchMock.mockResolvedValueOnce([
+      { schemeCode: "135320", schemeName: "UTI Nifty 50 ETF", isin: null },
+    ]);
+    const api = openEditor(makeBasket("Nifty 50 Index"));
+    const input = screen.getByRole("combobox");
+    input.focus();
+    fireEvent.change(input, { target: { value: "nifty" } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(400);
+    });
+    expect(screen.getByRole("listbox")).not.toHaveAttribute("hidden");
+
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(api.current!.editingId).toBe("edit-1");
+    expect(
+      screen.getByRole("listbox", { hidden: true }),
+    ).toHaveAttribute("hidden");
+
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(api.current!.editingId).toBeNull();
+  });
+
+  it("keeps results mounted on blur so allocation buttons act on first click", async () => {
+    vi.useFakeTimers();
+    searchMock.mockResolvedValueOnce([
+      { schemeCode: "135320", schemeName: "UTI Nifty 50 ETF", isin: null },
+    ]);
+    openEditor(makeBasket("Nifty 50 Index"));
+    const input = screen.getByRole("combobox");
+    input.focus();
+    fireEvent.change(input, { target: { value: "nifty" } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(400);
+    });
+    const lockBtn = screen.getByRole("button", {
+      name: /Lock UTI Nifty 50 Index Fund/,
+    });
+    fireEvent.mouseDown(lockBtn);
+    fireEvent.blur(input);
+    expect(screen.getByRole("listbox")).not.toHaveAttribute("hidden");
+
+    fireEvent.click(lockBtn);
+    expect(
+      screen.getByRole("button", { name: /Unlock UTI Nifty 50 Index Fund/ }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(
+      screen.getByRole("listbox", { hidden: true }),
+    ).toHaveAttribute("hidden");
   });
 });

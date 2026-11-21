@@ -10,6 +10,18 @@ type FundSearchProps = {
   selectedCodes?: string[];
 };
 
+function stepActiveIndex(index: number, delta: number, count: number): number {
+  if (index < 0) return delta > 0 ? 0 : count - 1;
+  return (index + delta + count) % count;
+}
+
+function firstAddableIndex(hits: SearchHit[], selectedCodes: string[]): number {
+  const index = hits.findIndex(
+    (row) => !selectedCodes.includes(row.schemeCode),
+  );
+  return index < 0 ? 0 : index;
+}
+
 export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
   const { reportStatus } = useLab();
   const [query, setQuery] = useState("");
@@ -20,19 +32,31 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
   const [attempt, setAttempt] = useState(0);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [hitsQuery, setHitsQuery] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const controllerRef = useRef<AbortController | null>(null);
   const dismissedQueryRef = useRef<string | null>(null);
+  const immediateRef = useRef(false);
+  const scrollActiveRef = useRef(false);
   const hintId = useId();
   const listId = `${hintId}-options`;
-  const listOpen = state === "ready" && hits.length > 0;
+  const listOpen = (state === "ready" || state === "loading") && hits.length > 0;
   const stale = query.trim() !== hitsQuery;
 
   useEffect(() => {
     const controller = new AbortController();
+    controllerRef.current = controller;
     if (query.trim().length < 2) {
+      immediateRef.current = false;
       reportStatus("search", { kind: "ready" });
-      return () => controller.abort();
+      return () => {
+        controller.abort();
+        if (controllerRef.current === controller) controllerRef.current = null;
+      };
     }
+
+    const delay = immediateRef.current ? 0 : 300;
+    immediateRef.current = false;
 
     const timer = window.setTimeout(() => {
       if (dismissedQueryRef.current === query.trim()) return;
@@ -55,11 +79,12 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
           setHitsQuery(query.trim());
           setState("error");
         });
-    }, 300);
+    }, delay);
 
     return () => {
       window.clearTimeout(timer);
       controller.abort();
+      if (controllerRef.current === controller) controllerRef.current = null;
     };
   }, [query, attempt, reportStatus]);
 
@@ -70,7 +95,8 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
   }, [reportStatus]);
 
   useEffect(() => {
-    if (!listOpen || activeIndex < 0) return;
+    if (!listOpen || activeIndex < 0 || !scrollActiveRef.current) return;
+    scrollActiveRef.current = false;
     document
       .getElementById(`${listId}-${activeIndex}`)
       ?.scrollIntoView({ block: "nearest" });
@@ -82,6 +108,33 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
     setState("idle");
   }
 
+  function dismissSearch() {
+    const trimmed = query.trim();
+    if (trimmed.length >= 2) dismissedQueryRef.current = trimmed;
+    controllerRef.current?.abort();
+    reportStatus("search", { kind: "ready" });
+    closeList();
+  }
+
+  const dismissRef = useRef(dismissSearch);
+  dismissRef.current = dismissSearch;
+
+  useEffect(() => {
+    const active = query.trim().length >= 2 || state !== "idle" || hits.length > 0;
+    if (!active) return;
+    function onDocumentClick(event: MouseEvent) {
+      if (
+        event.target instanceof Node &&
+        containerRef.current?.contains(event.target)
+      ) {
+        return;
+      }
+      dismissRef.current();
+    }
+    document.addEventListener("click", onDocumentClick);
+    return () => document.removeEventListener("click", onDocumentClick);
+  }, [query, state, hits.length]);
+
   function selectHit(hit: SearchHit) {
     onSelect(hit);
     setQuery("");
@@ -90,11 +143,12 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
   }
 
   return (
-    <div className="fund-search">
+    <div ref={containerRef} className="fund-search">
       <form
         onSubmit={(event) => {
           event.preventDefault();
           dismissedQueryRef.current = null;
+          immediateRef.current = true;
           setAttempt((value) => value + 1);
         }}
       >
@@ -104,6 +158,7 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
             ref={inputRef}
             type="search"
             role="combobox"
+            className="fund-search-input"
             value={query}
             placeholder="Fund or ETF name"
             aria-describedby={hintId}
@@ -124,24 +179,25 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
               if (next.trim().length < 2) closeList();
             }}
             onKeyDown={(event) => {
+              if (event.key === "Tab") {
+                if (event.shiftKey || state !== "error" || stale) {
+                  dismissSearch();
+                }
+                return;
+              }
               if (!listOpen) return;
               if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                 event.preventDefault();
+                scrollActiveRef.current = true;
                 const delta = event.key === "ArrowDown" ? 1 : -1;
                 setActiveIndex((index) =>
-                  index < 0
-                    ? delta > 0
-                      ? 0
-                      : hits.length - 1
-                    : (index + delta + hits.length) % hits.length,
+                  stepActiveIndex(index, delta, hits.length),
                 );
               } else if (event.key === "Enter" && !stale) {
                 event.preventDefault();
                 if (activeIndex < 0) {
-                  const first = hits.findIndex(
-                    (row) => !selectedCodes.includes(row.schemeCode),
-                  );
-                  setActiveIndex(first < 0 ? 0 : first);
+                  scrollActiveRef.current = true;
+                  setActiveIndex(firstAddableIndex(hits, selectedCodes));
                 } else {
                   const hit = hits[activeIndex];
                   if (hit && !selectedCodes.includes(hit.schemeCode)) {
@@ -151,8 +207,7 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
               } else if (event.key === "Escape") {
                 event.preventDefault();
                 event.stopPropagation();
-                dismissedQueryRef.current = query.trim();
-                closeList();
+                dismissSearch();
               }
             }}
           />
@@ -181,7 +236,10 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
               variant="outline"
               size="sm"
               onClick={() => {
+                dismissedQueryRef.current = null;
+                immediateRef.current = true;
                 setAttempt((value) => value + 1);
+                inputRef.current?.focus();
               }}
             >
               Retry search
@@ -195,6 +253,9 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
         role="listbox"
         aria-label="Fund search results"
         hidden={!listOpen}
+        onMouseDown={(event) => {
+          event.preventDefault();
+        }}
       >
         {listOpen &&
           hits.map((hit, index) => {
@@ -205,11 +266,13 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
                 key={hit.schemeCode}
                 id={`${listId}-${index}`}
                 role="option"
-                tabIndex={-1}
                 aria-selected={index === activeIndex}
                 aria-disabled={inert || undefined}
                 onMouseEnter={() => {
-                  setActiveIndex(index);
+                  if (!inert) {
+                    scrollActiveRef.current = false;
+                    setActiveIndex(index);
+                  }
                 }}
                 onClick={() => {
                   if (!inert) selectHit(hit);
