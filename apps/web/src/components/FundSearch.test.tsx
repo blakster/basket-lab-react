@@ -94,6 +94,9 @@ describe("FundSearch feedback", () => {
     fireEvent.change(input, { target: { value: "unknown" } });
     expect(screen.getByRole("option", { name: /UTI Nifty 50/ })).toBeInTheDocument();
     await debounce();
+    expect(
+      screen.getByText("No funds found. Try another name."),
+    ).toBeInTheDocument();
   });
 
   it("keeps stale results inert while a new query debounces", async () => {
@@ -188,6 +191,85 @@ describe("FundSearch feedback", () => {
     fireEvent.keyDown(input, { key: "Escape" });
     await debounce();
     expect(searchMock).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByRole("listbox", { hidden: true }),
+    ).toHaveAttribute("hidden");
+  });
+
+  it("keeps stale results visible and inert while the next fetch is in flight", async () => {
+    const nextFund: SearchHit = {
+      schemeCode: "2",
+      schemeName: "Nifty Midcap 150",
+      isin: null,
+    };
+    let finish!: (hits: SearchHit[]) => void;
+    searchMock.mockResolvedValueOnce([fund]).mockImplementationOnce(
+      () =>
+        new Promise<SearchHit[]>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    render(<FundSearch onSelect={vi.fn()} />);
+    const input = screen.getByRole("combobox");
+    fireEvent.change(input, { target: { value: "nifty" } });
+    await debounce();
+    fireEvent.change(input, { target: { value: "nifty midcap" } });
+    await debounce();
+    expect(screen.getByText("Searching funds…")).toBeInTheDocument();
+    const staleOption = screen.getByRole("option", { name: /UTI Nifty 50/ });
+    expect(staleOption).toHaveAttribute("aria-disabled", "true");
+    await act(async () => {
+      finish([nextFund]);
+    });
+    expect(
+      screen.getByRole("option", { name: /Nifty Midcap 150/ }),
+    ).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("does not focus options or jump scroll on mouse interactions", async () => {
+    const hits: SearchHit[] = [
+      { schemeCode: "1", schemeName: "Alpha Fund", isin: null },
+      { schemeCode: "2", schemeName: "Beta Fund", isin: null },
+    ];
+    searchMock.mockResolvedValueOnce(hits);
+    render(<FundSearch onSelect={vi.fn()} selectedCodes={["1"]} />);
+    const input = screen.getByRole("combobox");
+    fireEvent.change(input, { target: { value: "fund" } });
+    await debounce();
+
+    const alpha = screen.getByRole("option", { name: /Alpha Fund/ });
+    const beta = screen.getByRole("option", { name: /Beta Fund/ });
+    expect(alpha).not.toHaveAttribute("tabindex");
+    expect(beta).not.toHaveAttribute("tabindex");
+
+    const mouseDown = new MouseEvent("mousedown", {
+      bubbles: true,
+      cancelable: true,
+    });
+    alpha.dispatchEvent(mouseDown);
+    expect(mouseDown.defaultPrevented).toBe(true);
+
+    fireEvent.mouseEnter(alpha);
+    expect(alpha).toHaveAttribute("aria-selected", "false");
+
+    fireEvent.mouseEnter(beta);
+    expect(beta).toHaveAttribute("aria-selected", "true");
+    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it("flushes search immediately on form submit and collapses on blur", async () => {
+    searchMock.mockResolvedValueOnce([fund]);
+    render(<FundSearch onSelect={vi.fn()} />);
+    const input = screen.getByRole("combobox");
+    fireEvent.change(input, { target: { value: "nifty" } });
+    fireEvent.submit(input.closest("form")!);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10);
+    });
+    expect(searchMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("listbox")).not.toHaveAttribute("hidden");
+
+    fireEvent.blur(input);
     expect(
       screen.getByRole("listbox", { hidden: true }),
     ).toHaveAttribute("hidden");
