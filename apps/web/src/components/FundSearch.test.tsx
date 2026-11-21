@@ -94,6 +94,23 @@ describe("FundSearch feedback", () => {
     fireEvent.change(input, { target: { value: "unknown" } });
     expect(screen.getByRole("option", { name: /UTI Nifty 50/ })).toBeInTheDocument();
     await debounce();
+  });
+
+  it("keeps stale results inert while a new query debounces", async () => {
+    searchMock.mockResolvedValueOnce([fund]).mockResolvedValueOnce([]);
+    const onSelect = vi.fn();
+    render(<FundSearch onSelect={onSelect} />);
+    const input = screen.getByRole("combobox");
+    fireEvent.change(input, { target: { value: "nifty" } });
+    await debounce();
+    fireEvent.change(input, { target: { value: "nifty midcap" } });
+    const option = screen.getByRole("option", { name: /UTI Nifty 50/ });
+    expect(option).toHaveAttribute("aria-disabled", "true");
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.click(option);
+    expect(onSelect).not.toHaveBeenCalled();
+    await debounce();
     expect(
       screen.getByText("No funds found. Try another name."),
     ).toBeInTheDocument();
@@ -141,5 +158,20 @@ describe("FundSearch feedback", () => {
       screen.getByRole("listbox", { hidden: true }),
     ).toHaveAttribute("hidden");
     expect(input).toHaveValue("nifty");
+  });
+
+  it("cancels a pending search when Escape dismisses the list", async () => {
+    searchMock.mockResolvedValueOnce([fund]);
+    render(<FundSearch onSelect={vi.fn()} />);
+    const input = screen.getByRole("combobox");
+    fireEvent.change(input, { target: { value: "nifty" } });
+    await debounce();
+    fireEvent.change(input, { target: { value: "nifty bank" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+    await debounce();
+    expect(searchMock).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByRole("listbox", { hidden: true }),
+    ).toHaveAttribute("hidden");
   });
 });
