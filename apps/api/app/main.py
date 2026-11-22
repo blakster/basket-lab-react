@@ -11,7 +11,7 @@ from app.filing_status import filing_statuses
 from app.ingest.ensure import _serialize_status, ensure_filings, scheme_codes_from_body
 from app.ingest.run import resolve_ingest_files, run_ingest
 from app.ingest.scheme_master import SchemeMaster
-from app.ingest.upload import upload_filing
+from app.ingest.upload import reject_filing, upload_filing
 from app.insights import compute_insights
 
 # apps/api/app/main.py → repo root / data / basket.sqlite
@@ -127,13 +127,13 @@ async def post_ingest_upload(request: Request):
         return JSONResponse(status_code=422, content={"error": "bad_request", "message": "schemeCode and file required"})
     data = await upload.read()
     name = getattr(upload, "filename", "") or "upload.bin"
-    suffix = Path(name).suffix.lower()
-    if suffix not in {".xlsx", ".xls", ".xlsm", ".csv"} or len(data) > 5 * 1024 * 1024:
+    message = reject_filing(name, len(data))
+    if message:
         return JSONResponse(
             status_code=422,
-            content={"error": "bad_request", "message": "Use an AMC portfolio file under 5 MB (.xlsx, .xls, or .csv)."},
+            content={"error": "bad_request", "message": message},
         )
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=Path(name).suffix.lower())
     try:
         tmp.write(data)
         tmp.close()
