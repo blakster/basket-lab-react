@@ -38,4 +38,4 @@ If the good spec fails, replay the path in `test_ensure_unexpected_fetch_error_a
 - Covered: `_fetch_all`, `_fetch_one`, the persist loop in `ensure_filings`. Three codes. `ok` / `foliyo` / `boom`.
 - Not covered: SQLite locking, `FETCH_WORKERS = 8`, HTTP, Foliyo payload shape.
 - Bounds: `Pending == <<C1, C2, C3>>`.
-- Sync commit: 02d7bb986f21bf61bd3787cfd4f9d07c32615d1b
+- Sync commit: b9711d3666e8699b77bf280362ea2f31931ad67c
