@@ -38,4 +38,4 @@ If the good spec fails, replay `searchRun.test.ts` "dismissed in-flight resolve"
 - Covered: `beginFetch`, `finishFetch`, `failFetch`, `dismissSearch`, `typeQuery`, `armFetch`. Two queries.
 - Not covered: debounce delay, AbortController wiring, combobox focus, `reportStatus`.
 - Bounds: `Queries == {Q1, Q2}`.
-- Sync commit: SYNC_COMMIT_PLACEHOLDER
+- Sync commit: 38f917af71426eeebb388600cae673dd00a7f9ee
