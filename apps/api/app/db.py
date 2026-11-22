@@ -97,12 +97,16 @@ CREATE TABLE IF NOT EXISTS snapshots (
 """
 
 
-def init_db(path: str | Path) -> sqlite3.Connection:
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    # TestClient (and uvicorn workers) use the connection off the creating thread.
+def connect_db(path: str | Path) -> sqlite3.Connection:
     conn = sqlite3.connect(path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    return conn
+
+
+def init_db(path: str | Path) -> sqlite3.Connection:
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    conn = connect_db(path)
     conn.executescript(SCHEMA)
     cols = {row[1] for row in conn.execute("PRAGMA table_info(fundamentals)")}
     if "aum_cr" not in cols:

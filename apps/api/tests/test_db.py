@@ -1,4 +1,5 @@
 import sqlite3
+import threading
 
 import pytest
 
@@ -45,3 +46,24 @@ def test_domain_foreign_keys_enforced(tmp_path):
             "INSERT INTO transactions (id, account_id, instrument_id, date, kind, units, amount, import_id)"
             " VALUES ('t1', 'missing-acc', 'missing-inst', '2026-01-15', 'buy', 1.0, 1.0, 'imp1')"
         )
+
+
+def test_foreign_keys_pragma_on(tmp_path):
+    conn = init_db(tmp_path / "basket.sqlite")
+    assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+
+
+def test_connection_usable_from_other_thread(tmp_path):
+    conn = init_db(tmp_path / "basket.sqlite")
+    errors: list[Exception] = []
+
+    def ping() -> None:
+        try:
+            conn.execute("SELECT 1").fetchone()
+        except Exception as exc:
+            errors.append(exc)
+
+    worker = threading.Thread(target=ping)
+    worker.start()
+    worker.join()
+    assert errors == []
