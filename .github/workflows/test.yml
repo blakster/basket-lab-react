@@ -22,6 +22,7 @@ jobs:
       - run: npm test
       - run: npm run lint:css
       - run: npm run lint:nav-dates
+      - run: npm run lint:weight-constants
       - run: npx tsc -b
 
   lint:

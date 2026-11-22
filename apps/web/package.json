@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint:css": "node scripts/lint-css-layers.mjs src",
-    "lint:nav-dates": "node scripts/lint-nav-dates.mjs src"
+    "lint:nav-dates": "node scripts/lint-nav-dates.mjs src",
+    "lint:weight-constants": "node scripts/lint-weight-constants.mjs src"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",

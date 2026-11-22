@@ -1,7 +1,18 @@
 import type { FundLine } from "../types";
 
-/** Tolerance around the 100% weight total when validating a basket. */
+/** One percent-point cent. round2 quantum. Distinct from WEIGHT_TOLERANCE. */
+export const WEIGHT_CENT = 0.01;
+
+/** Basket-valid window around 100%. Distinct from WEIGHT_CENT. */
 export const WEIGHT_TOLERANCE = 0.1;
+
+export function hasWeightOverflow(overflow: number): boolean {
+  return Math.abs(overflow) > WEIGHT_CENT;
+}
+
+export function isWeightBalanced(sum: number): boolean {
+  return Math.abs(sum - 100) < WEIGHT_TOLERANCE;
+}
 
 export type WeightDraft =
   | { status: "empty" }
@@ -69,7 +80,7 @@ export function applyWeightChange(
     (f) => f.schemeCode !== id && !f.locked,
   );
 
-  if (Math.abs(overflow) > 0.01 && unlockedOthers.length > 0) {
+  if (hasWeightOverflow(overflow) && unlockedOthers.length > 0) {
     const totalUnlockedWeight = unlockedOthers.reduce(
       (sum, f) => sum + f.weight,
       0,

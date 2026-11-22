@@ -15,7 +15,7 @@ import { yearlyRanking } from "../lib/ranking";
 import { resolveRange } from "../lib/resolveSettings";
 import { runIsStale } from "../lib/runFreshness";
 import { unionDates } from "../lib/series";
-import { WEIGHT_TOLERANCE } from "../lib/weights";
+import { isWeightBalanced } from "../lib/weights";
 import { useLab } from "../state/LabContext";
 import type { BacktestResult, Basket } from "../types";
 import { CashflowCompare } from "./CashflowCompare";
@@ -91,9 +91,9 @@ function LeadStory({ beesRateById }: { beesRateById: Map<string, number> }) {
     const active = baskets.filter((basket) => basket.active);
     const invalidWeights = active.some(
       (basket) =>
-        Math.abs(
-          basket.funds.reduce((sum, fund) => sum + fund.weight, 0) - 100,
-        ) >= WEIGHT_TOLERANCE,
+        !isWeightBalanced(
+          basket.funds.reduce((sum, fund) => sum + fund.weight, 0),
+        ),
     );
     const needsBaskets = !active.length || invalidWeights;
     return (

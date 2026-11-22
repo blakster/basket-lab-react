@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/table";
 import { useEffect, useRef, useState } from "react";
 import { BASKET_COLORS } from "../lib/theme";
-import { applyWeightChange, WEIGHT_TOLERANCE } from "../lib/weights";
+import { applyWeightChange, isWeightBalanced } from "../lib/weights";
 import { useLab } from "../state/LabContext";
 import type { Basket, SearchHit } from "../types";
 import { FundSearch } from "./FundSearch";
@@ -55,7 +55,7 @@ export function BasketEditor() {
 
   const open = Boolean(editingId && draft);
   const sum = draft?.funds.reduce((s, f) => s + f.weight, 0) ?? 0;
-  const balanced = Math.abs(sum - 100) < WEIGHT_TOLERANCE;
+  const balanced = isWeightBalanced(sum);
   const named = Boolean(draft?.name.trim());
   const canSave = balanced && named;
   const creating = !baskets.some((basket) => basket.id === editingId);
