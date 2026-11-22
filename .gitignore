@@ -22,6 +22,9 @@ shots/
 .codex/skills/open-knowledge/
 .github/skills/open-knowledge/
 .opencode/skills/open-knowledge/
+verify/ensure/.tools/
+verify/ensure/*_TTrace_*
+verify/ensure/states/
 .pi/skills/open-knowledge/
 verify/search/.tools/
 verify/search/*_TTrace_*

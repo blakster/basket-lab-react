@@ -10,22 +10,23 @@ import {
 import { resolveRange } from "../lib/resolveSettings";
 import { firstIso, lastIso, navsForBasket } from "../lib/series";
 import { WEIGHT_TOLERANCE } from "../lib/weights";
-import type {
-  BacktestResult,
-  Basket,
-  LabSettings,
-  NavPoint,
-} from "../types";
+import type { Basket, LabSettings, NavPoint } from "../types";
 import { weightSum } from "./basketStore";
 import {
-  IDLE_STATUS,
-  READY_STATUS,
-  type LabStatus,
-  type StatusSource,
-} from "./labTypes";
+  BOOT_NAV_RUN,
+  beginNavRun,
+  commitNavRun,
+  finishBadRange,
+  finishFailed,
+  finishIdle,
+  navMap,
+  navResults,
+  navStatus,
+  type NavRun,
+} from "./navRun";
 
-/** Last trading day before a weekend/holiday `to` still covers the range. */
 const RANGE_SLACK_DAYS = 4;
+const FETCH_LOOKBACK_DAYS = 7;
 
 function shiftIso(iso: string, days: number): string {
   const d = new Date(`${iso}T00:00:00Z`);
@@ -91,43 +92,24 @@ function mergeNav(a: NavPoint[], b: NavPoint[]): NavPoint[] {
     .sort((x, y) => (x.date < y.date ? -1 : x.date > y.date ? 1 : 0));
 }
 
-export function useNavQuery(
-  settings: LabSettings,
-  baskets: Basket[],
-  reportStatus: (source: StatusSource, next: LabStatus) => void,
-) {
-  const [results, setResults] = useState<BacktestResult[]>([]);
-  const [navByCode, setNavByCode] = useState<Record<string, NavPoint[]>>({});
-  const [analyzing, setAnalyzing] = useState(false);
+export function useNavQuery(settings: LabSettings, baskets: Basket[]) {
+  const [run, setRun] = useState<NavRun>(BOOT_NAV_RUN);
   const runIdRef = useRef(0);
 
   const runAnalysis = useCallback(async () => {
     const runId = ++runIdRef.current;
-    setAnalyzing(true);
-    const finish = (apply?: () => void) => {
+    setRun((prev) => beginNavRun(prev, runId));
+    const finish = (next: NavRun) => {
       if (runId !== runIdRef.current) return;
-      apply?.();
-      setAnalyzing(false);
-    };
-    // A guard that empties the page must also drop the header status off LIVE.
-    const clearRun = () => {
-      reportStatus("nav", IDLE_STATUS);
-      setResults([]);
-      setNavByCode({});
+      setRun(next);
     };
     const { start, end } = resolveRange(
       settings.period,
       settings.customStart,
       settings.customEnd,
     );
-    // A Custom window whose start is after its end is a settings error, not a
-    // NAV outage: skip the fetch and flag the dates instead of BLACKOUT.
     if (start > end) {
-      finish(() => {
-        reportStatus("nav", { kind: "bad-range" });
-        setResults([]);
-        setNavByCode({});
-      });
+      finish(finishBadRange(runId));
       return;
     }
     const resolved: LabSettings = {
@@ -136,7 +118,7 @@ export function useNavQuery(
       customEnd: end,
     };
     if (settings.amount < 100) {
-      finish(clearRun);
+      finish(finishIdle(runId));
       return;
     }
 
@@ -144,11 +126,11 @@ export function useNavQuery(
     if (
       active.some((b) => Math.abs(weightSum(b) - 100) >= WEIGHT_TOLERANCE)
     ) {
-      finish(clearRun);
+      finish(finishIdle(runId));
       return;
     }
     if (!active.length) {
-      finish(clearRun);
+      finish(finishIdle(runId));
       return;
     }
 
@@ -185,8 +167,11 @@ export function useNavQuery(
     if (runId !== runIdRef.current) return;
 
     if (toFetch.length) {
-      // Look back a week so weekend/holiday starts still have a prior NAV.
-      const fetched = await fetchNav(toFetch, shiftIso(start, -7), end);
+      const fetched = await fetchNav(
+        toFetch,
+        shiftIso(start, -FETCH_LOOKBACK_DAYS),
+        end,
+      );
       if (runId !== runIdRef.current) return;
       await Promise.all(
         toFetch.map(async (code) => {
@@ -196,19 +181,13 @@ export function useNavQuery(
             const merged = mergeNav(prev?.points ?? [], points);
             try {
               await writeNavCache(code, merged);
-            } catch {
-              // Quota / private mode: still run on the live series.
-            }
+            } catch {}
             navs[code] = merged;
+          } else if (prev && cacheOverlapsRange(prev.points, start, end)) {
+            navs[code] = prev.points;
+            staleCacheCodes.add(code);
           } else {
-            // Failed fetch: reuse overlapping stale cache ("Using saved NAV"),
-            // including series that start after `start` (fund launched later).
-            if (prev && cacheOverlapsRange(prev.points, start, end)) {
-              navs[code] = prev.points;
-              staleCacheCodes.add(code);
-            } else {
-              navs[code] = [];
-            }
+            navs[code] = [];
           }
         }),
       );
@@ -218,39 +197,17 @@ export function useNavQuery(
     const nextResults = active.map((b) =>
       backtestBasket(b, navsForBasket(b, navs), resolved),
     );
-    // Global no-nav only when every active basket failed (one empty scheme
-    // still leaves sibling baskets runnable and the header ready/cached-nav).
-    const allNoNav =
-      nextResults.length > 0 &&
-      nextResults.every((r) => r.error === "no-nav");
-    finish(() => {
-      if (allNoNav) {
-        reportStatus("nav", { kind: "no-nav" });
-      } else if (staleCacheCodes.size) {
-        let detail = "";
-        for (const code of staleCacheCodes) {
-          const pts = navs[code];
-          if (!pts?.length) continue;
-          const last = lastIso(pts);
-          if (last > detail) detail = last;
-        }
-        reportStatus("nav", { kind: "cached-nav", detail: detail || undefined });
-      } else {
-        reportStatus("nav", READY_STATUS);
-      }
-      setResults(nextResults);
-      setNavByCode(navs);
-    });
+    finish(commitNavRun(runId, nextResults, navs, staleCacheCodes));
     } catch {
-      // Don't leave the previous run's numbers on screen under a LIVE badge:
-      // a failed run clears like the guard paths and reports the NAV failure.
-      finish(() => {
-        reportStatus("nav", { kind: "no-nav" });
-        setResults([]);
-        setNavByCode({});
-      });
+      finish(finishFailed(runId));
     }
-  }, [settings, baskets, reportStatus]);
+  }, [settings, baskets]);
 
-  return { results, navByCode, analyzing, runAnalysis };
+  return {
+    results: navResults(run),
+    navByCode: navMap(run),
+    analyzing: run.analyzing,
+    navStatus: navStatus(run),
+    runAnalysis,
+  };
 }
