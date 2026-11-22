@@ -33,6 +33,7 @@ jobs:
         with:
           node-version: "22"
       - run: node scripts/lint-filing-size.mjs
+      - run: node scripts/lint-sqlite-connect.mjs
 
   api:
     runs-on: ubuntu-latest
