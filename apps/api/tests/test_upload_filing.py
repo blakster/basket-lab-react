@@ -44,6 +44,21 @@ def test_post_upload_rejects_pdf_and_keeps_holdings(client, db, tmp_path):
     assert db.execute("SELECT COUNT(*) FROM holdings").fetchone()[0] == prior
 
 
+def test_post_upload_rejects_oversize_and_keeps_holdings(client, db):
+    from app.ingest.upload import MAX_BYTES, REJECT_MESSAGE
+
+    prior = db.execute("SELECT COUNT(*) FROM holdings").fetchone()[0]
+    res = client.post(
+        "/api/ingest/upload",
+        data={"schemeCode": "122639"},
+        files={"file": ("big.xlsx", b"x" * (MAX_BYTES + 1),
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+    )
+    assert res.status_code == 422
+    assert res.json()["message"] == REJECT_MESSAGE
+    assert db.execute("SELECT COUNT(*) FROM holdings").fetchone()[0] == prior
+
+
 def test_post_upload_empty_table_is_422(client, tmp_path):
     from openpyxl import Workbook
     path = tmp_path / "empty.xlsx"

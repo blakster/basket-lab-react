@@ -10,14 +10,23 @@ from app.ingest.run import rows_from_path
 
 ALLOWED = {".xlsx", ".xls", ".xlsm", ".csv"}
 MAX_BYTES = 5 * 1024 * 1024
+REJECT_MESSAGE = "Use an AMC portfolio file under 5 MB (.xlsx, .xls, or .csv)."
+
+
+def reject_filing(name: str, size: int) -> str | None:
+    suffix = Path(name).suffix.lower()
+    if suffix not in ALLOWED or size > MAX_BYTES:
+        return REJECT_MESSAGE
+    return None
 
 
 def upload_filing(conn, scheme_code: str, path: Path, *, month: str) -> FilingStatus:
     from openpyxl import load_workbook
 
+    message = reject_filing(path.name, path.stat().st_size)
+    if message:
+        raise ValueError(message)
     suffix = path.suffix.lower()
-    if suffix not in ALLOWED or path.stat().st_size > MAX_BYTES:
-        raise ValueError("Use an AMC portfolio file under 5 MB (.xlsx, .xls, or .csv).")
     try:
         rows = rows_from_path(path)
     except ValueError:

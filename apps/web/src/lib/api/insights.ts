@@ -159,11 +159,13 @@ export async function ensureFilings(
   return request;
 }
 
+export const FILING_MAX_BYTES = 5 * 1024 * 1024;
+export const FILING_FILE_EXT = /\.(xlsx|xls|xlsm|csv)$/i;
 export const FILING_FILE_REJECT_MESSAGE =
   "Use an AMC portfolio file under 5 MB (.xlsx, .xls, or .csv).";
 
 export function filingFileRejected(file: File): boolean {
-  return file.size > 5 * 1024 * 1024 || !/\.(xlsx|xls|xlsm|csv)$/i.test(file.name);
+  return file.size > FILING_MAX_BYTES || !FILING_FILE_EXT.test(file.name);
 }
 
 export async function uploadFiling(schemeCode: string, file: File): Promise<FilingStatus> {
