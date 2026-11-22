@@ -42,19 +42,10 @@ export function weightFromDraft(raw: string): number {
   return 0;
 }
 
-/** Round to 2 decimal places. */
 function round2(n: number): number {
   return parseFloat(n.toFixed(2));
 }
 
-/**
- * Apply a weight change to one fund; unlocked others absorb overflow so the
- * sum stays near 100. Locked weights never change. Weights are ≥ 0.
- *
- * Port of basket-lab `handleWeightChange`: clamp `next` to
- * `[0, 100 - otherLocked]`, set the target, then proportionally scale unlocked
- * others when the total overflows 100.
- */
 export function applyWeightChange(
   funds: FundLine[],
   id: string,
