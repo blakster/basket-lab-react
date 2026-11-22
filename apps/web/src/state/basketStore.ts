@@ -7,7 +7,7 @@ import {
 } from "react";
 import defaults from "../data/defaults.json";
 import { ensureFilings } from "../lib/api/insights";
-import { WEIGHT_TOLERANCE } from "../lib/weights";
+import { isWeightBalanced } from "../lib/weights";
 import type { Basket, LabSettings } from "../types";
 
 const STORAGE_KEY = "basket-lab-v1";
@@ -85,7 +85,7 @@ export function useBasketStore() {
 
   const saveBasket = useCallback((basket: Basket): boolean => {
     const sum = weightSum(basket);
-    if (Math.abs(sum - 100) >= WEIGHT_TOLERANCE) return false;
+    if (!isWeightBalanced(sum)) return false;
     if (typeof basket.name !== "string" || !basket.name.trim()) return false;
     setBasketsState((prev) => {
       const idx = prev.findIndex((b) => b.id === basket.id);

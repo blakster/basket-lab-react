@@ -9,7 +9,7 @@ import {
 } from "../lib/navCache";
 import { resolveRange } from "../lib/resolveSettings";
 import { firstIso, lastIso, navsForBasket } from "../lib/series";
-import { WEIGHT_TOLERANCE } from "../lib/weights";
+import { isWeightBalanced } from "../lib/weights";
 import type { Basket, LabSettings, NavPoint } from "../types";
 import { weightSum } from "./basketStore";
 import {
@@ -124,7 +124,7 @@ export function useNavQuery(settings: LabSettings, baskets: Basket[]) {
 
     const active = baskets.filter((b) => b.active);
     if (
-      active.some((b) => Math.abs(weightSum(b) - 100) >= WEIGHT_TOLERANCE)
+      active.some((b) => !isWeightBalanced(weightSum(b)))
     ) {
       finish(finishIdle(runId));
       return;
