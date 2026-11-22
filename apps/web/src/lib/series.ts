@@ -5,6 +5,23 @@ export function firstIso(points: NavPoint[]): string {
   return points.reduce((a, p) => (p.date < a ? p.date : a), points[0].date);
 }
 
+/** Sorted in-range dates from every weighted fund. Not the first Object.values entry. */
+export function navDatesInRange(
+  funds: { schemeCode: string; weight: number }[],
+  navs: Record<string, NavPoint[]>,
+  startIso: string,
+  endIso: string,
+): string[] {
+  const days = new Set<string>();
+  for (const fund of funds) {
+    if (fund.weight <= 0) continue;
+    for (const point of navs[fund.schemeCode] ?? []) {
+      if (point.date >= startIso && point.date <= endIso) days.add(point.date);
+    }
+  }
+  return [...days].sort();
+}
+
 /** Latest date in a NAV series. */
 export function lastIso(points: NavPoint[]): string {
   return points.reduce((a, p) => (p.date > a ? p.date : a), points[0].date);
