@@ -11,6 +11,6 @@ A past mistake is unwriteable when the owner and check below exist. Use the owne
 | CSS vs shadcn utilities | unlayered rules after `@layer` | `npm run lint:css` in `apps/web` |
 | Backtest calendar | `navDatesInRange` in `apps/web/src/lib/series.ts` | `npm run lint:nav-dates` |
 | Weight overflow vs 100% | `WEIGHT_CENT` / `hasWeightOverflow`, `isWeightBalanced` | `npm run lint:weight-constants` |
-| SQLite thread and FKs | `sqlite3.connect` only in `apps/api/app/db.py` | pytest `apps/api/tests/test_db.py` |
+| SQLite thread and FKs | `connect_db` in `apps/api/app/db.py` | `node scripts/lint-sqlite-connect.mjs` |
 
 CI is `.github/workflows/test.yml`. Comments encode a constraint types miss.
