@@ -3,6 +3,22 @@ import { Input } from "@/components/ui/input";
 import { useEffect, useId, useRef, useState } from "react";
 import { searchFunds } from "../lib/api/search";
 import { useLab } from "../state/LabContext";
+import {
+  BOOT_SEARCH_RUN,
+  armFetch,
+  beginFetch,
+  clearAfterSelect,
+  dismissSearch,
+  failFetch,
+  finishFetch,
+  moveActive,
+  searchHits,
+  searchListOpen,
+  searchPhase,
+  searchStatus,
+  searchStale,
+  typeQuery,
+} from "../state/searchRun";
 import type { SearchHit } from "../types";
 
 type FundSearchProps = {
@@ -24,31 +40,33 @@ function firstAddableIndex(hits: SearchHit[], selectedCodes: string[]): number {
 
 export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
   const { reportStatus } = useLab();
-  const [query, setQuery] = useState("");
-  const [hits, setHits] = useState<SearchHit[]>([]);
-  const [state, setState] = useState<"idle" | "loading" | "ready" | "error">(
-    "idle",
-  );
-  const [attempt, setAttempt] = useState(0);
-  const [activeIndex, setActiveIndex] = useState(-1);
-  const [hitsQuery, setHitsQuery] = useState("");
+  const [run, setRun] = useState(BOOT_SEARCH_RUN);
+  const runRef = useRef(run);
+  runRef.current = run;
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const controllerRef = useRef<AbortController | null>(null);
-  const dismissedQueryRef = useRef<string | null>(null);
   const immediateRef = useRef(false);
   const scrollActiveRef = useRef(false);
   const hintId = useId();
   const listId = `${hintId}-options`;
-  const listOpen = (state === "ready" || state === "loading") && hits.length > 0;
-  const stale = query.trim() !== hitsQuery;
+  const hits = searchHits(run);
+  const listOpen = searchListOpen(run);
+  const stale = searchStale(run);
+  const phase = searchPhase(run);
+  const { query, activeIndex } = run;
+
+  useEffect(() => {
+    reportStatus("search", searchStatus(run));
+  }, [run, reportStatus]);
 
   useEffect(() => {
     const controller = new AbortController();
     controllerRef.current = controller;
-    if (query.trim().length < 2) {
+    const rawQuery = run.query;
+    const request = rawQuery.trim();
+    if (request.length < 2) {
       immediateRef.current = false;
-      reportStatus("search", { kind: "ready" });
       return () => {
         controller.abort();
         if (controllerRef.current === controller) controllerRef.current = null;
@@ -59,25 +77,17 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
     immediateRef.current = false;
 
     const timer = window.setTimeout(() => {
-      if (dismissedQueryRef.current === query.trim()) return;
-      reportStatus("search", { kind: "search-busy" });
-      setState("loading");
-      void searchFunds(query, fetch, controller.signal)
+      if (!beginFetch(runRef.current, request)) return;
+      setRun((prev) => beginFetch(prev, request) ?? prev);
+      void searchFunds(rawQuery, fetch, controller.signal)
         .then((rows) => {
           if (controller.signal.aborted) return;
-          reportStatus("search", { kind: "ready" });
-          setHits(rows);
-          setHitsQuery(query.trim());
-          setActiveIndex(-1);
-          setState("ready");
+          setRun((prev) => finishFetch(prev, request, rows) ?? prev);
         })
         .catch((err: unknown) => {
           if (controller.signal.aborted) return;
           if (err instanceof DOMException && err.name === "AbortError") return;
-          reportStatus("search", { kind: "search-down" });
-          setHits([]);
-          setHitsQuery(query.trim());
-          setState("error");
+          setRun((prev) => failFetch(prev, request) ?? prev);
         });
     }, delay);
 
@@ -86,7 +96,7 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
       controller.abort();
       if (controllerRef.current === controller) controllerRef.current = null;
     };
-  }, [query, attempt, reportStatus]);
+  }, [run.query, run.attempt]);
 
   useEffect(() => {
     return () => {
@@ -102,25 +112,17 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
       ?.scrollIntoView({ block: "nearest" });
   }, [activeIndex, listOpen, listId]);
 
-  function closeList() {
-    setHits([]);
-    setActiveIndex(-1);
-    setState("idle");
-  }
-
-  function dismissSearch() {
-    const trimmed = query.trim();
-    if (trimmed.length >= 2) dismissedQueryRef.current = trimmed;
+  function closeAndAbort() {
     controllerRef.current?.abort();
-    reportStatus("search", { kind: "ready" });
-    closeList();
+    setRun(dismissSearch);
   }
 
-  const dismissRef = useRef(dismissSearch);
-  dismissRef.current = dismissSearch;
+  const dismissRef = useRef(closeAndAbort);
+  dismissRef.current = closeAndAbort;
 
   useEffect(() => {
-    const active = query.trim().length >= 2 || state !== "idle" || hits.length > 0;
+    const active =
+      query.trim().length >= 2 || phase !== "idle" || hits.length > 0;
     if (!active) return;
     function onDocumentClick(event: MouseEvent) {
       if (
@@ -133,12 +135,11 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
     }
     document.addEventListener("click", onDocumentClick);
     return () => document.removeEventListener("click", onDocumentClick);
-  }, [query, state, hits.length]);
+  }, [query, phase, hits.length]);
 
   function selectHit(hit: SearchHit) {
     onSelect(hit);
-    setQuery("");
-    closeList();
+    setRun(clearAfterSelect);
     inputRef.current?.focus();
   }
 
@@ -147,9 +148,8 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          dismissedQueryRef.current = null;
           immediateRef.current = true;
-          setAttempt((value) => value + 1);
+          setRun(armFetch);
         }}
       >
         <label className="field">
@@ -172,16 +172,12 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
             }
             autoComplete="off"
             onChange={(event) => {
-              const next = event.target.value;
-              dismissedQueryRef.current = null;
-              setQuery(next);
-              setActiveIndex(-1);
-              if (next.trim().length < 2) closeList();
+              setRun((prev) => typeQuery(prev, event.target.value));
             }}
             onKeyDown={(event) => {
               if (event.key === "Tab") {
-                if (event.shiftKey || state !== "error" || stale) {
-                  dismissSearch();
+                if (event.shiftKey || phase !== "error" || stale) {
+                  closeAndAbort();
                 }
                 return;
               }
@@ -190,14 +186,22 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
                 event.preventDefault();
                 scrollActiveRef.current = true;
                 const delta = event.key === "ArrowDown" ? 1 : -1;
-                setActiveIndex((index) =>
-                  stepActiveIndex(index, delta, hits.length),
+                setRun((prev) =>
+                  moveActive(
+                    prev,
+                    stepActiveIndex(prev.activeIndex, delta, hits.length),
+                  ),
                 );
               } else if (event.key === "Enter" && !stale) {
                 event.preventDefault();
                 if (activeIndex < 0) {
                   scrollActiveRef.current = true;
-                  setActiveIndex(firstAddableIndex(hits, selectedCodes));
+                  setRun((prev) =>
+                    moveActive(
+                      prev,
+                      firstAddableIndex(searchHits(prev), selectedCodes),
+                    ),
+                  );
                 } else {
                   const hit = hits[activeIndex];
                   if (hit && !selectedCodes.includes(hit.schemeCode)) {
@@ -207,7 +211,7 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
               } else if (event.key === "Escape") {
                 event.preventDefault();
                 event.stopPropagation();
-                dismissSearch();
+                closeAndAbort();
               }
             }}
           />
@@ -217,18 +221,18 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
         Search by name using at least 2 characters.
       </p>
       <div className="fund-search-feedback" role="status">
-        {state === "loading" && <p>Searching funds…</p>}
-        {state === "ready" && hits.length === 0 && !stale && (
+        {phase === "loading" && <p>Searching funds…</p>}
+        {phase === "ready" && hits.length === 0 && !stale && (
           <p>No funds found. Try another name.</p>
         )}
-        {state === "ready" && hits.length > 0 && (
+        {phase === "ready" && hits.length > 0 && (
           <p>
             {stale
               ? "Updating results…"
               : `${hits.length} ${hits.length === 1 ? "fund" : "funds"} found`}
           </p>
         )}
-        {state === "error" && !stale && (
+        {phase === "error" && !stale && (
           <div className="fund-search-error">
             <p>Search unavailable. Your basket is unchanged.</p>
             <Button
@@ -236,9 +240,8 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
               variant="outline"
               size="sm"
               onClick={() => {
-                dismissedQueryRef.current = null;
                 immediateRef.current = true;
-                setAttempt((value) => value + 1);
+                setRun(armFetch);
                 inputRef.current?.focus();
               }}
             >
@@ -271,7 +274,7 @@ export function FundSearch({ onSelect, selectedCodes = [] }: FundSearchProps) {
                 onMouseEnter={() => {
                   if (!inert) {
                     scrollActiveRef.current = false;
-                    setActiveIndex(index);
+                    setRun((prev) => moveActive(prev, index));
                   }
                 }}
                 onClick={() => {
