@@ -21,6 +21,7 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run lint:css
+      - run: npm run lint:nav-dates
       - run: npx tsc -b
 
   lint:

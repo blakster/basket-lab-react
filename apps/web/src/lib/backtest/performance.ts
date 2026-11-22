@@ -6,7 +6,7 @@ import type {
   TimePoint,
 } from "../../types";
 import { calculateXirr } from "./xirr";
-import { firstIso } from "../series";
+import { firstIso, navDatesInRange } from "../series";
 
 export { resolveRange } from "../resolveSettings";
 
@@ -133,22 +133,10 @@ export function backtestPlan(
   if (startIso > endIso) return noNav(basket.id);
 
   const startDate = parseDay(startIso);
-  const inRange = Object.values(navs).some((series) =>
-    series.some((p) => p.date >= startIso && p.date <= endIso),
-  );
-  if (!inRange) return noNav(basket.id);
-
-  // Union of every weighted fund's in-range dates: a sparse first fund must
-  // not coarsen the basket, and the result cannot depend on fund order.
-  const days = new Set<string>();
-  for (const f of basket.funds) {
-    if (f.weight <= 0) continue;
-    for (const p of navs[f.schemeCode] ?? []) {
-      if (p.date >= startIso && p.date <= endIso) days.add(p.date);
-    }
-  }
-  const timeline = [...days].sort();
-  if (timeline[0] !== startIso) timeline.unshift(startIso);
+  const inRange = navDatesInRange(basket.funds, navs, startIso, endIso);
+  if (!inRange.length) return noNav(basket.id);
+  const timeline =
+    inRange[0] === startIso ? inRange : [startIso, ...inRange];
 
   return runBacktest(
     basket,
