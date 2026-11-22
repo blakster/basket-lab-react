@@ -358,7 +358,6 @@ describe("LabContext runAnalysis", () => {
     expect(api.current!.status.kind).not.toBe("ready");
     expect(api.current!.status.kind).toBe("idle");
 
-    // A normal run afterwards restores LIVE exactly as before.
     act(() => {
       api.current!.setSettings(liveSettings());
     });
@@ -794,7 +793,6 @@ describe("LabContext runAnalysis", () => {
     });
     expect(api.current!.status).toEqual({ kind: "bad-range" });
 
-    // A good run restores LIVE.
     fetchNavMock.mockResolvedValue({
       "118741": [
         { date: "2021-01-01", nav: 8 },

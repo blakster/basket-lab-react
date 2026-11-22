@@ -106,7 +106,6 @@ function sampleStdev(values: number[]): number | null {
   return stdev;
 }
 
-/** Annualized sample volatility in percent. `null` if stdev is 0. */
 export function volatilityFromTwrs(twrs: number[]): number | null {
   const stdev = sampleStdev(twrs);
   if (stdev == null) return null;
@@ -114,7 +113,7 @@ export function volatilityFromTwrs(twrs: number[]): number | null {
   return Number.isFinite(vol) ? vol : null;
 }
 
-/** Annualized Sharpe from daily TWRs. `rfAnnual` is a decimal (0.065 = 6.5%). */
+/** `rfAnnual` is a decimal: 0.065 = 6.5%. */
 export function sharpeFromTwrs(twrs: number[], rfAnnual = 0): number | null {
   if (twrs.length < 2) return null;
   const rfDaily = rfAnnual / 252;
@@ -126,7 +125,7 @@ export function sharpeFromTwrs(twrs: number[], rfAnnual = 0): number | null {
   return Number.isFinite(sharpe) ? sharpe : null;
 }
 
-/** Annualized Sortino. Downside = `r < 0` (or `r < rfDaily`). No downsides → `null`. */
+/** Downside is `r < 0`, or `r < rfDaily` when rf is set. No downsides -> null. */
 export function sortinoFromTwrs(twrs: number[], rfAnnual = 0): number | null {
   if (twrs.length < 2) return null;
   const rfDaily = rfAnnual / 252;
@@ -148,7 +147,6 @@ export function sortinoFromTwrs(twrs: number[], rfAnnual = 0): number | null {
   return Number.isFinite(sortino) ? sortino : null;
 }
 
-/** CAGR% / |MDD%|. `null` when drawdown is 0. */
 export function calmar(cagrPct: number, mddPct: number): number | null {
   const absDd = Math.abs(mddPct);
   if (absDd === 0 || !Number.isFinite(absDd) || !Number.isFinite(cagrPct)) {
@@ -165,10 +163,7 @@ function median(sorted: number[]): number {
   return (sorted[mid - 1]! + sorted[mid]!) / 2;
 }
 
-/**
- * Rolling window CAGRs as percents, from a TWR wealth index.
- * `windowDays` is the number of daily returns in each window.
- */
+/** `windowDays` counts daily returns in each window, not calendar days. */
 export function rollingCagr(
   series: TimePoint[],
   twrs: DatedReturn[],
