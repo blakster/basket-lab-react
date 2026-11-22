@@ -1,6 +1,5 @@
 import type { BacktestResult, Basket, NavPoint } from "../types";
 
-/** Earliest date in a NAV series. */
 export function firstIso(points: NavPoint[]): string {
   return points.reduce((a, p) => (p.date < a ? p.date : a), points[0].date);
 }
@@ -22,12 +21,10 @@ export function navDatesInRange(
   return [...days].sort();
 }
 
-/** Latest date in a NAV series. */
 export function lastIso(points: NavPoint[]): string {
   return points.reduce((a, p) => (p.date > a ? p.date : a), points[0].date);
 }
 
-/** Stable chart series key for a basket id. */
 export function seriesKey(id: string): string {
   return `b_${id.replace(/[^a-zA-Z0-9]/g, "")}`;
 }
