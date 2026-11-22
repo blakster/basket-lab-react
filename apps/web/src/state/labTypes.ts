@@ -10,7 +10,7 @@ export type LabStatusKind =
 
 export type LabStatus = { kind: LabStatusKind; detail?: string };
 
-export type StatusSource = "nav" | "search" | "insights";
+export type StatusSource = "search" | "insights";
 
 export const READY_STATUS: LabStatus = { kind: "ready" };
 export const IDLE_STATUS: LabStatus = { kind: "idle" };

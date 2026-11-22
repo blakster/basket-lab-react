@@ -11,7 +11,7 @@ import { useBasketStore } from "./basketStore";
 import { useLabStatus } from "./useLabStatus";
 import { useNavQuery } from "./useNavQuery";
 import { useWorkspace } from "./useWorkspace";
-import type { LabStatus, StatusSource, Workspace } from "./labTypes";
+import { pickStatus, type LabStatus, type StatusSource, type Workspace } from "./labTypes";
 
 export type {
   LabStatus,
@@ -26,7 +26,6 @@ type LabContextValue = {
   baskets: Basket[];
   setBaskets: Dispatch<SetStateAction<Basket[]>>;
   editingId: string | null;
-  /** Seed for a basket not yet in `baskets` (create-new draft). */
   editorSeed: Basket | null;
   openEditor: (id: string, seed?: Basket) => void;
   closeEditor: () => void;
@@ -60,11 +59,14 @@ export function LabProvider({ children }: { children: ReactNode }) {
     closeEditor,
     saveBasket,
   } = useBasketStore();
-  const { status, insightsStatus, reportStatus } = useLabStatus();
-  const { results, navByCode, analyzing, runAnalysis } = useNavQuery(
+  const { searchStatus, insightsStatus, reportStatus } = useLabStatus();
+  const { results, navByCode, analyzing, navStatus, runAnalysis } = useNavQuery(
     settings,
     baskets,
-    reportStatus,
+  );
+  const status = useMemo(
+    () => pickStatus([navStatus, searchStatus, insightsStatus]),
+    [navStatus, searchStatus, insightsStatus],
   );
   const {
     workspace,
