@@ -184,8 +184,15 @@ export function growthSeries(
   const dates = new Set<string>();
   for (const points of navByCode.values())
     for (const p of points) dates.add(p.date);
-  const sortedDates = [...dates].sort();
-  if (sortedDates.length === 0) return [];
+  let sortedDates = [...dates].sort();
+  if (sortedDates.length === 0) {
+    // No NAV history anywhere: sample the statement's own dates so
+    // snapshot-valued funds still get a flat growth line.
+    for (const t of transactions) dates.add(t.date);
+    for (const s of snapshotValue.values()) dates.add(s.date);
+    sortedDates = [...dates].sort();
+    if (sortedDates.length === 0) return [];
+  }
   const stride = Math.max(1, Math.ceil(sortedDates.length / maxPoints));
   const samples = sortedDates.filter((_, i) => i % stride === 0);
   if (samples[samples.length - 1] !== sortedDates[sortedDates.length - 1])

@@ -50,7 +50,9 @@ def _scheme_master(request: Request) -> SchemeMaster | None:
         try:
             master = SchemeMaster.load_cached(DB_PATH.parent)
         except Exception:
-            master = SchemeMaster([])
+            # A failed load must not be cached: a transient cache miss would
+            # otherwise disable ISIN resolution until the API restarts.
+            return SchemeMaster([])
         request.app.state.scheme_master = master
     return master
 

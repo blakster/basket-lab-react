@@ -119,3 +119,11 @@ def test_snapshot_upsert(db, statement):
     statement["folios"][0]["schemes"][0]["valuation"]["value"] = "2000"
     write_statement(db, map_statement(statement), "second")
     assert db.execute("SELECT value FROM snapshots WHERE account_id='cams:100001'").fetchone()[0] == 2000
+
+
+def test_import_rejects_oversized_upload(client, monkeypatch):
+    monkeypatch.setattr("app.cas_routes.CAS_MAX_BYTES", 4)
+    response = client.post("/api/portfolio/import/cas",
+                           files={"file": ("cas.pdf", b"12345", "application/pdf")},
+                           data={"password": "secret"})
+    assert response.status_code == 413

@@ -197,4 +197,19 @@ describe("growthSeries", () => {
   it("returns an empty series with no NAV dates", () => {
     expect(growthSeries([], new Map(), new Map(), new Map(), new Map())).toEqual([]);
   });
+
+  it("samples statement dates when no NAV series exists at all", () => {
+    const transactions = [
+      tx({ instrumentId: "other:1", kind: "buy", units: 3, amount: 300, date: "2024-01-10" }),
+    ];
+    const series = growthSeries(
+      transactions,
+      new Map(),
+      new Map(),
+      new Map([["other:1", { date: "2024-03-31", value: 350 }]]),
+      new Map([["other:1", "2024-01-10"]]),
+    );
+    expect(series.length).toBeGreaterThan(0);
+    expect(series[series.length - 1]).toEqual({ date: "2024-03-31", value: 350 });
+  });
 });
