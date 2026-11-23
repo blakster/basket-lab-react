@@ -91,16 +91,31 @@ def _duplicate(
     amount: float,
     manual_only: bool = False,
 ) -> sqlite3.Row | None:
-    # CAS files SIPs under their own kind; a hand-entered SIP is a buy.
+    # CAS files SIPs under their own kind; a hand-entered SIP is a buy. The
+    # same fund can carry different ids (amfi: vs isin:), so match on ISIN too.
     normalized = "buy" if kind in {"buy", "sip"} else kind
+    isin_row = conn.execute(
+        "SELECT isin FROM instruments WHERE id = ?", (instrument_id,)
+    ).fetchone()
+    isin = isin_row["isin"] if isin_row else None
+    if isin:
+        instrument_match = (
+            "(t.instrument_id = ? OR t.instrument_id IN "
+            "(SELECT i2.id FROM instruments i2 WHERE i2.isin = ?))"
+        )
+    else:
+        instrument_match = "t.instrument_id = ?"
     sql = (
-        "SELECT id FROM transactions WHERE instrument_id = ? AND date = ? "
-        "AND CASE WHEN kind IN ('buy', 'sip') THEN 'buy' ELSE kind END = ? "
-        "AND ROUND(units, 3) = ROUND(?, 3) AND ROUND(amount, 2) = ROUND(?, 2)"
+        f"SELECT t.id FROM transactions t WHERE {instrument_match} AND t.date = ? "
+        "AND CASE WHEN t.kind IN ('buy', 'sip') THEN 'buy' ELSE t.kind END = ? "
+        "AND ROUND(t.units, 3) = ROUND(?, 3) AND ROUND(t.amount, 2) = ROUND(?, 2)"
     )
-    params: list[object] = [instrument_id, day, normalized, units, amount]
+    params: list[object] = [instrument_id]
+    if isin:
+        params.append(isin)
+    params += [day, normalized, units, amount]
     if manual_only:
-        sql += " AND import_id = ?"
+        sql += " AND t.import_id = ?"
         params.append(MANUAL_IMPORT_ID)
     return conn.execute(sql + " LIMIT 1", params).fetchone()
 
@@ -168,12 +183,22 @@ def add_manual_transaction(conn: sqlite3.Connection, body: object) -> dict:
         name = str(scheme.get("name") or "").strip() or code
         raw_isin = scheme.get("isin")
         isin = str(raw_isin).strip().upper() if raw_isin else None
-        instrument_id = f"amfi:{code}"
-        with conn:
-            conn.execute(
-                "INSERT OR IGNORE INTO instruments (id, kind, name, isin) VALUES (?, 'mf', ?, ?)",
-                (instrument_id, name, isin),
-            )
+        # Reuse the statement's instrument when the ISIN is already known, so
+        # hand entries and CAS rows share one identity per fund.
+        existing = (
+            conn.execute("SELECT id FROM instruments WHERE isin = ?", (isin,)).fetchone()
+            if isin
+            else None
+        )
+        if existing is not None:
+            instrument_id = existing["id"]
+        else:
+            instrument_id = f"amfi:{code}"
+            with conn:
+                conn.execute(
+                    "INSERT OR IGNORE INTO instruments (id, kind, name, isin) VALUES (?, 'mf', ?, ?)",
+                    (instrument_id, name, isin),
+                )
 
     if _duplicate(
         conn, instrument_id=instrument_id, day=day, kind=kind, units=units, amount=amount

@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from app.cas_routes import router as cas_router
 from app.db import init_db
 from app.filing_status import filing_statuses
+from app.ingest.cas import _IMPORT_LOCK as IMPORT_LOCK
 from app.ingest.ensure import _serialize_status, ensure_filings, scheme_codes_from_body
 from app.ingest.run import resolve_ingest_files, run_ingest
 from app.ingest.scheme_master import SchemeMaster
@@ -69,16 +70,23 @@ def get_portfolio(request: Request):
 
 @app.post("/api/portfolio/transactions")
 async def post_portfolio_transaction(request: Request):
+    # application/json forces a CORS preflight cross-origin, which this
+    # middleware-less API refuses; text/plain bodies are not accepted.
+    if not request.headers.get("content-type", "").startswith("application/json"):
+        raise HTTPException(status_code=415, detail="Expected application/json.")
     try:
         body = await request.json()
     except Exception:
         body = None
-    try:
-        return add_manual_transaction(request.app.state.db, body)
-    except DuplicateTransaction as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    # Shares the import lock so a hand entry cannot slip between a statement
+    # row's duplicate check and its write.
+    with IMPORT_LOCK:
+        try:
+            return add_manual_transaction(request.app.state.db, body)
+        except DuplicateTransaction as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.delete("/api/portfolio/transactions/{tx_id}")

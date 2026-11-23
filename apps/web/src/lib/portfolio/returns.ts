@@ -77,7 +77,11 @@ export function holdingsFromStatements(
       const snap = snaps.get(accountId);
       const list = moves.get(accountId) ?? [];
       if (!snap) {
-        heldUnits += list.reduce((sum, m) => sum + m.delta, 0);
+        const net = list.reduce((sum, m) => sum + m.delta, 0);
+        // Without a statement closing balance, a negative balance means units
+        // were sold whose purchases are unknown; proceeds are not profit.
+        if (net < 0) covered = false;
+        heldUnits += net;
         continue;
       }
       let inPeriod = 0;

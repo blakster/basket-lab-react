@@ -100,12 +100,15 @@ def write_statement(conn, rows, import_id):
         inserted = 0
         for row in rows["transactions"]:
             _identity, _account, instrument, day, kind, units, amount = row
-            # A transaction already entered by hand is the same cash movement;
-            # importing the statement copy would double-count units and money.
-            if manual_transaction_duplicate(
+            # A transaction already entered by hand is the same cash movement.
+            # The statement supersedes the hand-entered copy: keeping the
+            # statement row preserves folio coverage, dropping the manual row
+            # prevents the units from counting twice.
+            manual = manual_transaction_duplicate(
                 conn, instrument_id=instrument, day=day, kind=kind, units=units, amount=amount
-            ):
-                continue
+            )
+            if manual is not None:
+                conn.execute("DELETE FROM transactions WHERE id = ?", (manual["id"],))
             cursor = conn.execute(
                 "INSERT OR IGNORE INTO transactions "
                 "(id,account_id,instrument_id,date,kind,units,amount,import_id) VALUES (?,?,?,?,?,?,?,?)",

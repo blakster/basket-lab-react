@@ -254,6 +254,14 @@ describe("holdingsFromStatements", () => {
     expect(holdings.get("amfi:1")).toEqual({ heldUnits: 6, covered: true });
   });
 
+  it("marks statement-less net selling as uncovered", () => {
+    const holdings = holdingsFromStatements(
+      [tx({ kind: "sell", units: 5, amount: 500, date: "2024-01-01" })],
+      [],
+    );
+    expect(holdings.get("amfi:1")).toEqual({ heldUnits: -5, covered: false });
+  });
+
   it("extends snapshot units with transactions after the statement date", () => {
     const holdings = holdingsFromStatements(
       [

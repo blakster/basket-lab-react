@@ -149,22 +149,78 @@ def test_manual_matches_imported_statement(client, statement):
     assert response.status_code == 409
 
 
-def test_cas_import_skips_manual_duplicates(db):
-    one = {"statement_period": {}, "folios": [{
-        "folio": "100001", "amc": "AMC", "rta": "CAMS",
-        "schemes": [{"scheme": "Fund", "isin": "INF000000001", "rta": "CAMS", "amfi": "123456",
-                     "close": 100, "valuation": {"date": "2024-06-30", "value": 1000},
-                     "transactions": [
-                         {"date": "2024-04-01", "type": "PURCHASE", "units": "5", "amount": "500"},
-                         {"date": "2024-05-01", "type": "PURCHASE", "units": "5", "amount": "500"},
-                     ]}]}]}
+def _statement_with_transactions(transactions, amfi="123456", isin="INF000000001"):
+    scheme = {"scheme": "Fund", "isin": isin, "rta": "CAMS",
+              "close": 100, "valuation": {"date": "2024-06-30", "value": 1000},
+              "transactions": transactions}
+    if amfi is not None:
+        scheme["amfi"] = amfi
+    return {"statement_period": {}, "folios": [
+        {"folio": "100001", "amc": "AMC", "rta": "CAMS", "schemes": [scheme]}]}
+
+
+def test_cas_import_replaces_manual_duplicates(db):
+    one = _statement_with_transactions([
+        {"date": "2024-04-01", "type": "PURCHASE", "units": "5", "amount": "500"},
+        {"date": "2024-05-01", "type": "PURCHASE", "units": "5", "amount": "500"},
+    ])
     # Hand-enter the first purchase before the statement arrives.
     add_manual_transaction(db, _manual_body(date="2024-04-01", units=5, amount=500))
-    rows = map_statement(one)
-    result = write_statement(db, rows, "cas-1")
-    assert result["imported"] == 1
-    assert result["duplicates"] == 1
+    result = write_statement(db, map_statement(one), "cas-1")
+    # The statement supersedes the hand-entered copy of the first purchase;
+    # the second, unentered purchase imports normally.
+    assert result["imported"] == 2
+    assert result["duplicates"] == 0
+    rows = db.execute("SELECT import_id FROM transactions").fetchall()
+    assert len(rows) == 2
+    assert all(row["import_id"] == "cas-1" for row in rows)
+
+
+def test_cas_import_keeps_repeated_statement_rows(db):
+    one = _statement_with_transactions([
+        {"date": "2024-04-01", "type": "PURCHASE", "units": "5", "amount": "500"},
+        {"date": "2024-04-01", "type": "PURCHASE", "units": "5", "amount": "500"},
+    ])
+    add_manual_transaction(db, _manual_body(date="2024-04-01", units=5, amount=500))
+    result = write_statement(db, map_statement(one), "cas-1")
+    # One hand-entered copy is replaced by the first statement row; the second
+    # identical statement row is a separate purchase and must still import.
+    assert result["imported"] == 2
     assert db.execute("SELECT COUNT(*) FROM transactions").fetchone()[0] == 2
+
+
+def test_cas_isin_only_statement_replaces_manual(db):
+    add_manual_transaction(db, _manual_body(
+        scheme={"schemeCode": "123456", "name": "Fund", "isin": "INF000000001"},
+        date="2024-04-01", units=5, amount=500))
+    # No AMFI code: the statement identifies the fund by ISIN only.
+    one = _statement_with_transactions(
+        [{"date": "2024-04-01", "type": "PURCHASE", "units": "5", "amount": "500"}],
+        amfi=None)
+    result = write_statement(db, map_statement(one), "cas-1")
+    assert result["imported"] == 1
+    rows = db.execute("SELECT instrument_id, import_id FROM transactions").fetchall()
+    assert len(rows) == 1
+    assert rows[0]["instrument_id"] == "isin:INF000000001"
+    assert rows[0]["import_id"] == "cas-1"
+
+
+def test_manual_reuses_instrument_by_isin(db):
+    db.execute(
+        "INSERT INTO instruments (id, kind, name, isin) VALUES "
+        "('isin:INF000000009', 'mf', 'Statement Fund', 'INF000000009')")
+    tx = add_manual_transaction(db, _manual_body(
+        scheme={"schemeCode": "999999", "name": "Statement Fund", "isin": "inf000000009"}))
+    assert tx["instrumentId"] == "isin:INF000000009"
+
+
+def test_manual_transaction_requires_json(client):
+    response = client.post(
+        "/api/portfolio/transactions",
+        content="{}",
+        headers={"Content-Type": "text/plain"},
+    )
+    assert response.status_code == 415
 
 
 def test_delete_manual_transaction(client, statement):
