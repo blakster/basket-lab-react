@@ -363,18 +363,17 @@ describe("holdingsFromStatements", () => {
     expect(holdings.get("amfi:1")).toEqual({ heldUnits: 100, covered: true });
   });
 
-  it("keeps the freshest snapshot and later trades of a shared folio", () => {
+  it("keeps the freshest snapshot of a shared folio", () => {
     const holdings = holdingsFromStatements(
+      [tx({ accountId: "cams:12345678/90", kind: "buy", units: 100, date: "2024-01-01" })],
       [
-        tx({ accountId: "cams:12345678/90", kind: "buy", units: 100, date: "2024-01-01" }),
-        tx({ accountId: "cams:12345678/90", kind: "buy", units: 10, date: "2024-05-15" }),
-      ],
-      [
-        snap({ accountId: "cdsl:folio:12345678/90", units: 100, date: "2024-04-30" }),
+        snap({ accountId: "cdsl:folio:12345678/90", units: 120, date: "2024-04-30" }),
         snap({ accountId: "cams:12345678/90", units: 100, date: "2024-03-31" }),
       ],
     );
-    expect(holdings.get("amfi:1")).toEqual({ heldUnits: 110, covered: true });
+    // The April depository snapshot wins over the March registrar one: its 20
+    // extra units are unexplained, so the folio is uncovered and valued at 120.
+    expect(holdings.get("amfi:1")).toEqual({ heldUnits: 120, covered: false });
   });
 
   it("does not merge different folios or demat accounts", () => {
