@@ -218,9 +218,10 @@ describe("growthSeries", () => {
 describe("statementCoversHolding", () => {
   it("treats rounding noise as covered and real opening units as uncovered", () => {
     expect(statementCoversHolding(undefined, 10)).toBe(true);
-    expect(statementCoversHolding(10.2, 10)).toBe(true);
-    expect(statementCoversHolding(11, 10)).toBe(false);
+    expect(statementCoversHolding(10.01, 10)).toBe(true);
+    expect(statementCoversHolding(10.2, 10)).toBe(false);
     expect(statementCoversHolding(110, 10)).toBe(false);
+    expect(statementCoversHolding(9.9, 10)).toBe(false);
   });
 });
 

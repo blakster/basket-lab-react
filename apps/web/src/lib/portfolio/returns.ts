@@ -23,16 +23,16 @@ export type PortfolioTotals = {
 };
 
 // CAS statements round units to 3 decimals, so a closing balance can differ
-// from the summed transactions by a few hundredths; anything above this is a
-// real opening balance the statement does not describe.
-export const OPENING_TOLERANCE = 0.5;
+// from the summed transactions by a few hundredths; anything beyond this is a
+// real opening balance (or an inconsistency) the statement does not describe.
+export const OPENING_TOLERANCE = 0.05;
 
 export function statementCoversHolding(
   snapshotUnits: number | undefined,
   txUnits: number,
 ): boolean {
   if (snapshotUnits === undefined) return true;
-  return snapshotUnits - txUnits <= OPENING_TOLERANCE;
+  return Math.abs(snapshotUnits - txUnits) <= OPENING_TOLERANCE;
 }
 
 const UNIT_IN = new Set(["buy", "sip", "switch-in", "dividend"]);

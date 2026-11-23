@@ -118,8 +118,10 @@ export function PortfolioWorkspace() {
 
     // One snapshot per account+instrument; sum across accounts (folios) so a
     // fund held in several folios keeps every one, dated by the latest.
+    let earliestSnapshot: string | null = null;
     const snapshotByInstrument = new Map<string, { date: string; value: number }>();
     for (const snap of data.snapshots) {
+      if (!earliestSnapshot || snap.date < earliestSnapshot) earliestSnapshot = snap.date;
       const prev = snapshotByInstrument.get(snap.instrumentId);
       if (!prev) {
         snapshotByInstrument.set(snap.instrumentId, { date: snap.date, value: snap.value });
@@ -138,6 +140,8 @@ export function PortfolioWorkspace() {
       const d = firstTxDateByInstrument.get(id)!;
       if (!since || d < since) since = d;
     }
+    // Snapshot-only holdings (no trades in the period) still need live NAVs.
+    if (!since && earliestSnapshot) since = earliestSnapshot;
     const navCodes = [...new Set(codeByInstrument.values())].sort();
 
     return {
@@ -407,7 +411,7 @@ export function PortfolioWorkspace() {
                       </span>
                     </TableCell>
                     <TableCell className="text-right">
-                      {formatCompactInr(row.position.invested)}
+                      {row.covered ? formatCompactInr(row.position.invested) : "—"}
                     </TableCell>
                     <TableCell className="text-right">
                       {formatCompactInr(row.value)}
