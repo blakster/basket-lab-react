@@ -144,26 +144,37 @@ export function PortfolioWorkspace() {
     }
 
     const values = new Map<string, number>();
+    const valueDateByInstrument = new Map<string, string>();
     const snapshotValued = new Set<string>();
-    // Value date is the freshest valuation we actually have (latest NAV or
-    // statement snapshot), not today: a stale statement must not stretch XIRR.
-    let asOf = "";
     for (const id of model.positions.keys()) {
       const code = model.codeByInstrument.get(id);
       const series = code ? navByCode.get(code) : undefined;
       const held = model.units.get(id)?.total ?? 0;
       if (series && series.length) {
         const latest = series[series.length - 1];
-        if (latest.date > asOf) asOf = latest.date;
         values.set(id, held > 0 ? held * latest.nav : 0);
+        valueDateByInstrument.set(id, latest.date);
       } else {
         snapshotValued.add(id);
-        values.set(id, model.snapshotByInstrument.get(id)?.value ?? 0);
-        const snapDate = model.snapshotByInstrument.get(id)?.date;
-        if (snapDate && snapDate > asOf) asOf = snapDate;
+        const snap = model.snapshotByInstrument.get(id);
+        values.set(id, snap?.value ?? 0);
+        valueDateByInstrument.set(id, snap?.date ?? today);
       }
     }
 
+    // A fund's value date is its own freshest valuation, never before its last
+    // transaction: XIRR cannot credit a purchase before the money went out,
+    // and one fund's newer NAV must not redate another fund's return.
+    const valueDate = (id: string) => {
+      const v = valueDateByInstrument.get(id) ?? today;
+      const t = model.positions.get(id)?.lastDate;
+      return t && t > v ? t : v;
+    };
+    let asOf = "";
+    for (const id of model.positions.keys()) {
+      const d = valueDate(id);
+      if (d > asOf) asOf = d;
+    }
     const asOfDate = asOf || today;
     const totals = portfolioTotals(data.transactions, model.positions, values, asOfDate);
     const seriesPoints = growthSeries(
@@ -190,7 +201,7 @@ export function PortfolioWorkspace() {
           value,
           gain,
           gainPct: position.invested > 0 ? (gain / position.invested) * 100 : null,
-          xirr: xirrPercent(data.transactions, value, asOfDate, position.instrumentId),
+          xirr: xirrPercent(data.transactions, value, valueDate(position.instrumentId), position.instrumentId),
           accounts: [...accountIds]
             .map((id) => model.accountsById.get(id))
             .filter(Boolean)
