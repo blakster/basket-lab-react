@@ -214,6 +214,23 @@ def test_manual_reuses_instrument_by_isin(db):
     assert tx["instrumentId"] == "isin:INF000000009"
 
 
+def test_manual_reuse_prefers_amfi_instrument(db):
+    db.execute(
+        "INSERT INTO instruments (id, kind, name, isin) VALUES "
+        "('isin:INF000000009', 'mf', 'Fund', 'INF000000009'), "
+        "('amfi:888888', 'mf', 'Fund', 'INF000000009')")
+    tx = add_manual_transaction(db, _manual_body(
+        scheme={"schemeCode": "999999", "name": "Fund", "isin": "INF000000009"}))
+    assert tx["instrumentId"] == "amfi:888888"
+
+
+def test_manual_transaction_rejects_booleans(client):
+    for field in ("units", "amount"):
+        body = _manual_body(**{field: True})
+        response = client.post("/api/portfolio/transactions", json=body)
+        assert response.status_code == 422, field
+
+
 def test_manual_transaction_requires_json(client):
     response = client.post(
         "/api/portfolio/transactions",

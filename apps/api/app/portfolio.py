@@ -142,6 +142,9 @@ def manual_transaction_duplicate(
 
 
 def _positive(name: str, value: object) -> float:
+    # JSON booleans coerce to 1.0/0.0; they are never a unit or amount.
+    if isinstance(value, bool):
+        raise ValueError(f"{name} must be a number.")
     try:
         number = float(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
@@ -185,8 +188,14 @@ def add_manual_transaction(conn: sqlite3.Connection, body: object) -> dict:
         isin = str(raw_isin).strip().upper() if raw_isin else None
         # Reuse the statement's instrument when the ISIN is already known, so
         # hand entries and CAS rows share one identity per fund.
+        # Prefer the amfi: row when a fund exists under both ids: its NAV code
+        # is in the id, while an isin: row depends on the scheme master.
         existing = (
-            conn.execute("SELECT id FROM instruments WHERE isin = ?", (isin,)).fetchone()
+            conn.execute(
+                "SELECT id FROM instruments WHERE isin = ? "
+                "ORDER BY CASE WHEN id LIKE 'amfi:%' THEN 0 ELSE 1 END, id LIMIT 1",
+                (isin,),
+            ).fetchone()
             if isin
             else None
         )

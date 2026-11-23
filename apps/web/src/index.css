@@ -1388,6 +1388,12 @@ button[data-static="true"]:active:not(:disabled) {
   gap: 0.6rem;
 }
 
+@media (max-width: 480px) {
+  .manual-fields {
+    grid-template-columns: 1fr;
+  }
+}
+
 .manual-field {
   display: flex;
   flex-direction: column;

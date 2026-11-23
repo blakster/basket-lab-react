@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
 from app.cas_routes import router as cas_router
@@ -72,17 +73,22 @@ def get_portfolio(request: Request):
 async def post_portfolio_transaction(request: Request):
     # application/json forces a CORS preflight cross-origin, which this
     # middleware-less API refuses; text/plain bodies are not accepted.
-    if not request.headers.get("content-type", "").startswith("application/json"):
+    if not request.headers.get("content-type", "").lower().startswith("application/json"):
         raise HTTPException(status_code=415, detail="Expected application/json.")
     try:
         body = await request.json()
     except Exception:
         body = None
     # Shares the import lock so a hand entry cannot slip between a statement
-    # row's duplicate check and its write.
+    # row's duplicate check and its write. The lock can be held for a whole
+    # CAS parse, so wait for it off the event loop.
+    return await run_in_threadpool(_create_manual_transaction, request.app.state.db, body)
+
+
+def _create_manual_transaction(db, body):
     with IMPORT_LOCK:
         try:
-            return add_manual_transaction(request.app.state.db, body)
+            return add_manual_transaction(db, body)
         except DuplicateTransaction as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except ValueError as exc:

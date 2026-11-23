@@ -38,8 +38,10 @@ export function ManualTransactionDialog({ open, onOpenChange }: Props) {
 
   useEffect(() => {
     const q = query.trim();
+    // Drop the previous query's results immediately; they must not stay
+    // selectable while the new query is still resolving.
+    setHits([]);
     if (q.length < 2 || selected) {
-      setHits([]);
       setSearching(false);
       return;
     }
@@ -186,6 +188,7 @@ export function ManualTransactionDialog({ open, onOpenChange }: Props) {
                 key={option}
                 type="button"
                 className={kind === option ? "is-active" : ""}
+                aria-pressed={kind === option}
                 onClick={() => setKind(option)}
               >
                 {option === "buy" ? "Buy" : "Sell"}
