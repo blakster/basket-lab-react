@@ -163,11 +163,11 @@ def map_demat_statement(data):
                     float(_number(holding.get(units_key) or 0)),
                     float(_number(holding.get("value") or 0)),
                 )
-    if not accounts:
+    if not data["accounts"]:
         # A depository import replaces the issuer's snapshots, so a parse
         # that read the statement date but missed every account must not be
-        # treated as a liquidation. Accounts with no holdings are fine: that
-        # is what a fully redeemed statement looks like.
+        # treated as a liquidation. Parsed accounts with no holdings are
+        # fine: that is what a fully redeemed statement looks like.
         raise ValueError("Statement lists no accounts; nothing to import.")
     return {"accounts": list(accounts.values()), "instruments": list(instruments.values()),
             "transactions": [], "snapshots": list(snapshots.values()),

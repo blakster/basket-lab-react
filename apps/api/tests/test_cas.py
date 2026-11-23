@@ -231,6 +231,27 @@ def test_demat_redeemed_folio_stops_counting(client, db, monkeypatch):
     assert tuple(row) == ("2026-11-30", 0.0, 0.0)
 
 
+def test_demat_empty_folios_summary_clears_holdings(client, db, monkeypatch):
+    # Every folio redeemed: the statement still prints the (empty) Mutual
+    # Fund Folios summary, so the parse has accounts but no holdings. That
+    # is a real liquidation and must zero the saved snapshots, unlike a
+    # parse that missed the accounts entirely.
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: demat_statement())
+    client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"oct", "application/pdf")}, data={"password": "x"})
+    november = demat_statement()
+    november["statement_period"] = {"from": "01-Nov-2026", "to": "30-Nov-2026"}
+    november["accounts"][1]["mutual_funds"] = []
+    november["accounts"] = [november["accounts"][1]]
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: november)
+    response = client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"nov", "application/pdf")}, data={"password": "x"})
+    assert response.status_code == 200
+    assert latest_snapshots(db) == {
+        ("cdsl:demat:1200000012345678", "isin:INE000A01010"): ("2026-11-30", 0.0),
+        ("cdsl:demat:1200000012345678", "amfi:123456"): ("2026-11-30", 0.0),
+        ("cdsl:folio:12345678/90", "amfi:234567"): ("2026-11-30", 0.0),
+    }
+
+
 def test_demat_older_reimport_keeps_newer_tombstones(client, db, monkeypatch):
     def upload(content):
         return client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", content, "application/pdf")}, data={"password": "x"})
