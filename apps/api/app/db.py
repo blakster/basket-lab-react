@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS instruments (
 );
 CREATE TABLE IF NOT EXISTS accounts (
   id TEXT PRIMARY KEY,
-  provider TEXT NOT NULL CHECK (provider IN ('zerodha','cams','kfintech','bank','epfo','manual')),
+  provider TEXT NOT NULL CHECK (provider IN ('zerodha','cams','kfintech','cdsl','nsdl','bank','epfo','manual')),
   label TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS transactions (
@@ -104,10 +104,35 @@ def connect_db(path: str | Path) -> sqlite3.Connection:
     return conn
 
 
+def _migrate_accounts_provider(conn):
+    # CHECK constraints cannot be altered; rebuild accounts when it predates
+    # depository providers.
+    row = conn.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'accounts'").fetchone()
+    if row is None or "'cdsl'" in row["sql"]:
+        return
+    conn.execute("PRAGMA foreign_keys = OFF")
+    try:
+        conn.executescript("""
+        BEGIN IMMEDIATE;
+        CREATE TABLE accounts_new (
+          id TEXT PRIMARY KEY,
+          provider TEXT NOT NULL CHECK (provider IN ('zerodha','cams','kfintech','cdsl','nsdl','bank','epfo','manual')),
+          label TEXT NOT NULL
+        );
+        INSERT INTO accounts_new SELECT id, provider, label FROM accounts;
+        DROP TABLE accounts;
+        ALTER TABLE accounts_new RENAME TO accounts;
+        COMMIT;
+        """)
+    finally:
+        conn.execute("PRAGMA foreign_keys = ON")
+
+
 def init_db(path: str | Path) -> sqlite3.Connection:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     conn = connect_db(path)
     conn.executescript(SCHEMA)
+    _migrate_accounts_provider(conn)
     cols = {row[1] for row in conn.execute("PRAGMA table_info(fundamentals)")}
     if "aum_cr" not in cols:
         conn.execute("ALTER TABLE fundamentals ADD COLUMN aum_cr REAL")

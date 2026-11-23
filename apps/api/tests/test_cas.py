@@ -7,7 +7,79 @@ from pathlib import Path
 import pytest
 from casparser.exceptions import CASParseError, IncorrectPasswordError
 
-from app.ingest.cas import map_statement, write_statement
+from app.ingest.cas import map_demat_statement, map_statement, write_statement
+
+
+def demat_statement():
+    return {
+        "file_type": "CDSL",
+        "statement_period": {"from": "01-Oct-2026", "to": "31-Oct-2026"},
+        "accounts": [
+            {"name": "Example DP CDSL Demat Account", "type": "CDSL Demat Account",
+             "dp_id": "12000000", "client_id": "12345678",
+             "equities": [{"name": "EXAMPLE CORP#EQUITY SHARES\x02", "isin": "INE000A01010",
+                           "num_shares": "10.000", "price": "100.00", "value": "1000.00",
+                           "symbol": "EXAMPLE", "exchange": "NSE"}],
+             "mutual_funds": [{"name": "1234 - Example Flexi Cap Fund Direct Plan Growth",
+                               "isin": "INF000000001", "amfi": "123456", "type": "EQUITY",
+                               "balance": "50.500", "nav": "20.00", "value": "1010.00",
+                               "total_cost": "1000.00", "folio": None}],
+             "bonds": []},
+            {"name": "Mutual Fund Folios", "type": "MF Folios", "dp_id": "", "client_id": "",
+             "equities": [], "bonds": [],
+             "mutual_funds": [
+                 {"name": "D5678 - Example Small Cap Fund Direct Plan Growth",
+                  "isin": "INF000000002", "amfi": "234567",
+                  "balance": "100.000", "nav": "50.00", "value": "5000.00",
+                  "total_cost": "4800.00", "folio": "12345678/90"},
+                 {"name": "No Identifier Fund", "isin": None, "amfi": None,
+                  "balance": "1.000", "value": "10.00"},
+             ]},
+        ],
+    }
+
+
+def test_demat_mapping():
+    rows = map_demat_statement(demat_statement())
+    assert rows["transactions"] == []
+    assert rows["accounts"] == [
+        ("cdsl:demat:1200000012345678", "cdsl", "Example DP CDSL Demat Account"),
+        ("cdsl:folio:12345678/90", "cdsl", "MF folio 12345678/90"),
+    ]
+    assert rows["instruments"] == [
+        ("isin:INE000A01010", "stock", "EXAMPLE CORP#EQUITY SHARES", "INE000A01010"),
+        ("amfi:123456", "mf", "Example Flexi Cap Fund Direct Plan Growth", "INF000000001"),
+        ("amfi:234567", "mf", "Example Small Cap Fund Direct Plan Growth", "INF000000002"),
+    ]
+    assert rows["snapshots"] == [
+        ("2026-10-31", "cdsl:demat:1200000012345678", "isin:INE000A01010", 10.0, 1000.0),
+        ("2026-10-31", "cdsl:demat:1200000012345678", "amfi:123456", 50.5, 1010.0),
+        ("2026-10-31", "cdsl:folio:12345678/90", "amfi:234567", 100.0, 5000.0),
+    ]
+    assert rows["skipped"] == 1
+    assert rows["statement_period"] == {"from": "01-Oct-2026", "to": "31-Oct-2026"}
+    assert map_demat_statement(demat_statement()) == rows
+
+
+def test_demat_mapping_nsdl_and_fallbacks():
+    data = demat_statement()
+    data["file_type"] = "NSDL"
+    data["accounts"][1]["mutual_funds"][0].pop("amfi")
+    data["accounts"][1]["mutual_funds"][0].pop("folio")
+    data["accounts"][1]["dp_id"] = "13000000"
+    data["accounts"][1]["client_id"] = "87654321"
+    rows = map_demat_statement(data)
+    assert ("nsdl:demat:1300000087654321", "nsdl", "Mutual Fund Folios") in rows["accounts"]
+    # ISIN-only MF holding falls back to the ISIN instrument and, without a
+    # folio, to its depository account.
+    assert ("isin:INF000000002", "mf", "Example Small Cap Fund Direct Plan Growth", "INF000000002") in rows["instruments"]
+    assert ("2026-10-31", "nsdl:demat:1300000087654321", "isin:INF000000002", 100.0, 5000.0) in rows["snapshots"]
+    assert rows["skipped"] == 1
+
+
+def test_demat_mapping_rejects_missing_period():
+    with pytest.raises(ValueError):
+        map_demat_statement({"accounts": []})
 
 
 @pytest.fixture
@@ -84,9 +156,36 @@ def test_import_endpoint(client, db, monkeypatch, statement):
 
 
 def test_non_cas_statement_rejected(client, db, monkeypatch):
-    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: {"accounts": []})
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: {"unexpected": []})
     response = client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"nsdl pdf", "application/pdf")}, data={"password": "x"})
     assert response.status_code == 400
+
+
+def test_demat_import_endpoint(client, db, monkeypatch):
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: demat_statement())
+    def upload():
+        return client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"demat pdf", "application/pdf")}, data={"password": "x"})
+    response = upload()
+    assert response.status_code == 200
+    assert response.json() == {
+        "importId": hashlib.sha256(b"demat pdf").hexdigest(),
+        "accountsInserted": 2, "instrumentsInserted": 3, "imported": 0,
+        "duplicates": 0, "skipped": 1, "snapshotsWritten": 3,
+        "statementPeriod": {"from": "01-Oct-2026", "to": "31-Oct-2026"}, "warnings": [],
+    }
+    assert db.execute("SELECT COUNT(*) FROM transactions").fetchone()[0] == 0
+    assert db.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0] == 3
+    again = upload().json()
+    assert again["accountsInserted"] == again["instrumentsInserted"] == 0
+    assert again["snapshotsWritten"] == 3
+
+
+def test_empty_demat_statement_imports_nothing(client, db, monkeypatch):
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf",
+                        lambda *args, **kwargs: {"file_type": "NSDL", "statement_period": {"from": "01-Oct-2026", "to": "31-Oct-2026"}, "accounts": []})
+    response = client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"empty", "application/pdf")}, data={"password": "x"})
+    assert response.status_code == 200
+    assert response.json()["snapshotsWritten"] == 0
 
 
 @pytest.mark.parametrize("error,detail", [(IncorrectPasswordError("bad"), "password"), (CASParseError("bad"), "parse")])

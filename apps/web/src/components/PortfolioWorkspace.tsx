@@ -322,8 +322,10 @@ export function PortfolioWorkspace() {
         {formError && <span className="cas-note cas-error">{formError}</span>}
       </form>
       <p className="cas-hint">
-        CAMS or KFintech consolidated account statement. Re-importing the same file
-        adds nothing twice.
+        CAMS or KFintech consolidated account statement, or an NSDL/CDSL
+        depository statement. Depository files import holdings only: units and
+        value, with gain and XIRR hidden. Re-importing the same file adds
+        nothing twice.
       </p>
       <div className="portfolio-actions">
         <Button type="button" onClick={() => setManualOpen(true)}>
