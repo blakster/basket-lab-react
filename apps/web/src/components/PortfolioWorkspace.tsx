@@ -90,16 +90,18 @@ export function PortfolioWorkspace() {
       if (!prev || tx.date < prev) firstTxDateByInstrument.set(tx.instrumentId, tx.date);
     }
 
-    // Latest statement valuation per instrument (accounts summed on the same date).
+    // One snapshot per account+instrument; sum across accounts (folios) so a
+    // fund held in several folios keeps every one, dated by the latest.
     const snapshotByInstrument = new Map<string, { date: string; value: number }>();
     for (const snap of data.snapshots) {
       const prev = snapshotByInstrument.get(snap.instrumentId);
       if (!prev) {
         snapshotByInstrument.set(snap.instrumentId, { date: snap.date, value: snap.value });
-      } else if (snap.date > prev.date) {
-        snapshotByInstrument.set(snap.instrumentId, { date: snap.date, value: snap.value });
-      } else if (snap.date === prev.date) {
-        snapshotByInstrument.set(snap.instrumentId, { date: snap.date, value: prev.value + snap.value });
+      } else {
+        snapshotByInstrument.set(snap.instrumentId, {
+          date: snap.date > prev.date ? snap.date : prev.date,
+          value: prev.value + snap.value,
+        });
       }
     }
 

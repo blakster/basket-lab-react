@@ -31,6 +31,19 @@ def test_mapping(statement):
     assert rows["snapshots"][0] == ("2024-03-31", "cams:100001", "amfi:123456", 18, 1980)
 
 
+def test_reinvest_and_reversal_mapping():
+    statement = {"statement_period": {}, "folios": [{"folio": "100001", "amc": "AMC", "rta": "CAMS", "amfi": "123456",
+        "schemes": [{"scheme": "Fund", "isin": "INF000000001", "rta": "CAMS", "amfi": "123456", "close": 10,
+            "valuation": {"date": "2024-06-30", "value": 1000},
+            "transactions": [
+                {"date": "2024-04-01", "type": "DIVIDEND_REINVEST", "amount": 30, "units": 1.5, "nav": 20},
+                {"date": "2024-05-01", "type": "REVERSAL", "amount": 200, "units": -10, "nav": 20},
+            ]}]}]}
+    rows = map_statement(statement)
+    assert [(r[4], r[5], r[6]) for r in rows["transactions"]] == [("dividend", 1.5, 30.0), ("sell", 10.0, 200.0)]
+    assert rows["skipped"] == 0
+
+
 def test_empty_mapping():
     rows = map_statement({"statement_period": {}, "folios": []})
     assert all(rows[key] == [] for key in ("accounts", "instruments", "transactions", "snapshots"))

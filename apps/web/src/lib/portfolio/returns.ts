@@ -122,6 +122,8 @@ export function xirrPercent(
   const flows = cashflowsFor(transactions, instrumentId);
   if (currentValue > 0) flows.push({ date: asOf, amount: currentValue });
   if (flows.length < 2) return null;
+  // XIRR annualizes over time; same-day flows have no defined rate.
+  if (new Set(flows.map((f) => f.date)).size < 2) return null;
   return calculateXirr(flows.map((f) => ({ date: new Date(f.date), amount: f.amount })));
 }
 

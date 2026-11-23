@@ -69,6 +69,11 @@ describe("xirrPercent", () => {
     expect(xirrPercent(txns, 1100, "2024-02-01")).not.toBeNull();
   });
 
+  it("returns null when every flow falls on one date", () => {
+    const txns = [tx({ kind: "buy", units: 10, amount: 1000, date: "2024-01-01" })];
+    expect(xirrPercent(txns, 1100, "2024-01-01")).toBeNull();
+  });
+
   it("computes a 10% annualized return over one year", () => {
     const txns = [tx({ kind: "buy", units: 10, amount: 1000, date: "2023-01-01" })];
     const rate = xirrPercent(txns, 1100, "2024-01-01");

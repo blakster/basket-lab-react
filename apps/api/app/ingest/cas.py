@@ -16,7 +16,11 @@ KINDS = {
     "PURCHASE": "buy", "PURCHASE_SIP": "sip", "REDEMPTION": "sell",
     "SWITCH_IN": "switch-in", "SWITCH_IN_MERGER": "switch-in",
     "SWITCH_OUT": "switch-out", "SWITCH_OUT_MERGER": "switch-out",
-    "DIVIDEND_PAYOUT": "dividend", "DIVIDEND_REINVESTMENT": "dividend",
+    "DIVIDEND_PAYOUT": "dividend", "DIVIDEND_REINVEST": "dividend",
+    # casparser emits REVERSAL only for negative-unit rows, i.e. a canceled
+    # purchase; as a sell it refunds the cash and removes the units, netting
+    # the original purchase to zero across invested, proceeds and units held.
+    "REVERSAL": "sell",
 }
 
 
