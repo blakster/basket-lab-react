@@ -169,6 +169,11 @@ def map_demat_statement(data):
         # treated as a liquidation. Parsed accounts with no holdings are
         # fine: that is what a fully redeemed statement looks like.
         raise ValueError("Statement lists no accounts; nothing to import.")
+    if not snapshots and skipped:
+        # Accounts parsed but no holding mapped to an account and instrument:
+        # a degraded parse, not a liquidation, so the replace must not wipe
+        # the issuer's snapshots. A fully redeemed statement skips nothing.
+        raise ValueError("Statement holdings could not be read; nothing to import.")
     return {"accounts": list(accounts.values()), "instruments": list(instruments.values()),
             "transactions": [], "snapshots": list(snapshots.values()),
             "skipped": skipped, "statement_period": period,

@@ -291,12 +291,27 @@ def test_empty_demat_statement_rejected(client, db, monkeypatch):
     # the import is refused and existing holdings stay untouched.
     monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: demat_statement())
     client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"oct", "application/pdf")}, data={"password": "x"})
-    assert db.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0] == 3
+    before = latest_snapshots(db)
     monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf",
                         lambda *args, **kwargs: {"file_type": "NSDL", "statement_period": {"from": "01-Oct-2026", "to": "31-Oct-2026"}, "accounts": []})
     response = client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"empty", "application/pdf")}, data={"password": "x"})
     assert response.status_code == 400
-    assert db.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0] == 3
+    assert latest_snapshots(db) == before
+
+
+def test_demat_unreadable_holdings_rejected(client, db, monkeypatch):
+    # Holdings that parse but map to no account or instrument are a degraded
+    # parse, not a liquidation: the import is refused and snapshots stay put.
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: demat_statement())
+    client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"oct", "application/pdf")}, data={"password": "x"})
+    before = latest_snapshots(db)
+    broken = {"file_type": "CDSL", "statement_period": {"from": "01-Nov-2026", "to": "30-Nov-2026"},
+              "accounts": [{"name": "Mutual Fund Folios",
+                            "mutual_funds": [{"name": "Opaque Fund", "balance": "1.0", "value": "10.0"}]}]}
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: broken)
+    response = client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"nov", "application/pdf")}, data={"password": "x"})
+    assert response.status_code == 400
+    assert latest_snapshots(db) == before
 
 
 @pytest.mark.parametrize("error,detail", [(IncorrectPasswordError("bad"), "password"), (CASParseError("bad"), "parse")])
