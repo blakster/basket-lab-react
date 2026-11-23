@@ -17,10 +17,23 @@ export type PortfolioTotals = {
   currentValue: number;
   proceeds: number;
   income: number;
-  gain: number;
+  gain: number | null;
   gainPct: number | null;
   xirr: number | null;
 };
+
+// CAS statements round units to 3 decimals, so a closing balance can differ
+// from the summed transactions by a few hundredths; anything above this is a
+// real opening balance the statement does not describe.
+export const OPENING_TOLERANCE = 0.5;
+
+export function statementCoversHolding(
+  snapshotUnits: number | undefined,
+  txUnits: number,
+): boolean {
+  if (snapshotUnits === undefined) return true;
+  return snapshotUnits - txUnits <= OPENING_TOLERANCE;
+}
 
 const UNIT_IN = new Set(["buy", "sip", "switch-in", "dividend"]);
 const UNIT_OUT = new Set(["sell", "switch-out"]);
@@ -132,6 +145,7 @@ export function portfolioTotals(
   positions: Map<string, Position>,
   values: Map<string, number>,
   asOf: string,
+  complete = true,
 ): PortfolioTotals {
   // Switches move value between funds, not new money: they stay out of
   // invested and proceeds so the totals reflect external cash only.
@@ -145,15 +159,17 @@ export function portfolioTotals(
     else if (isDividendPayout(tx)) income += tx.amount;
   }
   for (const p of positions.values()) currentValue += values.get(p.instrumentId) ?? 0;
-  const gain = currentValue + proceeds + income - invested;
+  // Without the opening balance, invested and gain are unknowable: the
+  // statement only covers part of the holding period.
+  const gain = complete ? currentValue + proceeds + income - invested : null;
   return {
     invested,
     currentValue,
     proceeds,
     income,
     gain,
-    gainPct: invested > 0 ? (gain / invested) * 100 : null,
-    xirr: xirrPercent(transactions, currentValue, asOf),
+    gainPct: complete && gain !== null && invested > 0 ? (gain / invested) * 100 : null,
+    xirr: complete ? xirrPercent(transactions, currentValue, asOf) : null,
   };
 }
 

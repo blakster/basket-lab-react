@@ -7,6 +7,7 @@ import {
   growthSeries,
   isDividendPayout,
   portfolioTotals,
+  statementCoversHolding,
   unitsByInstrument,
   xirrPercent,
 } from "./returns";
@@ -211,5 +212,33 @@ describe("growthSeries", () => {
     );
     expect(series.length).toBeGreaterThan(0);
     expect(series[series.length - 1]).toEqual({ date: "2024-03-31", value: 350 });
+  });
+});
+
+describe("statementCoversHolding", () => {
+  it("treats rounding noise as covered and real opening units as uncovered", () => {
+    expect(statementCoversHolding(undefined, 10)).toBe(true);
+    expect(statementCoversHolding(10.2, 10)).toBe(true);
+    expect(statementCoversHolding(11, 10)).toBe(false);
+    expect(statementCoversHolding(110, 10)).toBe(false);
+  });
+});
+
+describe("portfolioTotals with incomplete history", () => {
+  it("hides gain and XIRR but keeps values", () => {
+    const transactions = [tx({ kind: "sip", units: 5, amount: 500, date: "2024-01-01" })];
+    const positions = buildPositions(transactions);
+    const totals = portfolioTotals(
+      transactions,
+      positions,
+      new Map([["amfi:1", 900]]),
+      "2024-06-01",
+      false,
+    );
+    expect(totals.currentValue).toBe(900);
+    expect(totals.invested).toBe(500);
+    expect(totals.gain).toBeNull();
+    expect(totals.gainPct).toBeNull();
+    expect(totals.xirr).toBeNull();
   });
 });

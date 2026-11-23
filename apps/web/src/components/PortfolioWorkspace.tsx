@@ -23,6 +23,7 @@ import {
   buildPositions,
   growthSeries,
   portfolioTotals,
+  statementCoversHolding,
   unitsByInstrument,
   xirrPercent,
   type Position,
@@ -81,6 +82,30 @@ export function PortfolioWorkspace() {
     const positions = buildPositions(data.transactions);
     const units = unitsByInstrument(data.transactions);
 
+    // Closing units per instrument, summed across folios: the statement's
+    // authoritative holding at period end. Funds with no transactions in the
+    // period still appear.
+    const snapshotUnitsByInstrument = new Map<string, number>();
+    for (const snap of data.snapshots) {
+      snapshotUnitsByInstrument.set(
+        snap.instrumentId,
+        (snapshotUnitsByInstrument.get(snap.instrumentId) ?? 0) + snap.units,
+      );
+    }
+    for (const [id, snapUnits] of snapshotUnitsByInstrument) {
+      if (!positions.has(id)) {
+        positions.set(id, {
+          instrumentId: id,
+          units: snapUnits,
+          invested: 0,
+          proceeds: 0,
+          income: 0,
+          firstDate: null,
+          lastDate: null,
+        });
+      }
+    }
+
     const codeByInstrument = new Map<string, string>();
     for (const inst of data.instruments) {
       if (inst.schemeCode) codeByInstrument.set(inst.id, inst.schemeCode);
@@ -120,6 +145,7 @@ export function PortfolioWorkspace() {
       accountsById,
       positions,
       units,
+      snapshotUnitsByInstrument,
       codeByInstrument,
       firstTxDateByInstrument,
       snapshotByInstrument,
@@ -149,7 +175,7 @@ export function PortfolioWorkspace() {
     for (const id of model.positions.keys()) {
       const code = model.codeByInstrument.get(id);
       const series = code ? navByCode.get(code) : undefined;
-      const held = model.units.get(id)?.total ?? 0;
+      const held = model.snapshotUnitsByInstrument.get(id) ?? model.units.get(id)?.total ?? 0;
       if (series && series.length) {
         const latest = series[series.length - 1];
         values.set(id, held > 0 ? held * latest.nav : 0);
@@ -176,7 +202,15 @@ export function PortfolioWorkspace() {
       if (d > asOf) asOf = d;
     }
     const asOfDate = asOf || today;
-    const totals = portfolioTotals(data.transactions, model.positions, values, asOfDate);
+    // A statement that closes above the summed transactions carries an
+    // opening balance it does not describe; gains and XIRR are unknowable.
+    const complete = [...model.positions.keys()].every((id) =>
+      statementCoversHolding(
+        model.snapshotUnitsByInstrument.get(id),
+        model.units.get(id)?.total ?? 0,
+      ),
+    );
+    const totals = portfolioTotals(data.transactions, model.positions, values, asOfDate, complete);
     const seriesPoints = growthSeries(
       data.transactions,
       navByCode,
@@ -189,7 +223,11 @@ export function PortfolioWorkspace() {
       .map((position: Position) => {
         const instrument = model.instrumentsById.get(position.instrumentId);
         const value = values.get(position.instrumentId) ?? 0;
-        const gain = value + position.proceeds + position.income - position.invested;
+        const covered = statementCoversHolding(
+          model.snapshotUnitsByInstrument.get(position.instrumentId),
+          model.units.get(position.instrumentId)?.total ?? 0,
+        );
+        const gain = covered ? value + position.proceeds + position.income - position.invested : null;
         const accountIds = new Set(
           data.transactions
             .filter((t) => t.instrumentId === position.instrumentId)
@@ -200,8 +238,9 @@ export function PortfolioWorkspace() {
           instrument,
           value,
           gain,
-          gainPct: position.invested > 0 ? (gain / position.invested) * 100 : null,
-          xirr: xirrPercent(data.transactions, value, valueDate(position.instrumentId), position.instrumentId),
+          gainPct: covered && gain !== null && position.invested > 0 ? (gain / position.invested) * 100 : null,
+          covered,
+          xirr: covered ? xirrPercent(data.transactions, value, valueDate(position.instrumentId), position.instrumentId) : null,
           accounts: [...accountIds]
             .map((id) => model.accountsById.get(id))
             .filter(Boolean)
@@ -211,7 +250,7 @@ export function PortfolioWorkspace() {
       .filter((row) => row.position.units !== 0 || row.position.invested > 0 || row.value > 0)
       .sort((a, b) => b.value - a.value);
 
-    return { totals, seriesPoints, rows, asOf: asOfDate, snapshotValued, navLoading: navQuery.isLoading };
+    return { totals, seriesPoints, rows, asOf: asOfDate, complete, snapshotValued, navLoading: navQuery.isLoading };
   }, [data, model, navQuery.data, navQuery.isLoading, today]);
 
   if (portfolioQuery.isLoading) {
@@ -225,9 +264,10 @@ export function PortfolioWorkspace() {
     );
   }
 
-  const hasHoldings = data.transactions.length > 0;
+  const hasHoldings = data.transactions.length > 0 || data.snapshots.length > 0;
   const chartData = derived.seriesPoints.map((p) => ({ date: p.date, value: p.value }));
-  const showChart = chartData.length >= 2 && chartData.some((p) => p.value > 0);
+  const showChart =
+    derived.complete && chartData.length >= 2 && chartData.some((p) => p.value > 0);
   const fallbackCount = derived.rows.filter((row) =>
     derived.snapshotValued.has(row.position.instrumentId),
   ).length;
@@ -302,9 +342,9 @@ export function PortfolioWorkspace() {
             <div className="desk-kpi">
               <span className="kpi-label">All-time gain</span>
               <span
-                className={`kpi-value${derived.totals.gain < 0 ? " is-down" : " is-up"}`}
+                className={`kpi-value${(derived.totals.gain ?? 0) < 0 ? " is-down" : " is-up"}`}
               >
-                {formatSignedInr(derived.totals.gain)}
+                {derived.totals.gain === null ? "—" : formatSignedInr(derived.totals.gain)}
               </span>
               <span className="kpi-sub">{formatPct(derived.totals.gainPct)}</span>
             </div>
@@ -337,6 +377,12 @@ export function PortfolioWorkspace() {
               history valued at the statement's latest figure.
             </p>
           )}
+          {!derived.complete && (
+            <p className="cas-hint">
+              Some holdings predate the imported statement, so all-time gain
+              and XIRR are hidden; current value is exact.
+            </p>
+          )}
 
           <div className="table-scroll">
             <Table className="insight-table">
@@ -357,6 +403,7 @@ export function PortfolioWorkspace() {
                       <span className="holding-sub">
                         {row.accounts.join(" · ") || row.position.instrumentId}
                         {!row.instrument?.schemeCode && " · no NAV history"}
+                        {!row.covered && " · predates statement"}
                       </span>
                     </TableCell>
                     <TableCell className="text-right">
@@ -366,10 +413,16 @@ export function PortfolioWorkspace() {
                       {formatCompactInr(row.value)}
                     </TableCell>
                     <TableCell className="text-right">
-                      <span className={row.gain < 0 ? "is-down" : "is-up"}>
-                        {formatSignedInr(row.gain)}
-                      </span>{" "}
-                      <span className="insight-weight">{formatPct(row.gainPct)}</span>
+                      {row.gain === null ? (
+                        "—"
+                      ) : (
+                        <>
+                          <span className={row.gain < 0 ? "is-down" : "is-up"}>
+                            {formatSignedInr(row.gain)}
+                          </span>{" "}
+                          <span className="insight-weight">{formatPct(row.gainPct)}</span>
+                        </>
+                      )}
                     </TableCell>
                     <TableCell className="text-right">{formatPct(row.xirr)}</TableCell>
                   </TableRow>
