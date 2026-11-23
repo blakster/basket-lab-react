@@ -12,6 +12,17 @@ export type PortfolioInstrument = {
   schemeCode: string | null;
 };
 
+export type ManualTransactionKind = "buy" | "sell";
+
+export type ManualTransactionBody = {
+  instrumentId?: string;
+  scheme?: { schemeCode: string; name: string; isin: string | null };
+  date: string;
+  kind: ManualTransactionKind;
+  units: number;
+  amount: number;
+};
+
 export type PortfolioTransaction = {
   id: string;
   accountId: string;
@@ -20,6 +31,7 @@ export type PortfolioTransaction = {
   kind: string;
   units: number;
   amount: number;
+  manual?: boolean;
 };
 
 export type PortfolioSnapshot = {
@@ -86,4 +98,31 @@ export async function importCas(
     );
   }
   return json as CasImportResult;
+}
+
+async function apiError(res: Response, fallback: string): Promise<Error> {
+  const json = (await res.json().catch(() => ({}))) as { detail?: unknown };
+  const detail = json.detail;
+  return new Error(
+    typeof detail === "string" && detail ? detail : fallback,
+  );
+}
+
+export async function createManualTransaction(
+  body: ManualTransactionBody,
+): Promise<PortfolioTransaction> {
+  const res = await fetch("/api/portfolio/transactions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw await apiError(res, "Could not add this transaction.");
+  return (await res.json()) as PortfolioTransaction;
+}
+
+export async function deleteManualTransaction(id: string): Promise<void> {
+  const res = await fetch(`/api/portfolio/transactions/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw await apiError(res, "Could not delete this transaction.");
 }

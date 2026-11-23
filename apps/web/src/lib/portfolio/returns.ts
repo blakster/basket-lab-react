@@ -1,6 +1,6 @@
 import { calculateXirr } from "../backtest/xirr";
 import type { NavPoint } from "../../types";
-import type { PortfolioTransaction } from "../api/portfolio";
+import type { PortfolioSnapshot, PortfolioTransaction } from "../api/portfolio";
 
 export type Position = {
   instrumentId: string;
@@ -26,13 +26,80 @@ export type PortfolioTotals = {
 // from the summed transactions by a few hundredths; anything beyond this is a
 // real opening balance (or an inconsistency) the statement does not describe.
 export const OPENING_TOLERANCE = 0.05;
+// Float sums of fractional units (0.3 − 0.1 − 0.2) land within 1e-16 of zero;
+// only a clearly negative balance means unknown purchases.
+const UNIT_EPSILON = 1e-6;
 
-export function statementCoversHolding(
-  snapshotUnits: number | undefined,
-  txUnits: number,
-): boolean {
-  if (snapshotUnits === undefined) return true;
-  return Math.abs(snapshotUnits - txUnits) <= OPENING_TOLERANCE;
+export type HoldingCoverage = { heldUnits: number; covered: boolean };
+
+// A statement snapshot is authoritative only up to its own date: current
+// units are its closing units plus any later transactions (hand-entered or
+// from a newer statement). Coverage compares only the statement period, so a
+// manual trade after the statement never reads as a missing opening balance.
+export function holdingsFromStatements(
+  transactions: PortfolioTransaction[],
+  snapshots: PortfolioSnapshot[],
+): Map<string, HoldingCoverage> {
+  const snapsByInstrument = new Map<string, Map<string, { date: string; units: number }>>();
+  for (const snap of snapshots) {
+    let accounts = snapsByInstrument.get(snap.instrumentId);
+    if (!accounts) {
+      accounts = new Map();
+      snapsByInstrument.set(snap.instrumentId, accounts);
+    }
+    const prev = accounts.get(snap.accountId);
+    if (!prev || snap.date > prev.date) {
+      accounts.set(snap.accountId, { date: snap.date, units: snap.units });
+    }
+  }
+  const movesByInstrument = new Map<string, Map<string, { date: string; delta: number }[]>>();
+  for (const tx of transactions) {
+    let accounts = movesByInstrument.get(tx.instrumentId);
+    if (!accounts) {
+      accounts = new Map();
+      movesByInstrument.set(tx.instrumentId, accounts);
+    }
+    const list = accounts.get(tx.accountId);
+    const move = { date: tx.date, delta: unitDelta(tx) };
+    if (list) list.push(move);
+    else accounts.set(tx.accountId, [move]);
+  }
+  for (const accounts of movesByInstrument.values()) {
+    for (const list of accounts.values()) list.sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  const out = new Map<string, HoldingCoverage>();
+  const instruments = new Set([...snapsByInstrument.keys(), ...movesByInstrument.keys()]);
+  for (const id of instruments) {
+    const snaps = snapsByInstrument.get(id) ?? new Map<string, { date: string; units: number }>();
+    const moves = movesByInstrument.get(id) ?? new Map<string, { date: string; delta: number }[]>();
+    const accounts = new Set([...snaps.keys(), ...moves.keys()]);
+    let heldUnits = 0;
+    let covered = true;
+    for (const accountId of accounts) {
+      const snap = snaps.get(accountId);
+      const list = moves.get(accountId) ?? [];
+      if (!snap) {
+        heldUnits += list.reduce((sum, m) => sum + m.delta, 0);
+        continue;
+      }
+      let inPeriod = 0;
+      let after = 0;
+      for (const m of list) {
+        if (m.date <= snap.date) inPeriod += m.delta;
+        else after += m.delta;
+      }
+      if (Math.abs(snap.units - inPeriod) > OPENING_TOLERANCE) covered = false;
+      heldUnits += snap.units + after;
+    }
+    // Selling more units than statements and entries account for means
+    // missing purchases, so proceeds are not profit. Judged per instrument:
+    // a hand-entered redemption sits in the manual account while its purchases
+    // sit in the statement account. Unit floats carry rounding noise.
+    if (heldUnits < -UNIT_EPSILON) covered = false;
+    out.set(id, { heldUnits, covered });
+  }
+  return out;
 }
 
 const UNIT_IN = new Set(["buy", "sip", "switch-in", "dividend"]);
