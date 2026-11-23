@@ -262,6 +262,54 @@ describe("holdingsFromStatements", () => {
     expect(holdings.get("amfi:1")).toEqual({ heldUnits: -5, covered: false });
   });
 
+  it("treats fractional-unit rounding as fully traded", () => {
+    const holdings = holdingsFromStatements(
+      [
+        tx({ kind: "buy", units: 0.3, date: "2024-01-01" }),
+        tx({ kind: "sell", units: 0.1, date: "2024-02-01" }),
+        tx({ kind: "sell", units: 0.2, date: "2024-03-01" }),
+      ],
+      [],
+    );
+    const holding = holdings.get("amfi:1")!;
+    expect(holding.heldUnits).toBeCloseTo(0, 10);
+    expect(holding.covered).toBe(true);
+  });
+
+  it("keeps a hand-entered redemption of statement-bought units covered", () => {
+    const holdings = holdingsFromStatements(
+      [
+        tx({ kind: "buy", units: 10, date: "2024-01-01" }),
+        tx({
+          accountId: "manual:entry",
+          kind: "sell",
+          units: 3,
+          amount: 330,
+          date: "2024-04-15",
+        }),
+      ],
+      [snap({ units: 10 })],
+    );
+    expect(holdings.get("amfi:1")).toEqual({ heldUnits: 7, covered: true });
+  });
+
+  it("flags a redemption beyond the known units as uncovered", () => {
+    const holdings = holdingsFromStatements(
+      [
+        tx({ kind: "buy", units: 10, date: "2024-01-01" }),
+        tx({
+          accountId: "manual:entry",
+          kind: "sell",
+          units: 12,
+          amount: 1300,
+          date: "2024-04-15",
+        }),
+      ],
+      [snap({ units: 10 })],
+    );
+    expect(holdings.get("amfi:1")).toEqual({ heldUnits: -2, covered: false });
+  });
+
   it("extends snapshot units with transactions after the statement date", () => {
     const holdings = holdingsFromStatements(
       [

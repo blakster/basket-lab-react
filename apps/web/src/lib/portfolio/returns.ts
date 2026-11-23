@@ -26,6 +26,9 @@ export type PortfolioTotals = {
 // from the summed transactions by a few hundredths; anything beyond this is a
 // real opening balance (or an inconsistency) the statement does not describe.
 export const OPENING_TOLERANCE = 0.05;
+// Float sums of fractional units (0.3 − 0.1 − 0.2) land within 1e-16 of zero;
+// only a clearly negative balance means unknown purchases.
+const UNIT_EPSILON = 1e-6;
 
 export type HoldingCoverage = { heldUnits: number; covered: boolean };
 
@@ -77,11 +80,7 @@ export function holdingsFromStatements(
       const snap = snaps.get(accountId);
       const list = moves.get(accountId) ?? [];
       if (!snap) {
-        const net = list.reduce((sum, m) => sum + m.delta, 0);
-        // Without a statement closing balance, a negative balance means units
-        // were sold whose purchases are unknown; proceeds are not profit.
-        if (net < 0) covered = false;
-        heldUnits += net;
+        heldUnits += list.reduce((sum, m) => sum + m.delta, 0);
         continue;
       }
       let inPeriod = 0;
@@ -93,6 +92,11 @@ export function holdingsFromStatements(
       if (Math.abs(snap.units - inPeriod) > OPENING_TOLERANCE) covered = false;
       heldUnits += snap.units + after;
     }
+    // Selling more units than statements and entries account for means
+    // missing purchases, so proceeds are not profit. Judged per instrument:
+    // a hand-entered redemption sits in the manual account while its purchases
+    // sit in the statement account. Unit floats carry rounding noise.
+    if (heldUnits < -UNIT_EPSILON) covered = false;
     out.set(id, { heldUnits, covered });
   }
   return out;
