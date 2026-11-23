@@ -58,6 +58,8 @@ def test_demat_mapping():
     ]
     assert rows["skipped"] == 1
     assert rows["statement_period"] == {"from": "01-Oct-2026", "to": "31-Oct-2026"}
+    assert rows["replace_snapshots"] is True
+    assert rows["snapshot_date"] == "2026-10-31"
     assert map_demat_statement(demat_statement()) == rows
 
 
@@ -178,6 +180,20 @@ def test_demat_import_endpoint(client, db, monkeypatch):
     again = upload().json()
     assert again["accountsInserted"] == again["instrumentsInserted"] == 0
     assert again["snapshotsWritten"] == 3
+
+
+def test_demat_reimport_drops_sold_holdings(client, db, monkeypatch):
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: demat_statement())
+    client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"oct", "application/pdf")}, data={"password": "x"})
+    assert db.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0] == 3
+    november = demat_statement()
+    november["statement_period"] = {"from": "01-Nov-2026", "to": "30-Nov-2026"}
+    november["accounts"][0]["equities"] = []
+    november["accounts"][0]["mutual_funds"] = []
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: november)
+    client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"nov", "application/pdf")}, data={"password": "x"})
+    rows = [tuple(r) for r in db.execute("SELECT account_id, instrument_id, date FROM snapshots")]
+    assert rows == [("cdsl:folio:12345678/90", "amfi:234567", "2026-11-30")]
 
 
 def test_empty_demat_statement_imports_nothing(client, db, monkeypatch):

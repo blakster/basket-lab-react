@@ -165,7 +165,10 @@ def map_demat_statement(data):
                 )
     return {"accounts": list(accounts.values()), "instruments": list(instruments.values()),
             "transactions": [], "snapshots": list(snapshots.values()),
-            "skipped": skipped, "statement_period": period}
+            "skipped": skipped, "statement_period": period,
+            # A depository statement is the account's complete picture at its
+            # date, so holdings it no longer lists must stop counting.
+            "replace_snapshots": True, "snapshot_date": day}
 
 
 # FastAPI runs sync endpoints on worker threads; casparser's PDFium binding and
@@ -202,6 +205,14 @@ def write_statement(conn, rows, import_id):
                 (*row, import_id),
             )
             inserted += cursor.rowcount
+        if rows.get("replace_snapshots"):
+            ids = [row[0] for row in rows["accounts"]]
+            if ids:
+                conn.execute(
+                    "DELETE FROM snapshots WHERE date <= ? AND account_id IN ("
+                    + ",".join("?" for _ in ids) + ")",
+                    (rows["snapshot_date"], *ids),
+                )
         conn.executemany(
             "INSERT INTO snapshots (date,account_id,instrument_id,units,value) VALUES (?,?,?,?,?) "
             "ON CONFLICT(date,account_id,instrument_id) DO UPDATE SET units=excluded.units,value=excluded.value",
