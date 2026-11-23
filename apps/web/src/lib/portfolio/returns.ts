@@ -32,6 +32,17 @@ const UNIT_EPSILON = 1e-6;
 
 export type HoldingCoverage = { heldUnits: number; covered: boolean };
 
+// A registrar CAS files a folio as `<rta>:<folio>`; a depository CAS files
+// the same mutual fund folio as `<issuer>:folio:<folio>`. Both name one
+// real-world position, so holdings math groups them and counts units once.
+export function folioGroupKey(accountId: string): string {
+  const registrar = /^(?:cams|kfintech):(.+)$/.exec(accountId);
+  if (registrar) return `folio:${registrar[1].trim()}`;
+  const depository = /^(?:cdsl|nsdl):folio:(.+)$/.exec(accountId);
+  if (depository) return `folio:${depository[1].trim()}`;
+  return accountId;
+}
+
 // A statement snapshot is authoritative only up to its own date: current
 // units are its closing units plus any later transactions (hand-entered or
 // from a newer statement). Coverage compares only the statement period, so a
@@ -74,11 +85,37 @@ export function holdingsFromStatements(
     const snaps = snapsByInstrument.get(id) ?? new Map<string, { date: string; units: number }>();
     const moves = movesByInstrument.get(id) ?? new Map<string, { date: string; delta: number }[]>();
     const accounts = new Set([...snaps.keys(), ...moves.keys()]);
+    // Registrar and depository statements can report the same folio; merge
+    // those accounts so the position counts once, with the freshest snapshot
+    // and every trade either source recorded.
+    const groups = new Map<string, string[]>();
+    for (const accountId of accounts) {
+      const key = folioGroupKey(accountId);
+      const group = groups.get(key);
+      if (group) group.push(accountId);
+      else groups.set(key, [accountId]);
+    }
     let heldUnits = 0;
     let covered = true;
-    for (const accountId of accounts) {
-      const snap = snaps.get(accountId);
-      const list = moves.get(accountId) ?? [];
+    for (const group of groups.values()) {
+      let snap: { date: string; units: number } | undefined;
+      let snapHasMoves = false;
+      for (const accountId of group) {
+        const candidate = snaps.get(accountId);
+        if (!candidate) continue;
+        const hasMoves = (moves.get(accountId) ?? []).length > 0;
+        if (
+          !snap ||
+          candidate.date > snap.date ||
+          (candidate.date === snap.date && hasMoves && !snapHasMoves)
+        ) {
+          snap = candidate;
+          snapHasMoves = hasMoves;
+        }
+      }
+      const list = group
+        .flatMap((accountId) => moves.get(accountId) ?? [])
+        .sort((a, b) => a.date.localeCompare(b.date));
       if (!snap) {
         heldUnits += list.reduce((sum, m) => sum + m.delta, 0);
         continue;
