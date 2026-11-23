@@ -15,6 +15,7 @@ import { fetchNav } from "../lib/api/nav";
 import {
   CAS_FILE_REJECT_MESSAGE,
   casFileRejected,
+  deleteManualTransaction,
   getPortfolio,
   importCas,
 } from "../lib/api/portfolio";
@@ -22,13 +23,14 @@ import { formatCompactInr, formatInr } from "../lib/format";
 import {
   buildPositions,
   growthSeries,
+  holdingsFromStatements,
   portfolioTotals,
-  statementCoversHolding,
   unitsByInstrument,
   xirrPercent,
   type Position,
 } from "../lib/portfolio/returns";
 import { GrowthPathChart } from "./LabPlots";
+import { ManualTransactionDialog } from "./ManualTransactionDialog";
 
 function formatPct(n: number | null): string {
   if (n === null || !Number.isFinite(n)) return "—";
@@ -48,6 +50,8 @@ export function PortfolioWorkspace() {
   const [password, setPassword] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [importNote, setImportNote] = useState<string | null>(null);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const importMutation = useMutation({
     mutationFn: () => {
@@ -73,6 +77,17 @@ export function PortfolioWorkspace() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteManualTransaction(id),
+    onSuccess: () => {
+      setDeleteError(null);
+      queryClient.invalidateQueries({ queryKey: ["portfolio"] });
+    },
+    onError: (error: Error) => {
+      setDeleteError(error.message || "Could not delete this transaction.");
+    },
+  });
+
   const data = portfolioQuery.data;
 
   const model = useMemo(() => {
@@ -82,21 +97,14 @@ export function PortfolioWorkspace() {
     const positions = buildPositions(data.transactions);
     const units = unitsByInstrument(data.transactions);
 
-    // Closing units per instrument, summed across folios: the statement's
-    // authoritative holding at period end. Funds with no transactions in the
-    // period still appear.
-    const snapshotUnitsByInstrument = new Map<string, number>();
-    for (const snap of data.snapshots) {
-      snapshotUnitsByInstrument.set(
-        snap.instrumentId,
-        (snapshotUnitsByInstrument.get(snap.instrumentId) ?? 0) + snap.units,
-      );
-    }
-    for (const [id, snapUnits] of snapshotUnitsByInstrument) {
+    // Held units per instrument: statement closing units extended by any
+    // later transactions, with coverage of the statement period itself.
+    const holdings = holdingsFromStatements(data.transactions, data.snapshots);
+    for (const [id, holding] of holdings) {
       if (!positions.has(id)) {
         positions.set(id, {
           instrumentId: id,
-          units: snapUnits,
+          units: holding.heldUnits,
           invested: 0,
           proceeds: 0,
           income: 0,
@@ -149,7 +157,7 @@ export function PortfolioWorkspace() {
       accountsById,
       positions,
       units,
-      snapshotUnitsByInstrument,
+      holdings,
       codeByInstrument,
       firstTxDateByInstrument,
       snapshotByInstrument,
@@ -179,7 +187,7 @@ export function PortfolioWorkspace() {
     for (const id of model.positions.keys()) {
       const code = model.codeByInstrument.get(id);
       const series = code ? navByCode.get(code) : undefined;
-      const held = model.snapshotUnitsByInstrument.get(id) ?? model.units.get(id)?.total ?? 0;
+      const held = model.holdings.get(id)?.heldUnits ?? model.units.get(id)?.total ?? 0;
       if (series && series.length) {
         const latest = series[series.length - 1];
         values.set(id, held > 0 ? held * latest.nav : 0);
@@ -208,11 +216,8 @@ export function PortfolioWorkspace() {
     const asOfDate = asOf || today;
     // A statement that closes above the summed transactions carries an
     // opening balance it does not describe; gains and XIRR are unknowable.
-    const complete = [...model.positions.keys()].every((id) =>
-      statementCoversHolding(
-        model.snapshotUnitsByInstrument.get(id),
-        model.units.get(id)?.total ?? 0,
-      ),
+    const complete = [...model.positions.keys()].every(
+      (id) => model.holdings.get(id)?.covered ?? true,
     );
     const totals = portfolioTotals(data.transactions, model.positions, values, asOfDate, complete);
     const seriesPoints = growthSeries(
@@ -227,10 +232,7 @@ export function PortfolioWorkspace() {
       .map((position: Position) => {
         const instrument = model.instrumentsById.get(position.instrumentId);
         const value = values.get(position.instrumentId) ?? 0;
-        const covered = statementCoversHolding(
-          model.snapshotUnitsByInstrument.get(position.instrumentId),
-          model.units.get(position.instrumentId)?.total ?? 0,
-        );
+        const covered = model.holdings.get(position.instrumentId)?.covered ?? true;
         const gain = covered ? value + position.proceeds + position.income - position.invested : null;
         const accountIds = new Set(
           data.transactions
@@ -269,6 +271,9 @@ export function PortfolioWorkspace() {
   }
 
   const hasHoldings = data.transactions.length > 0 || data.snapshots.length > 0;
+  const manualTransactions = data.transactions
+    .filter((tx) => tx.manual)
+    .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
   const chartData = derived.seriesPoints.map((p) => ({ date: p.date, value: p.value }));
   const showChart =
     derived.complete && chartData.length >= 2 && chartData.some((p) => p.value > 0);
@@ -320,11 +325,18 @@ export function PortfolioWorkspace() {
         CAMS or KFintech consolidated account statement. Re-importing the same file
         adds nothing twice.
       </p>
+      <div className="portfolio-actions">
+        <Button type="button" onClick={() => setManualOpen(true)}>
+          Add transaction
+        </Button>
+        <ManualTransactionDialog open={manualOpen} onOpenChange={setManualOpen} />
+        {deleteError && <span className="cas-note cas-error">{deleteError}</span>}
+      </div>
 
       {!hasHoldings ? (
         <p className="insight-empty">
-          No holdings yet. Import a CAS PDF above to see returns, XIRR and the
-          growth graph.
+          No holdings yet. Import a CAS PDF above or add a transaction by
+          hand to see returns, XIRR and the growth graph.
         </p>
       ) : (
         <>
@@ -434,6 +446,38 @@ export function PortfolioWorkspace() {
               </TableBody>
             </Table>
           </div>
+
+          {manualTransactions.length > 0 && (
+            <div className="manual-entries">
+              <h3 className="manual-entries-title">Added by hand</h3>
+              <ul className="manual-entries-list">
+                {manualTransactions.map((tx) => (
+                  <li key={tx.id} className="manual-entry">
+                    <span className="manual-entry-main">
+                      {model.instrumentsById.get(tx.instrumentId)?.name ??
+                        tx.instrumentId}
+                      <span className="holding-sub">
+                        {tx.date} · {tx.kind === "sell" ? "Sell" : "Buy"} ·{" "}
+                        {tx.units} units · {formatInr(tx.amount)}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      className="manual-remove"
+                      disabled={deleteMutation.isPending}
+                      onClick={() => {
+                        if (window.confirm("Remove this transaction?")) {
+                          deleteMutation.mutate(tx.id);
+                        }
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </>
       )}
     </div>

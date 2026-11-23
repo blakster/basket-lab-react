@@ -1,8 +1,20 @@
-"""Portfolio domain reads: accounts, instruments, transactions, latest snapshots."""
+"""Portfolio domain reads and manual transaction writes."""
 
+import math
 import sqlite3
+import uuid
+from datetime import date
 
 from app.ingest.scheme_master import SchemeMaster
+
+MANUAL_IMPORT_ID = "manual"
+MANUAL_ACCOUNT_ID = "manual:entry"
+MANUAL_ACCOUNT = (MANUAL_ACCOUNT_ID, "manual", "Manual entry")
+MANUAL_KINDS = {"buy", "sell"}
+
+
+class DuplicateTransaction(ValueError):
+    """The same transaction already exists from a statement or manual entry."""
 
 
 def _scheme_code(instrument_id: str, isin: str | None, master: SchemeMaster | None) -> str | None:
@@ -40,9 +52,10 @@ def portfolio(conn: sqlite3.Connection, master: SchemeMaster | None = None) -> d
             "kind": row["kind"],
             "units": row["units"],
             "amount": row["amount"],
+            "manual": row["import_id"] == MANUAL_IMPORT_ID,
         }
         for row in conn.execute(
-            "SELECT id, account_id, instrument_id, date, kind, units, amount "
+            "SELECT id, account_id, instrument_id, date, kind, units, amount, import_id "
             "FROM transactions ORDER BY date, id"
         )
     ]
@@ -66,3 +79,143 @@ def portfolio(conn: sqlite3.Connection, master: SchemeMaster | None = None) -> d
     ]
     return {"accounts": accounts, "instruments": instruments,
             "transactions": transactions, "snapshots": snapshots}
+
+
+def _duplicate(
+    conn: sqlite3.Connection,
+    *,
+    instrument_id: str,
+    day: str,
+    kind: str,
+    units: float,
+    amount: float,
+    manual_only: bool = False,
+) -> sqlite3.Row | None:
+    # CAS files SIPs under their own kind; a hand-entered SIP is a buy.
+    normalized = "buy" if kind in {"buy", "sip"} else kind
+    sql = (
+        "SELECT id FROM transactions WHERE instrument_id = ? AND date = ? "
+        "AND CASE WHEN kind IN ('buy', 'sip') THEN 'buy' ELSE kind END = ? "
+        "AND ROUND(units, 3) = ROUND(?, 3) AND ROUND(amount, 2) = ROUND(?, 2)"
+    )
+    params: list[object] = [instrument_id, day, normalized, units, amount]
+    if manual_only:
+        sql += " AND import_id = ?"
+        params.append(MANUAL_IMPORT_ID)
+    return conn.execute(sql + " LIMIT 1", params).fetchone()
+
+
+def manual_transaction_duplicate(
+    conn: sqlite3.Connection,
+    *,
+    instrument_id: str,
+    day: str,
+    kind: str,
+    units: float,
+    amount: float,
+) -> sqlite3.Row | None:
+    """CAS import guard: a statement row already entered by hand must not land twice."""
+    return _duplicate(
+        conn,
+        instrument_id=instrument_id,
+        day=day,
+        kind=kind,
+        units=units,
+        amount=amount,
+        manual_only=True,
+    )
+
+
+def _positive(name: str, value: object) -> float:
+    try:
+        number = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        raise ValueError(f"{name} must be a number.") from None
+    if not math.isfinite(number) or number <= 0:
+        raise ValueError(f"{name} must be greater than zero.")
+    return number
+
+
+def add_manual_transaction(conn: sqlite3.Connection, body: object) -> dict:
+    if not isinstance(body, dict):
+        raise ValueError("Request body must be a JSON object.")
+    kind = str(body.get("kind") or "").strip()
+    if kind not in MANUAL_KINDS:
+        raise ValueError("kind must be 'buy' or 'sell'.")
+    try:
+        day = date.fromisoformat(str(body.get("date") or "").strip()).isoformat()
+    except ValueError:
+        raise ValueError("date must be YYYY-MM-DD.") from None
+    if day > date.today().isoformat():
+        raise ValueError("date cannot be in the future.")
+    units = _positive("units", body.get("units"))
+    amount = _positive("amount", body.get("amount"))
+
+    instrument_id = str(body.get("instrumentId") or "").strip()
+    if instrument_id:
+        row = conn.execute(
+            "SELECT id FROM instruments WHERE id = ?", (instrument_id,)
+        ).fetchone()
+        if row is None:
+            raise ValueError("unknown instrument.")
+    else:
+        scheme = body.get("scheme")
+        if not isinstance(scheme, dict):
+            raise ValueError("scheme or instrumentId required.")
+        code = str(scheme.get("schemeCode") or "").strip()
+        if not code:
+            raise ValueError("schemeCode required.")
+        name = str(scheme.get("name") or "").strip() or code
+        raw_isin = scheme.get("isin")
+        isin = str(raw_isin).strip().upper() if raw_isin else None
+        instrument_id = f"amfi:{code}"
+        with conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO instruments (id, kind, name, isin) VALUES (?, 'mf', ?, ?)",
+                (instrument_id, name, isin),
+            )
+
+    if _duplicate(
+        conn, instrument_id=instrument_id, day=day, kind=kind, units=units, amount=amount
+    ):
+        raise DuplicateTransaction(
+            "This transaction is already in your portfolio, from an imported "
+            "statement or an earlier manual entry."
+        )
+
+    tx_id = f"manual:{uuid.uuid4().hex}"
+    with conn:
+        conn.execute(
+            "INSERT INTO accounts (id, provider, label) VALUES (?, ?, ?) "
+            "ON CONFLICT(id) DO NOTHING",
+            MANUAL_ACCOUNT,
+        )
+        conn.execute(
+            "INSERT INTO transactions "
+            "(id, account_id, instrument_id, date, kind, units, amount, import_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (tx_id, MANUAL_ACCOUNT_ID, instrument_id, day, kind, units, amount, MANUAL_IMPORT_ID),
+        )
+    return {
+        "id": tx_id,
+        "accountId": MANUAL_ACCOUNT_ID,
+        "instrumentId": instrument_id,
+        "date": day,
+        "kind": kind,
+        "units": units,
+        "amount": amount,
+        "manual": True,
+    }
+
+
+def delete_manual_transaction(conn: sqlite3.Connection, tx_id: str) -> bool:
+    row = conn.execute(
+        "SELECT import_id FROM transactions WHERE id = ?", (tx_id,)
+    ).fetchone()
+    if row is None:
+        return False
+    if row["import_id"] != MANUAL_IMPORT_ID:
+        raise ValueError("Only transactions added manually can be deleted.")
+    with conn:
+        conn.execute("DELETE FROM transactions WHERE id = ?", (tx_id,))
+    return True

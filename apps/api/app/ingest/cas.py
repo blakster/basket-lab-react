@@ -12,6 +12,8 @@ import casparser
 from casparser.exceptions import IncorrectPasswordError
 from fastapi import HTTPException
 
+from app.portfolio import manual_transaction_duplicate
+
 
 KINDS = {
     "PURCHASE": "buy", "PURCHASE_SIP": "sip", "REDEMPTION": "sell",
@@ -97,6 +99,13 @@ def write_statement(conn, rows, import_id):
             counts[f"{table}Inserted"] = inserted
         inserted = 0
         for row in rows["transactions"]:
+            _identity, _account, instrument, day, kind, units, amount = row
+            # A transaction already entered by hand is the same cash movement;
+            # importing the statement copy would double-count units and money.
+            if manual_transaction_duplicate(
+                conn, instrument_id=instrument, day=day, kind=kind, units=units, amount=amount
+            ):
+                continue
             cursor = conn.execute(
                 "INSERT OR IGNORE INTO transactions "
                 "(id,account_id,instrument_id,date,kind,units,amount,import_id) VALUES (?,?,?,?,?,?,?,?)",

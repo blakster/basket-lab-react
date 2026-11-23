@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import type { NavPoint } from "../../types";
-import type { PortfolioTransaction } from "../api/portfolio";
+import type { PortfolioSnapshot, PortfolioTransaction } from "../api/portfolio";
 import {
   buildPositions,
   growthSeries,
+  holdingsFromStatements,
   isDividendPayout,
   portfolioTotals,
-  statementCoversHolding,
   unitsByInstrument,
   xirrPercent,
 } from "./returns";
@@ -215,13 +215,85 @@ describe("growthSeries", () => {
   });
 });
 
-describe("statementCoversHolding", () => {
-  it("treats rounding noise as covered and real opening units as uncovered", () => {
-    expect(statementCoversHolding(undefined, 10)).toBe(true);
-    expect(statementCoversHolding(10.01, 10)).toBe(true);
-    expect(statementCoversHolding(10.2, 10)).toBe(false);
-    expect(statementCoversHolding(110, 10)).toBe(false);
-    expect(statementCoversHolding(9.9, 10)).toBe(false);
+function snap(partial: Partial<PortfolioSnapshot>): PortfolioSnapshot {
+  return {
+    date: "2024-03-31",
+    accountId: "cams:1",
+    instrumentId: "amfi:1",
+    units: 10,
+    value: 1000,
+    ...partial,
+  };
+}
+
+describe("holdingsFromStatements", () => {
+  it("uses closing units and treats rounding noise as covered", () => {
+    const holdings = holdingsFromStatements(
+      [tx({ kind: "buy", units: 10, date: "2024-01-01" })],
+      [snap({ units: 10.01 })],
+    );
+    expect(holdings.get("amfi:1")).toEqual({ heldUnits: 10.01, covered: true });
+  });
+
+  it("flags an opening balance the statement does not describe", () => {
+    const holdings = holdingsFromStatements(
+      [tx({ kind: "buy", units: 10, date: "2024-01-01" })],
+      [snap({ units: 110 })],
+    );
+    expect(holdings.get("amfi:1")).toEqual({ heldUnits: 110, covered: false });
+  });
+
+  it("sums transactions when no snapshot exists", () => {
+    const holdings = holdingsFromStatements(
+      [
+        tx({ kind: "buy", units: 10, date: "2024-01-01" }),
+        tx({ kind: "sell", units: 4, date: "2024-02-01" }),
+      ],
+      [],
+    );
+    expect(holdings.get("amfi:1")).toEqual({ heldUnits: 6, covered: true });
+  });
+
+  it("extends snapshot units with transactions after the statement date", () => {
+    const holdings = holdingsFromStatements(
+      [
+        tx({ kind: "buy", units: 10, date: "2024-01-01" }),
+        tx({ kind: "buy", units: 5, date: "2024-04-15" }),
+        tx({ kind: "sell", units: 2, date: "2024-05-01" }),
+      ],
+      [snap({ units: 10 })],
+    );
+    expect(holdings.get("amfi:1")).toEqual({ heldUnits: 13, covered: true });
+  });
+
+  it("keeps coverage honest when post-statement trades meet an opening balance", () => {
+    const holdings = holdingsFromStatements(
+      [
+        tx({ kind: "buy", units: 10, date: "2024-01-01" }),
+        tx({ kind: "buy", units: 5, date: "2024-04-15" }),
+      ],
+      [snap({ units: 110 })],
+    );
+    expect(holdings.get("amfi:1")).toEqual({ heldUnits: 115, covered: false });
+  });
+
+  it("checks each folio against its own statement", () => {
+    const holdings = holdingsFromStatements(
+      [
+        tx({ accountId: "cams:1", kind: "buy", units: 5, date: "2024-01-01" }),
+        tx({ accountId: "kfintech:2", kind: "buy", units: 7, date: "2024-01-02" }),
+      ],
+      [
+        snap({ accountId: "cams:1", units: 5 }),
+        snap({ accountId: "kfintech:2", units: 8 }),
+      ],
+    );
+    expect(holdings.get("amfi:1")).toEqual({ heldUnits: 13, covered: false });
+  });
+
+  it("values snapshot-only funds from closing units but keeps them uncovered", () => {
+    const holdings = holdingsFromStatements([], [snap({ units: 42 })]);
+    expect(holdings.get("amfi:1")).toEqual({ heldUnits: 42, covered: false });
   });
 });
 

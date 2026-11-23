@@ -1285,6 +1285,161 @@ button[data-static="true"]:active:not(:disabled) {
   color: var(--ink-soft);
 }
 
+.portfolio-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.manual-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.fund-picker {
+  position: relative;
+}
+
+.fund-picker-selected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: 1px solid var(--rule);
+  padding: 0.45rem 0.6rem;
+  font-size: 0.9rem;
+}
+
+.fund-picker-name {
+  color: var(--ink);
+}
+
+.fund-picker-change {
+  border: 0;
+  background: none;
+  color: var(--ink-soft);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.fund-picker-list {
+  position: absolute;
+  z-index: 30;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin: 0.25rem 0 0;
+  padding: 0.25rem;
+  list-style: none;
+  background: var(--card);
+  border: 1px solid var(--rule);
+  max-height: 16rem;
+  overflow-y: auto;
+}
+
+.fund-picker-list button {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 0.88rem;
+  color: var(--ink);
+  text-align: left;
+  padding: 0.4rem 0.55rem;
+  cursor: pointer;
+}
+
+.fund-picker-list button:hover {
+  background: var(--secondary);
+}
+
+.manual-kind {
+  display: inline-flex;
+  width: fit-content;
+  border: 1px solid var(--rule);
+}
+
+.manual-kind button {
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  padding: 0.35rem 0.9rem;
+  cursor: pointer;
+}
+
+.manual-kind button.is-active {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.manual-kind button + button {
+  border-left: 1px solid var(--rule);
+}
+
+.manual-fields {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.6rem;
+}
+
+.manual-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+
+.manual-entries-title {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.manual-entries-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.manual-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.45rem 0;
+  border-top: 1px solid var(--rule);
+  font-size: 0.88rem;
+  color: var(--ink);
+}
+
+.manual-entry-main {
+  display: flex;
+  flex-direction: column;
+}
+
+.manual-remove {
+  border: 1px solid var(--rule);
+  background: none;
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  padding: 0.25rem 0.6rem;
+  cursor: pointer;
+}
+
+.manual-remove:hover {
+  color: var(--loss);
+  border-color: var(--loss);
+}
+
 
 .growth-split {
   display: flex;

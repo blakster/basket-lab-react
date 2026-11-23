@@ -6,6 +6,7 @@ import pytest
 from app.ingest.cas import map_statement, write_statement
 from app.ingest.scheme_master import SchemeMaster
 from app.main import app
+from app.portfolio import add_manual_transaction
 
 CAS_JSON = Path(__file__).parent / "fixtures" / "cas.json"
 
@@ -38,7 +39,8 @@ def test_portfolio_read(client, db, statement):
     assert first["accountId"] in {"cams:100001", "kfintech:200002"}
     assert first["instrumentId"] in {"amfi:123456", "isin:INF000000002"}
     assert first["date"] <= body["transactions"][-1]["date"]
-    assert set(first) == {"id", "accountId", "instrumentId", "date", "kind", "units", "amount"}
+    assert set(first) == {"id", "accountId", "instrumentId", "date", "kind", "units", "amount", "manual"}
+    assert first["manual"] is False
     # Latest snapshot per account + instrument only.
     assert len(body["snapshots"]) == 2
     assert {s["accountId"] for s in body["snapshots"]} == {"cams:100001", "kfintech:200002"}
@@ -60,3 +62,116 @@ def test_portfolio_isin_resolution(client, db):
     )
     body = client.get("/api/portfolio").json()
     assert body["instruments"][0]["schemeCode"] == "106796"
+
+
+def _manual_body(**overrides):
+    body = {
+        "scheme": {"schemeCode": "123456", "name": "Example Equity Direct Growth", "isin": None},
+        "date": "2024-05-01",
+        "kind": "buy",
+        "units": 10.5,
+        "amount": 1234.5,
+    }
+    body.update(overrides)
+    return body
+
+
+def test_manual_transaction_create(client):
+    response = client.post("/api/portfolio/transactions", json=_manual_body())
+    assert response.status_code == 200
+    tx = response.json()
+    assert tx["manual"] is True
+    assert tx["accountId"] == "manual:entry"
+    assert tx["instrumentId"] == "amfi:123456"
+    body = client.get("/api/portfolio").json()
+    assert [a["id"] for a in body["accounts"]] == ["manual:entry"]
+    assert body["instruments"] == [
+        {"id": "amfi:123456", "kind": "mf", "name": "Example Equity Direct Growth",
+         "isin": None, "schemeCode": "123456"}
+    ]
+    assert body["transactions"] == [tx]
+    # A second, different transaction on the same fund is allowed.
+    other = client.post("/api/portfolio/transactions",
+                        json=_manual_body(units=2, amount=200)).json()
+    assert other["id"] != tx["id"]
+
+
+def test_manual_transaction_existing_instrument(client, db, statement):
+    write_statement(db, map_statement(statement), "seed")
+    response = client.post(
+        "/api/portfolio/transactions",
+        json=_manual_body(instrumentId="amfi:123456", scheme=None),
+    )
+    assert response.status_code == 200
+    assert response.json()["instrumentId"] == "amfi:123456"
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"kind": "dividend"},
+        {"kind": "switch-in"},
+        {"date": "2024-13-40"},
+        {"date": "2999-01-01"},
+        {"units": 0},
+        {"units": -3},
+        {"units": "abc"},
+        {"amount": 0},
+        {"scheme": {"schemeCode": ""}},
+    ],
+)
+def test_manual_transaction_validation(client, overrides):
+    response = client.post("/api/portfolio/transactions", json=_manual_body(**overrides))
+    assert response.status_code == 422
+    assert client.get("/api/portfolio").json()["transactions"] == []
+
+
+def test_manual_duplicate_blocked(client):
+    first = client.post("/api/portfolio/transactions", json=_manual_body())
+    assert first.status_code == 200
+    again = client.post("/api/portfolio/transactions", json=_manual_body())
+    assert again.status_code == 409
+    assert "already in your portfolio" in again.json()["detail"]
+    # Slightly different amount is a different transaction.
+    changed = client.post("/api/portfolio/transactions", json=_manual_body(amount=1234.51))
+    assert changed.status_code == 200
+
+
+def test_manual_matches_imported_statement(client, statement):
+    write_statement(client.app.state.db, map_statement(statement), "seed")
+    # The fixture's first SIP: amfi:123456, 2024-01-01, 10 units, 1000. A hand
+    # entry of the same movement (as a buy) must be refused.
+    response = client.post(
+        "/api/portfolio/transactions",
+        json=_manual_body(kind="buy", units=10, amount=1000, date="2024-01-01",
+                          instrumentId="amfi:123456", scheme=None),
+    )
+    assert response.status_code == 409
+
+
+def test_cas_import_skips_manual_duplicates(db):
+    one = {"statement_period": {}, "folios": [{
+        "folio": "100001", "amc": "AMC", "rta": "CAMS",
+        "schemes": [{"scheme": "Fund", "isin": "INF000000001", "rta": "CAMS", "amfi": "123456",
+                     "close": 100, "valuation": {"date": "2024-06-30", "value": 1000},
+                     "transactions": [
+                         {"date": "2024-04-01", "type": "PURCHASE", "units": "5", "amount": "500"},
+                         {"date": "2024-05-01", "type": "PURCHASE", "units": "5", "amount": "500"},
+                     ]}]}]}
+    # Hand-enter the first purchase before the statement arrives.
+    add_manual_transaction(db, _manual_body(date="2024-04-01", units=5, amount=500))
+    rows = map_statement(one)
+    result = write_statement(db, rows, "cas-1")
+    assert result["imported"] == 1
+    assert result["duplicates"] == 1
+    assert db.execute("SELECT COUNT(*) FROM transactions").fetchone()[0] == 2
+
+
+def test_delete_manual_transaction(client, statement):
+    write_statement(client.app.state.db, map_statement(statement), "seed")
+    created = client.post("/api/portfolio/transactions", json=_manual_body()).json()
+    imported_id = client.get("/api/portfolio").json()["transactions"][0]["id"]
+    assert client.delete(f"/api/portfolio/transactions/{imported_id}").status_code == 400
+    assert client.delete(f"/api/portfolio/transactions/{created['id']}").status_code == 200
+    assert client.delete(f"/api/portfolio/transactions/{created['id']}").status_code == 404
+    assert client.delete("/api/portfolio/transactions/manual:missing").status_code == 404

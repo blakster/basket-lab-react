@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from app.cas_routes import router as cas_router
@@ -14,7 +14,12 @@ from app.ingest.run import resolve_ingest_files, run_ingest
 from app.ingest.scheme_master import SchemeMaster
 from app.ingest.upload import reject_filing, upload_filing
 from app.insights import compute_insights
-from app.portfolio import portfolio
+from app.portfolio import (
+    DuplicateTransaction,
+    add_manual_transaction,
+    delete_manual_transaction,
+    portfolio,
+)
 
 # apps/api/app/main.py → repo root / data / basket.sqlite
 DB_PATH = Path(__file__).resolve().parents[3] / "data" / "basket.sqlite"
@@ -60,6 +65,31 @@ def _scheme_master(request: Request) -> SchemeMaster | None:
 @app.get("/api/portfolio")
 def get_portfolio(request: Request):
     return portfolio(request.app.state.db, _scheme_master(request))
+
+
+@app.post("/api/portfolio/transactions")
+async def post_portfolio_transaction(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        body = None
+    try:
+        return add_manual_transaction(request.app.state.db, body)
+    except DuplicateTransaction as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.delete("/api/portfolio/transactions/{tx_id}")
+def delete_portfolio_transaction(request: Request, tx_id: str):
+    try:
+        deleted = delete_manual_transaction(request.app.state.db, tx_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Transaction not found.")
+    return {"deleted": True}
 
 
 @app.get("/api/health")
