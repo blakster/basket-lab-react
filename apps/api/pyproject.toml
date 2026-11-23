@@ -3,6 +3,7 @@ name = "basket-lab-api"
 version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
+  "casparser==1.4.1",
   "fastapi>=0.115",
   "uvicorn[standard]>=0.32",
   "httpx>=0.27",

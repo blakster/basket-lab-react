@@ -32,4 +32,4 @@ export function pickStatus(parts: LabStatus[]): LabStatus {
   );
 }
 
-export type Workspace = "compare" | "baskets" | "insights";
+export type Workspace = "compare" | "portfolio" | "baskets" | "insights";

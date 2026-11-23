@@ -1,0 +1,26 @@
+{
+  "statement_period": {"from": "01-Jan-2024", "to": "31-Mar-2024"},
+  "folios": [
+    {"folio": "100001", "amc": "Example Mutual Fund", "schemes": [
+      {"scheme": "Example Equity Direct Growth", "rta": "CAMS", "amfi": "123456", "isin": "INF000000001", "close": "18",
+       "valuation": {"date": "2024-03-31", "value": "1980", "nav": "110"},
+       "transactions": [
+         {"date": "2024-01-01", "type": "PURCHASE_SIP", "units": "10", "amount": "1000"},
+         {"date": "2024-01-01", "type": "PURCHASE_SIP", "units": "10.0", "amount": "1000.00"},
+         {"date": "2024-02-01", "type": "REDEMPTION", "units": "-2", "amount": "-210"},
+         {"date": "2024-02-02", "type": "DIVIDEND_PAYOUT", "units": null, "amount": "20"},
+         {"date": "2024-01-01", "type": "STAMP_DUTY_TAX", "units": null, "amount": "0.05"}
+       ]}
+    ]},
+    {"folio": "200002", "amc": "Sample Mutual Fund", "schemes": [
+      {"scheme": "Sample Balanced Direct Growth", "rta": "KFINTECH", "amfi": null, "isin": "INF000000002", "close": "5",
+       "valuation": {"date": "2024-03-31", "value": "550", "nav": "110"},
+       "transactions": [
+         {"date": "2024-01-02", "type": "PURCHASE", "units": "5", "amount": "500"},
+         {"date": "2024-02-02", "type": "SWITCH_IN", "units": "1", "amount": "100"},
+         {"date": "2024-02-03", "type": "SWITCH_OUT", "units": "-1", "amount": "-100"},
+         {"date": "2024-02-03", "type": "PURCHASE", "units": "0", "amount": null}
+       ]}
+    ]}
+  ]
+}

@@ -7,6 +7,7 @@ const INSIGHTS_HASH = "#insights";
 function workspaceFromHash(): Workspace {
   const hash = window.location.hash;
   if (hash === "#baskets") return "baskets";
+  if (hash === "#portfolio") return "portfolio";
   if (hash === INSIGHTS_HASH || hash.startsWith(`${INSIGHTS_HASH}=`)) {
     return "insights";
   }
@@ -27,6 +28,7 @@ function writeWorkspaceHash(workspace: Workspace, basketId?: string | null): voi
   const url = new URL(window.location.href);
   if (workspace === "compare") url.hash = "";
   else if (workspace === "baskets") url.hash = "baskets";
+  else if (workspace === "portfolio") url.hash = "portfolio";
   else if (basketId) url.hash = `insights=${encodeURIComponent(basketId)}`;
   else url.hash = "insights";
   const next = `${url.pathname}${url.search}${url.hash}`;

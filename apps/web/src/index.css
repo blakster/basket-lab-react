@@ -1236,6 +1236,56 @@ button[data-static="true"]:active:not(:disabled) {
   margin-bottom: 0.85rem;
 }
 
+.cas-import {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cas-import-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+.cas-import-file input[type="file"] {
+  font: inherit;
+  color: var(--ink);
+  max-width: 16rem;
+}
+
+.cas-password {
+  width: 13rem;
+}
+
+.cas-hint {
+  margin: -0.35rem 0 0;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+.cas-note {
+  font-size: 0.82rem;
+}
+
+.cas-ok {
+  color: var(--gain);
+}
+
+.cas-error {
+  color: var(--loss);
+}
+
+.holding-sub {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+
+
 .growth-split {
   display: flex;
   flex-direction: column;
