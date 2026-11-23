@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from app.cas_routes import router as cas_router
 from app.db import init_db
 from app.filing_status import filing_statuses
 from app.ingest.ensure import _serialize_status, ensure_filings, scheme_codes_from_body
@@ -13,6 +14,7 @@ from app.ingest.run import resolve_ingest_files, run_ingest
 from app.ingest.scheme_master import SchemeMaster
 from app.ingest.upload import reject_filing, upload_filing
 from app.insights import compute_insights
+from app.portfolio import portfolio
 
 # apps/api/app/main.py → repo root / data / basket.sqlite
 DB_PATH = Path(__file__).resolve().parents[3] / "data" / "basket.sqlite"
@@ -39,6 +41,23 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+app.include_router(cas_router)
+
+
+def _scheme_master(request: Request) -> SchemeMaster | None:
+    master = getattr(request.app.state, "scheme_master", None)
+    if master is None:
+        try:
+            master = SchemeMaster.load_cached(DB_PATH.parent)
+        except Exception:
+            master = SchemeMaster([])
+        request.app.state.scheme_master = master
+    return master
+
+
+@app.get("/api/portfolio")
+def get_portfolio(request: Request):
+    return portfolio(request.app.state.db, _scheme_master(request))
 
 
 @app.get("/api/health")

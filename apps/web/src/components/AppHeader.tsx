@@ -35,6 +35,7 @@ function todayLabel(): string {
 
 const WORKSPACES: { id: Workspace; label: string }[] = [
   { id: "compare", label: "Compare" },
+  { id: "portfolio", label: "Portfolio" },
   { id: "baskets", label: "Baskets" },
   { id: "insights", label: "Insights" },
 ];
