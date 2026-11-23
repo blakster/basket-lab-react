@@ -73,6 +73,7 @@ def test_accounts_provider_migration_preserves_rows(tmp_path):
     assert conn.execute("SELECT provider FROM accounts WHERE id = 'cams:123'").fetchone()[0] == "cams"
     assert conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0] == 1
     conn.execute("INSERT INTO accounts (id, provider, label) VALUES ('cdsl:demat:1', 'cdsl', 'CDSL')")
+    conn.execute("INSERT INTO accounts (id, provider, label) VALUES ('nsdl:demat:1', 'nsdl', 'NSDL')")
     conn.commit()
 
 
