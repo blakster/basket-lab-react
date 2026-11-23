@@ -22,6 +22,7 @@ import {
 import { formatCompactInr, formatInr } from "../lib/format";
 import {
   buildPositions,
+  folioGroupKey,
   growthSeries,
   holdingsFromStatements,
   portfolioTotals,
@@ -124,21 +125,45 @@ export function PortfolioWorkspace() {
       if (!prev || tx.date < prev) firstTxDateByInstrument.set(tx.instrumentId, tx.date);
     }
 
-    // One snapshot per account+instrument; sum across accounts (folios) so a
-    // fund held in several folios keeps every one, dated by the latest.
+    // One snapshot per folio group + instrument, summed across groups: a fund
+    // held in several folios keeps every one, while a folio reported by both a
+    // registrar and a depository statement counts once, dated by the latest.
+    // Equal dates go to the account with transactions, the same snapshot
+    // holdingsFromStatements picks for units, so value and units agree.
+    const tradedAccounts = new Set(data.transactions.map((t) => `${t.instrumentId} ${t.accountId}`));
     let earliestSnapshot: string | null = null;
-    const snapshotByInstrument = new Map<string, { date: string; value: number }>();
+    const snapshotGroups = new Map<string, Map<string, { date: string; value: number; traded: boolean }>>();
     for (const snap of data.snapshots) {
       if (!earliestSnapshot || snap.date < earliestSnapshot) earliestSnapshot = snap.date;
-      const prev = snapshotByInstrument.get(snap.instrumentId);
-      if (!prev) {
-        snapshotByInstrument.set(snap.instrumentId, { date: snap.date, value: snap.value });
-      } else {
-        snapshotByInstrument.set(snap.instrumentId, {
-          date: snap.date > prev.date ? snap.date : prev.date,
-          value: prev.value + snap.value,
-        });
+      let groups = snapshotGroups.get(snap.instrumentId);
+      if (!groups) {
+        groups = new Map();
+        snapshotGroups.set(snap.instrumentId, groups);
       }
+      const key = folioGroupKey(snap.accountId);
+      const candidate = {
+        date: snap.date,
+        value: snap.value,
+        traded: tradedAccounts.has(`${snap.instrumentId} ${snap.accountId}`),
+      };
+      const prev = groups.get(key);
+      if (
+        !prev ||
+        snap.date > prev.date ||
+        (snap.date === prev.date && candidate.traded && !prev.traded)
+      ) {
+        groups.set(key, candidate);
+      }
+    }
+    const snapshotByInstrument = new Map<string, { date: string; value: number }>();
+    for (const [id, groups] of snapshotGroups) {
+      let date = "";
+      let value = 0;
+      for (const group of groups.values()) {
+        value += group.value;
+        if (group.date > date) date = group.date;
+      }
+      snapshotByInstrument.set(id, { date, value });
     }
 
     // NAV fetch window: earliest transaction of any NAV-backed fund → today.
@@ -322,8 +347,10 @@ export function PortfolioWorkspace() {
         {formError && <span className="cas-note cas-error">{formError}</span>}
       </form>
       <p className="cas-hint">
-        CAMS or KFintech consolidated account statement. Re-importing the same file
-        adds nothing twice.
+        CAMS or KFintech consolidated account statement, or an NSDL/CDSL
+        depository statement. Depository files import holdings only: units and
+        value, with gain and XIRR hidden. Re-importing the same file adds
+        nothing twice.
       </p>
       <div className="portfolio-actions">
         <Button type="button" onClick={() => setManualOpen(true)}>

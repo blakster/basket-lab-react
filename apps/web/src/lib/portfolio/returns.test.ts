@@ -351,6 +351,56 @@ describe("holdingsFromStatements", () => {
     const holdings = holdingsFromStatements([], [snap({ units: 42 })]);
     expect(holdings.get("amfi:1")).toEqual({ heldUnits: 42, covered: false });
   });
+
+  it("counts a folio reported by both registrar and depository statements once", () => {
+    const holdings = holdingsFromStatements(
+      [tx({ accountId: "cams:12345678/90", kind: "buy", units: 100, date: "2024-01-01" })],
+      [
+        snap({ accountId: "cams:12345678/90", units: 100, date: "2024-03-31" }),
+        snap({ accountId: "cdsl:folio:12345678/90", units: 100, date: "2024-04-30" }),
+      ],
+    );
+    expect(holdings.get("amfi:1")).toEqual({ heldUnits: 100, covered: true });
+  });
+
+  it("applies later trades of a shared folio after the snapshot", () => {
+    const holdings = holdingsFromStatements(
+      [
+        tx({ accountId: "cams:12345678/90", kind: "buy", units: 100, date: "2024-01-01" }),
+        tx({ accountId: "cams:12345678/90", kind: "buy", units: 10, date: "2024-05-15" }),
+      ],
+      [
+        snap({ accountId: "cdsl:folio:12345678/90", units: 100, date: "2024-04-30" }),
+        snap({ accountId: "cams:12345678/90", units: 100, date: "2024-03-31" }),
+      ],
+    );
+    expect(holdings.get("amfi:1")).toEqual({ heldUnits: 110, covered: true });
+  });
+
+  it("keeps the freshest snapshot of a shared folio", () => {
+    const holdings = holdingsFromStatements(
+      [tx({ accountId: "cams:12345678/90", kind: "buy", units: 100, date: "2024-01-01" })],
+      [
+        snap({ accountId: "cdsl:folio:12345678/90", units: 120, date: "2024-04-30" }),
+        snap({ accountId: "cams:12345678/90", units: 100, date: "2024-03-31" }),
+      ],
+    );
+    // The April depository snapshot wins over the March registrar one: its 20
+    // extra units are unexplained, so the folio is uncovered and valued at 120.
+    expect(holdings.get("amfi:1")).toEqual({ heldUnits: 120, covered: false });
+  });
+
+  it("does not merge different folios or demat accounts", () => {
+    const holdings = holdingsFromStatements(
+      [tx({ accountId: "cams:1", kind: "buy", units: 10, date: "2024-01-01" })],
+      [
+        snap({ accountId: "cams:1", units: 10 }),
+        snap({ accountId: "cdsl:folio:2", units: 7 }),
+        snap({ accountId: "cdsl:demat:1200000012345678", units: 3 }),
+      ],
+    );
+    expect(holdings.get("amfi:1")).toEqual({ heldUnits: 20, covered: false });
+  });
 });
 
 describe("portfolioTotals with incomplete history", () => {

@@ -7,7 +7,82 @@ from pathlib import Path
 import pytest
 from casparser.exceptions import CASParseError, IncorrectPasswordError
 
-from app.ingest.cas import map_statement, write_statement
+from app.ingest.cas import map_demat_statement, map_statement, write_statement
+
+
+def demat_statement():
+    return {
+        "file_type": "CDSL",
+        "statement_period": {"from": "01-Oct-2026", "to": "31-Oct-2026"},
+        "accounts": [
+            {"name": "Example DP CDSL Demat Account", "type": "CDSL Demat Account",
+             "dp_id": "12000000", "client_id": "12345678",
+             "equities": [{"name": "EXAMPLE CORP#EQUITY SHARES\x02", "isin": "INE000A01010",
+                           "num_shares": "10.000", "price": "100.00", "value": "1000.00",
+                           "symbol": "EXAMPLE", "exchange": "NSE"}],
+             "mutual_funds": [{"name": "1234 - Example Flexi Cap Fund Direct Plan Growth",
+                               "isin": "INF000000001", "amfi": "123456", "type": "EQUITY",
+                               "balance": "50.500", "nav": "20.00", "value": "1010.00",
+                               "total_cost": "1000.00", "folio": None}],
+             "bonds": []},
+            {"name": "Mutual Fund Folios", "type": "MF Folios", "dp_id": "", "client_id": "",
+             "equities": [], "bonds": [],
+             "mutual_funds": [
+                 {"name": "D5678 - Example Small Cap Fund Direct Plan Growth",
+                  "isin": "INF000000002", "amfi": "234567",
+                  "balance": "100.000", "nav": "50.00", "value": "5000.00",
+                  "total_cost": "4800.00", "folio": "12345678/90"},
+                 {"name": "No Identifier Fund", "isin": None, "amfi": None,
+                  "balance": "1.000", "value": "10.00"},
+             ]},
+        ],
+    }
+
+
+def test_demat_mapping():
+    rows = map_demat_statement(demat_statement())
+    assert rows["transactions"] == []
+    assert rows["accounts"] == [
+        ("cdsl:demat:1200000012345678", "cdsl", "Example DP CDSL Demat Account"),
+        ("cdsl:folio:12345678/90", "cdsl", "MF folio 12345678/90"),
+    ]
+    assert rows["instruments"] == [
+        ("isin:INE000A01010", "stock", "EXAMPLE CORP#EQUITY SHARES", "INE000A01010"),
+        ("amfi:123456", "mf", "Example Flexi Cap Fund Direct Plan Growth", "INF000000001"),
+        ("amfi:234567", "mf", "Example Small Cap Fund Direct Plan Growth", "INF000000002"),
+    ]
+    assert rows["snapshots"] == [
+        ("2026-10-31", "cdsl:demat:1200000012345678", "isin:INE000A01010", 10.0, 1000.0),
+        ("2026-10-31", "cdsl:demat:1200000012345678", "amfi:123456", 50.5, 1010.0),
+        ("2026-10-31", "cdsl:folio:12345678/90", "amfi:234567", 100.0, 5000.0),
+    ]
+    assert rows["skipped"] == 1
+    assert rows["statement_period"] == {"from": "01-Oct-2026", "to": "31-Oct-2026"}
+    assert rows["replace_snapshots"] is True
+    assert rows["replace_provider"] == "cdsl"
+    assert rows["snapshot_date"] == "2026-10-31"
+    assert map_demat_statement(demat_statement()) == rows
+
+
+def test_demat_mapping_nsdl_and_fallbacks():
+    data = demat_statement()
+    data["file_type"] = "NSDL"
+    data["accounts"][1]["mutual_funds"][0].pop("amfi")
+    data["accounts"][1]["mutual_funds"][0].pop("folio")
+    data["accounts"][1]["dp_id"] = "13000000"
+    data["accounts"][1]["client_id"] = "87654321"
+    rows = map_demat_statement(data)
+    assert ("nsdl:demat:1300000087654321", "nsdl", "Mutual Fund Folios") in rows["accounts"]
+    # ISIN-only MF holding falls back to the ISIN instrument and, without a
+    # folio, to its depository account.
+    assert ("isin:INF000000002", "mf", "Example Small Cap Fund Direct Plan Growth", "INF000000002") in rows["instruments"]
+    assert ("2026-10-31", "nsdl:demat:1300000087654321", "isin:INF000000002", 100.0, 5000.0) in rows["snapshots"]
+    assert rows["skipped"] == 1
+
+
+def test_demat_mapping_rejects_missing_period():
+    with pytest.raises(ValueError):
+        map_demat_statement({"accounts": []})
 
 
 @pytest.fixture
@@ -84,9 +159,219 @@ def test_import_endpoint(client, db, monkeypatch, statement):
 
 
 def test_non_cas_statement_rejected(client, db, monkeypatch):
-    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: {"accounts": []})
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: {"unexpected": []})
     response = client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"nsdl pdf", "application/pdf")}, data={"password": "x"})
     assert response.status_code == 400
+
+
+def test_demat_import_endpoint(client, db, monkeypatch):
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: demat_statement())
+    def upload():
+        return client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"demat pdf", "application/pdf")}, data={"password": "x"})
+    response = upload()
+    assert response.status_code == 200
+    assert response.json() == {
+        "importId": hashlib.sha256(b"demat pdf").hexdigest(),
+        "accountsInserted": 2, "instrumentsInserted": 3, "imported": 0,
+        "duplicates": 0, "skipped": 1, "snapshotsWritten": 3,
+        "statementPeriod": {"from": "01-Oct-2026", "to": "31-Oct-2026"}, "warnings": [],
+    }
+    assert db.execute("SELECT COUNT(*) FROM transactions").fetchone()[0] == 0
+    assert db.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0] == 3
+    again = upload().json()
+    assert again["accountsInserted"] == again["instrumentsInserted"] == 0
+    assert again["snapshotsWritten"] == 3
+
+
+def test_demat_reimport_drops_sold_holdings(client, db, monkeypatch):
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: demat_statement())
+    client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"oct", "application/pdf")}, data={"password": "x"})
+    assert db.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0] == 3
+    november = demat_statement()
+    november["statement_period"] = {"from": "01-Nov-2026", "to": "30-Nov-2026"}
+    november["accounts"][0]["equities"] = []
+    november["accounts"][0]["mutual_funds"] = []
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: november)
+    client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"nov", "application/pdf")}, data={"password": "x"})
+    latest = latest_snapshots(db)
+    assert latest == {
+        ("cdsl:demat:1200000012345678", "isin:INE000A01010"): ("2026-11-30", 0.0),
+        ("cdsl:demat:1200000012345678", "amfi:123456"): ("2026-11-30", 0.0),
+        ("cdsl:folio:12345678/90", "amfi:234567"): ("2026-11-30", 100.0),
+    }
+
+
+def latest_snapshots(db):
+    rows = db.execute(
+        "SELECT s.account_id, s.instrument_id, s.date, s.units FROM snapshots s "
+        "JOIN (SELECT account_id, instrument_id, MAX(date) AS d FROM snapshots "
+        "      GROUP BY account_id, instrument_id) latest "
+        "ON latest.account_id = s.account_id AND latest.instrument_id = s.instrument_id "
+        "AND latest.d = s.date"
+    )
+    return {(row["account_id"], row["instrument_id"]): (row["date"], row["units"]) for row in rows}
+
+
+def test_demat_redeemed_folio_stops_counting(client, db, monkeypatch):
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: demat_statement())
+    client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"oct", "application/pdf")}, data={"password": "x"})
+    november = demat_statement()
+    november["statement_period"] = {"from": "01-Nov-2026", "to": "30-Nov-2026"}
+    november["accounts"][0]["equities"] = []
+    november["accounts"][0]["mutual_funds"] = []
+    november["accounts"][1]["mutual_funds"] = []
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: november)
+    client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"nov", "application/pdf")}, data={"password": "x"})
+    # The folio vanishes from the statement entirely, so no account row names
+    # it; its last holding must still stop counting.
+    row = db.execute(
+        "SELECT date, units, value FROM snapshots WHERE account_id = 'cdsl:folio:12345678/90' "
+        "AND instrument_id = 'amfi:234567'"
+    ).fetchone()
+    assert tuple(row) == ("2026-11-30", 0.0, 0.0)
+
+
+def test_demat_empty_folios_summary_clears_holdings(client, db, monkeypatch):
+    # Every folio redeemed: the statement still prints the (empty) Mutual
+    # Fund Folios summary, so the parse has accounts but no holdings. That
+    # is a real liquidation and must zero the saved snapshots, unlike a
+    # parse that missed the accounts entirely.
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: demat_statement())
+    client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"oct", "application/pdf")}, data={"password": "x"})
+    november = demat_statement()
+    november["statement_period"] = {"from": "01-Nov-2026", "to": "30-Nov-2026"}
+    november["accounts"][1]["mutual_funds"] = []
+    november["accounts"] = [november["accounts"][1]]
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: november)
+    response = client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"nov", "application/pdf")}, data={"password": "x"})
+    assert response.status_code == 200
+    assert latest_snapshots(db) == {
+        ("cdsl:demat:1200000012345678", "isin:INE000A01010"): ("2026-11-30", 0.0),
+        ("cdsl:demat:1200000012345678", "amfi:123456"): ("2026-11-30", 0.0),
+        ("cdsl:folio:12345678/90", "amfi:234567"): ("2026-11-30", 0.0),
+    }
+
+
+def test_demat_older_reimport_keeps_newer_tombstones(client, db, monkeypatch):
+    def upload(content):
+        return client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", content, "application/pdf")}, data={"password": "x"})
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: demat_statement())
+    upload(b"oct")
+    november = demat_statement()
+    november["statement_period"] = {"from": "01-Nov-2026", "to": "30-Nov-2026"}
+    november["accounts"][0]["equities"] = []
+    november["accounts"][0]["mutual_funds"] = []
+    november["accounts"][1]["mutual_funds"] = []
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: november)
+    upload(b"nov")
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: demat_statement())
+    upload(b"oct-again")
+    # Re-importing the older October statement must not resurrect holdings the
+    # November statement already recorded as gone.
+    assert latest_snapshots(db) == {
+        ("cdsl:demat:1200000012345678", "isin:INE000A01010"): ("2026-11-30", 0.0),
+        ("cdsl:demat:1200000012345678", "amfi:123456"): ("2026-11-30", 0.0),
+        ("cdsl:folio:12345678/90", "amfi:234567"): ("2026-11-30", 0.0),
+    }
+
+
+def test_demat_replace_keeps_registrar_snapshots(client, db, monkeypatch, statement):
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: statement)
+    client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"cas", "application/pdf")}, data={"password": "x"})
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: demat_statement())
+    client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"demat", "application/pdf")}, data={"password": "x"})
+    rows = [tuple(r) for r in db.execute(
+        "SELECT account_id, date FROM snapshots WHERE account_id IN ('cams:100001', 'kfintech:200002') ORDER BY account_id"
+    )]
+    assert rows == [("cams:100001", "2024-03-31"), ("kfintech:200002", "2024-03-31")]
+
+
+def test_empty_demat_statement_rejected(client, db, monkeypatch):
+    # A parse that misses every account must not be treated as a liquidation:
+    # the import is refused and existing holdings stay untouched.
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: demat_statement())
+    client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"oct", "application/pdf")}, data={"password": "x"})
+    before = latest_snapshots(db)
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf",
+                        lambda *args, **kwargs: {"file_type": "NSDL", "statement_period": {"from": "01-Oct-2026", "to": "31-Oct-2026"}, "accounts": []})
+    response = client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"empty", "application/pdf")}, data={"password": "x"})
+    assert response.status_code == 400
+    assert latest_snapshots(db) == before
+
+
+def test_demat_unreadable_holdings_rejected(client, db, monkeypatch):
+    # Holdings that parse but map to no account or instrument are a degraded
+    # parse, not a liquidation: the import is refused and snapshots stay put.
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: demat_statement())
+    client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"oct", "application/pdf")}, data={"password": "x"})
+    before = latest_snapshots(db)
+    broken = {"file_type": "CDSL", "statement_period": {"from": "01-Nov-2026", "to": "30-Nov-2026"},
+              "accounts": [{"name": "Mutual Fund Folios",
+                            "mutual_funds": [{"name": "Opaque Fund", "balance": "1.0", "value": "10.0"}]}]}
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: broken)
+    response = client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"nov", "application/pdf")}, data={"password": "x"})
+    assert response.status_code == 400
+    assert latest_snapshots(db) == before
+
+
+def test_demat_nps_only_statement_rejected(client, db, monkeypatch):
+    # NPS holdings are not imported; a statement with no account sections at
+    # all is refused, so NPS schemes cannot sneak past the empty-parse guard.
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: demat_statement())
+    client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"oct", "application/pdf")}, data={"password": "x"})
+    before = latest_snapshots(db)
+    nps_only = {"file_type": "CDSL", "statement_period": {"from": "01-Nov-2026", "to": "30-Nov-2026"},
+                "accounts": [],
+                "nps": {"pran": "****1234", "value": "1000.00",
+                        "schemes": [{"name": "NPS Tier I", "value": "1000.00"}]}}
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: nps_only)
+    response = client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"nps", "application/pdf")}, data={"password": "x"})
+    assert response.status_code == 400
+    assert latest_snapshots(db) == before
+
+
+def test_demat_liquidation_with_nps_imports(client, db, monkeypatch):
+    # Empty investment sections are the complete picture even when the
+    # statement also reports NPS schemes: the import must proceed and zero
+    # the redeemed holdings instead of being refused.
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: demat_statement())
+    client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"oct", "application/pdf")}, data={"password": "x"})
+    november = demat_statement()
+    november["statement_period"] = {"from": "01-Nov-2026", "to": "30-Nov-2026"}
+    november["accounts"][0]["equities"] = []
+    november["accounts"][0]["mutual_funds"] = []
+    november["accounts"][1]["mutual_funds"] = []
+    november["nps"] = {"pran": "****1234", "value": "1000.00",
+                      "schemes": [{"name": "NPS Tier I", "value": "1000.00"}]}
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: november)
+    response = client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"nov", "application/pdf")}, data={"password": "x"})
+    assert response.status_code == 200
+    assert latest_snapshots(db) == {
+        ("cdsl:demat:1200000012345678", "isin:INE000A01010"): ("2026-11-30", 0.0),
+        ("cdsl:demat:1200000012345678", "amfi:123456"): ("2026-11-30", 0.0),
+        ("cdsl:folio:12345678/90", "amfi:234567"): ("2026-11-30", 0.0),
+    }
+
+
+def test_demat_dropped_rows_rejected(client, db, monkeypatch):
+    # casparser reads account balances from the summary block even when it
+    # drops detail rows; a positive balance with no mapped holding is a
+    # degraded read, not a liquidation, and must not wipe saved snapshots.
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: demat_statement())
+    client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"oct", "application/pdf")}, data={"password": "x"})
+    before = latest_snapshots(db)
+    degraded = demat_statement()
+    degraded["statement_period"] = {"from": "01-Nov-2026", "to": "30-Nov-2026"}
+    degraded["accounts"][0]["equities"] = []
+    degraded["accounts"][0]["mutual_funds"] = []
+    degraded["accounts"][0]["bonds"] = []
+    degraded["accounts"][0]["balance"] = "2010.00"
+    degraded["accounts"][1]["mutual_funds"] = []
+    degraded["accounts"][1]["balance"] = "5010.00"
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: degraded)
+    response = client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"nov", "application/pdf")}, data={"password": "x"})
+    assert response.status_code == 400
+    assert latest_snapshots(db) == before
 
 
 @pytest.mark.parametrize("error,detail", [(IncorrectPasswordError("bad"), "password"), (CASParseError("bad"), "parse")])

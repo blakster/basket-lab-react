@@ -68,7 +68,7 @@ export async function getPortfolio(): Promise<PortfolioResponse> {
 }
 
 export const CAS_FILE_REJECT_MESSAGE =
-  "Use a CAS PDF from CAMS or KFintech.";
+  "Use a CAS PDF from CAMS, KFintech, NSDL or CDSL.";
 
 export function casFileRejected(file: File): boolean {
   return file.type !== "application/pdf" && !/\.pdf$/i.test(file.name);
