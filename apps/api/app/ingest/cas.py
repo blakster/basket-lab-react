@@ -174,11 +174,6 @@ def map_demat_statement(data):
         # a degraded parse, not a liquidation, so the replace must not wipe
         # the issuer's snapshots. A fully redeemed statement skips nothing.
         raise ValueError("Statement holdings could not be read; nothing to import.")
-    nps_schemes = len((data.get("nps") or {}).get("schemes") or [])
-    if not snapshots and nps_schemes:
-        # NPS holdings parse but are not imported; treating the statement as
-        # the issuer's complete picture would tombstone everything else.
-        raise ValueError("Statement holds only NPS schemes, which are not supported.")
     return {"accounts": list(accounts.values()), "instruments": list(instruments.values()),
             "transactions": [], "snapshots": list(snapshots.values()),
             "skipped": skipped, "statement_period": period,

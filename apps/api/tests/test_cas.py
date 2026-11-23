@@ -315,21 +315,42 @@ def test_demat_unreadable_holdings_rejected(client, db, monkeypatch):
 
 
 def test_demat_nps_only_statement_rejected(client, db, monkeypatch):
-    # NPS holdings parse but are not imported; an NPS-only statement must not
-    # be treated as the issuer's complete picture and tombstone real holdings.
+    # NPS holdings are not imported; a statement with no account sections at
+    # all is refused, so NPS schemes cannot sneak past the empty-parse guard.
     monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: demat_statement())
     client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"oct", "application/pdf")}, data={"password": "x"})
     before = latest_snapshots(db)
     nps_only = {"file_type": "CDSL", "statement_period": {"from": "01-Nov-2026", "to": "30-Nov-2026"},
-                "accounts": [{"name": "Demat Account", "dp_id": "", "client_id": "",
-                              "equities": [], "mutual_funds": [], "bonds": []}],
+                "accounts": [],
                 "nps": {"pran": "****1234", "value": "1000.00",
                         "schemes": [{"name": "NPS Tier I", "value": "1000.00"}]}}
     monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: nps_only)
     response = client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"nps", "application/pdf")}, data={"password": "x"})
     assert response.status_code == 400
-    assert "NPS" in response.json()["detail"]
     assert latest_snapshots(db) == before
+
+
+def test_demat_liquidation_with_nps_imports(client, db, monkeypatch):
+    # Empty investment sections are the complete picture even when the
+    # statement also reports NPS schemes: the import must proceed and zero
+    # the redeemed holdings instead of being refused.
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: demat_statement())
+    client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"oct", "application/pdf")}, data={"password": "x"})
+    november = demat_statement()
+    november["statement_period"] = {"from": "01-Nov-2026", "to": "30-Nov-2026"}
+    november["accounts"][0]["equities"] = []
+    november["accounts"][0]["mutual_funds"] = []
+    november["accounts"][1]["mutual_funds"] = []
+    november["nps"] = {"pran": "****1234", "value": "1000.00",
+                      "schemes": [{"name": "NPS Tier I", "value": "1000.00"}]}
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: november)
+    response = client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"nov", "application/pdf")}, data={"password": "x"})
+    assert response.status_code == 200
+    assert latest_snapshots(db) == {
+        ("cdsl:demat:1200000012345678", "isin:INE000A01010"): ("2026-11-30", 0.0),
+        ("cdsl:demat:1200000012345678", "amfi:123456"): ("2026-11-30", 0.0),
+        ("cdsl:folio:12345678/90", "amfi:234567"): ("2026-11-30", 0.0),
+    }
 
 
 @pytest.mark.parametrize("error,detail", [(IncorrectPasswordError("bad"), "password"), (CASParseError("bad"), "parse")])
