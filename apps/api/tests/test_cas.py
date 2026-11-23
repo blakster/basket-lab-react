@@ -265,12 +265,17 @@ def test_demat_replace_keeps_registrar_snapshots(client, db, monkeypatch, statem
     assert rows == [("cams:100001", "2024-03-31"), ("kfintech:200002", "2024-03-31")]
 
 
-def test_empty_demat_statement_imports_nothing(client, db, monkeypatch):
+def test_empty_demat_statement_rejected(client, db, monkeypatch):
+    # A parse that misses every account must not be treated as a liquidation:
+    # the import is refused and existing holdings stay untouched.
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: demat_statement())
+    client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"oct", "application/pdf")}, data={"password": "x"})
+    assert db.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0] == 3
     monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf",
                         lambda *args, **kwargs: {"file_type": "NSDL", "statement_period": {"from": "01-Oct-2026", "to": "31-Oct-2026"}, "accounts": []})
     response = client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"empty", "application/pdf")}, data={"password": "x"})
-    assert response.status_code == 200
-    assert response.json()["snapshotsWritten"] == 0
+    assert response.status_code == 400
+    assert db.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0] == 3
 
 
 @pytest.mark.parametrize("error,detail", [(IncorrectPasswordError("bad"), "password"), (CASParseError("bad"), "parse")])
