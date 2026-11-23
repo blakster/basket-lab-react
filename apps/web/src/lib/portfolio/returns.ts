@@ -27,6 +27,14 @@ const UNIT_OUT = new Set(["sell", "switch-out"]);
 const CASH_IN = new Set(["buy", "sip", "switch-in"]);
 const CASH_OUT = new Set(["sell", "switch-out"]);
 
+// casparser keeps the statement's sign (redemptions are negative); units held
+// always move by the absolute amount, direction comes from the kind.
+function unitDelta(tx: PortfolioTransaction): number {
+  if (UNIT_OUT.has(tx.kind)) return -Math.abs(tx.units);
+  if (UNIT_IN.has(tx.kind)) return Math.abs(tx.units);
+  return 0;
+}
+
 // casparser maps dividend payouts and reinvestments to the same kind; a payout
 // carries no units, a reinvestment buys units with the dividend amount.
 export function isDividendPayout(tx: PortfolioTransaction): boolean {
@@ -51,8 +59,7 @@ export function buildPositions(
       };
       positions.set(tx.instrumentId, p);
     }
-    const sign = UNIT_OUT.has(tx.kind) ? -1 : UNIT_IN.has(tx.kind) ? 1 : 0;
-    p.units += sign * tx.units;
+    p.units += unitDelta(tx);
     if (CASH_IN.has(tx.kind)) p.invested += tx.amount;
     else if (CASH_OUT.has(tx.kind)) p.proceeds += tx.amount;
     else if (isDividendPayout(tx)) p.income += tx.amount;
@@ -78,8 +85,7 @@ export function unitsByInstrument(
     const deltas: number[] = [];
     let units = 0;
     for (const tx of sorted) {
-      const sign = UNIT_OUT.has(tx.kind) ? -1 : UNIT_IN.has(tx.kind) ? 1 : 0;
-      units += sign * tx.units;
+      units += unitDelta(tx);
       dates.push(tx.date);
       deltas.push(units);
     }

@@ -31,7 +31,7 @@ describe("buildPositions", () => {
       tx({ kind: "buy", units: 5, amount: 500, date: "2024-02-01" }),
       tx({ kind: "dividend", units: 0, amount: 120, date: "2024-03-01" }),
       tx({ kind: "dividend", units: 1.2, amount: 120, date: "2024-03-02" }),
-      tx({ kind: "sell", units: 4, amount: 440, date: "2024-04-01" }),
+      tx({ kind: "sell", units: -4, amount: 440, date: "2024-04-01" }),
       tx({ kind: "switch-in", units: 2, amount: 220, date: "2024-05-01" }),
       tx({ kind: "switch-out", units: 1, amount: 110, date: "2024-06-01" }),
     ]);
