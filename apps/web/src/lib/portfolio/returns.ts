@@ -133,16 +133,18 @@ export function portfolioTotals(
   values: Map<string, number>,
   asOf: string,
 ): PortfolioTotals {
+  // Switches move value between funds, not new money: they stay out of
+  // invested and proceeds so the totals reflect external cash only.
   let invested = 0;
   let proceeds = 0;
   let income = 0;
   let currentValue = 0;
-  for (const p of positions.values()) {
-    invested += p.invested;
-    proceeds += p.proceeds;
-    income += p.income;
-    currentValue += values.get(p.instrumentId) ?? 0;
+  for (const tx of transactions) {
+    if (tx.kind === "buy" || tx.kind === "sip") invested += tx.amount;
+    else if (tx.kind === "sell") proceeds += tx.amount;
+    else if (isDividendPayout(tx)) income += tx.amount;
   }
+  for (const p of positions.values()) currentValue += values.get(p.instrumentId) ?? 0;
   const gain = currentValue + proceeds + income - invested;
   return {
     invested,

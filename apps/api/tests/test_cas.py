@@ -72,7 +72,7 @@ def test_import_endpoint(client, db, monkeypatch, statement):
         "importId": hashlib.sha256(b"synthetic pdf").hexdigest(),
         "accountsInserted": 2, "instrumentsInserted": 2, "imported": 7,
         "duplicates": 0, "skipped": 2, "snapshotsWritten": 2,
-        "statementPeriod": statement["statement_period"],
+        "statementPeriod": statement["statement_period"], "warnings": [],
     }
     again = upload().json()
     assert again["imported"] == again["accountsInserted"] == again["instrumentsInserted"] == 0
@@ -81,6 +81,12 @@ def test_import_endpoint(client, db, monkeypatch, statement):
     assert db.execute("SELECT COUNT(*) FROM transactions").fetchone()[0] == 7
     assert db.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0] == 2
     assert {r[0] for r in db.execute("SELECT import_id FROM transactions")} == {again["importId"]}
+
+
+def test_non_cas_statement_rejected(client, db, monkeypatch):
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: {"accounts": []})
+    response = client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"nsdl pdf", "application/pdf")}, data={"password": "x"})
+    assert response.status_code == 400
 
 
 @pytest.mark.parametrize("error,detail", [(IncorrectPasswordError("bad"), "password"), (CASParseError("bad"), "parse")])

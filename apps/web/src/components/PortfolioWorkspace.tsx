@@ -61,6 +61,7 @@ export function PortfolioWorkspace() {
         `Imported ${result.imported} transaction${result.imported === 1 ? "" : "s"}` +
           (result.duplicates > 0 ? `, ${result.duplicates} already known` : "") +
           (result.skipped > 0 ? `, ${result.skipped} skipped` : "") +
+          (result.warnings?.length ? `, ${result.warnings.length} parser warning${result.warnings.length === 1 ? "" : "s"}` : "") +
           ".",
       );
       queryClient.invalidateQueries({ queryKey: ["portfolio"] });
@@ -144,7 +145,9 @@ export function PortfolioWorkspace() {
 
     const values = new Map<string, number>();
     const snapshotValued = new Set<string>();
-    let asOf = today;
+    // Value date is the freshest valuation we actually have (latest NAV or
+    // statement snapshot), not today: a stale statement must not stretch XIRR.
+    let asOf = "";
     for (const id of model.positions.keys()) {
       const code = model.codeByInstrument.get(id);
       const series = code ? navByCode.get(code) : undefined;
@@ -161,7 +164,8 @@ export function PortfolioWorkspace() {
       }
     }
 
-    const totals = portfolioTotals(data.transactions, model.positions, values, asOf);
+    const asOfDate = asOf || today;
+    const totals = portfolioTotals(data.transactions, model.positions, values, asOfDate);
     const seriesPoints = growthSeries(
       data.transactions,
       navByCode,
@@ -186,7 +190,7 @@ export function PortfolioWorkspace() {
           value,
           gain,
           gainPct: position.invested > 0 ? (gain / position.invested) * 100 : null,
-          xirr: xirrPercent(data.transactions, value, asOf, position.instrumentId),
+          xirr: xirrPercent(data.transactions, value, asOfDate, position.instrumentId),
           accounts: [...accountIds]
             .map((id) => model.accountsById.get(id))
             .filter(Boolean)
@@ -196,7 +200,7 @@ export function PortfolioWorkspace() {
       .filter((row) => row.position.units !== 0 || row.position.invested > 0 || row.value > 0)
       .sort((a, b) => b.value - a.value);
 
-    return { totals, seriesPoints, rows, asOf, snapshotValued, navLoading: navQuery.isLoading };
+    return { totals, seriesPoints, rows, asOf: asOfDate, snapshotValued, navLoading: navQuery.isLoading };
   }, [data, model, navQuery.data, navQuery.isLoading, today]);
 
   if (portfolioQuery.isLoading) {

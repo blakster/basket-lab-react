@@ -115,6 +115,19 @@ describe("portfolioTotals", () => {
     expect(totals.xirr).not.toBeNull();
   });
 
+  it("excludes fund switches from invested and proceeds", () => {
+    const transactions = [
+      tx({ kind: "buy", units: 10, amount: 1000, date: "2023-01-01" }),
+      tx({ kind: "switch-out", units: -10, amount: 1100, date: "2024-01-01" }),
+      tx({ kind: "switch-in", units: 10, amount: 1100, date: "2024-01-01" }),
+    ];
+    const positions = buildPositions(transactions);
+    const totals = portfolioTotals(transactions, positions, new Map([["amfi:1", 1200]]), "2025-01-01");
+    expect(totals.invested).toBe(1000);
+    expect(totals.proceeds).toBe(0);
+    expect(totals.gain).toBeCloseTo(200, 10);
+  });
+
   it("gainPct is null when nothing was invested", () => {
     const transactions = [
       tx({ kind: "dividend", units: 0, amount: 50 }),

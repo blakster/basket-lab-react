@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import threading
 from collections import Counter
 from datetime import date
 from decimal import Decimal
@@ -78,6 +79,11 @@ def map_statement(data):
             "skipped": skipped, "statement_period": period}
 
 
+# FastAPI runs sync endpoints on worker threads; casparser's PDFium binding and
+# the shared SQLite connection are not safe for concurrent imports.
+_IMPORT_LOCK = threading.Lock()
+
+
 def write_statement(conn, rows, import_id):
     counts = {}
     with conn:
@@ -104,21 +110,27 @@ def write_statement(conn, rows, import_id):
         )
     return {"importId": import_id, **counts, "imported": inserted,
             "duplicates": len(rows["transactions"]) - inserted, "skipped": rows["skipped"],
-            "snapshotsWritten": len(rows["snapshots"]), "statementPeriod": rows["statement_period"]}
+            "snapshotsWritten": len(rows["snapshots"]), "statementPeriod": rows["statement_period"],
+            "warnings": rows.get("warnings", [])}
 
 
 def import_cas(conn, content, password):
-    try:
-        data = casparser.read_cas_pdf(BytesIO(content), password=password, output="dict")
-        # casparser 1.x calls its Pydantic model output "dict".
-        if hasattr(data, "model_dump"):
-            data = data.model_dump(mode="json", by_alias=True)
-    except IncorrectPasswordError as exc:
-        raise HTTPException(400, "Incorrect CAS PDF password.") from exc
-    except Exception as exc:
-        raise HTTPException(400, "Could not parse CAS PDF. Use a CAMS or KFintech statement with valid scheme identifiers.") from exc
-    try:
-        rows = map_statement(data)
-    except ValueError as exc:
-        raise HTTPException(400, str(exc)) from exc
-    return write_statement(conn, rows, hashlib.sha256(content).hexdigest())
+    with _IMPORT_LOCK:
+        try:
+            data = casparser.read_cas_pdf(BytesIO(content), password=password, output="dict")
+            # casparser 1.x calls its Pydantic model output "dict".
+            if hasattr(data, "model_dump"):
+                data = data.model_dump(mode="json", by_alias=True)
+        except IncorrectPasswordError as exc:
+            raise HTTPException(400, "Incorrect CAS PDF password.") from exc
+        except Exception as exc:
+            raise HTTPException(400, "Could not parse CAS PDF. Use a CAMS or KFintech statement with valid scheme identifiers.") from exc
+        # NSDL/CDSL statements parse to accounts, not folios.
+        if not isinstance(data, dict) or "folios" not in data:
+            raise HTTPException(400, "Could not parse CAS PDF. Use a CAMS or KFintech statement with valid scheme identifiers.")
+        try:
+            rows = map_statement(data)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        rows["warnings"] = data.get("parse_warnings") or []
+        return write_statement(conn, rows, hashlib.sha256(content).hexdigest())

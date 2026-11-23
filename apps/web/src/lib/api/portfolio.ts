@@ -46,6 +46,7 @@ export type CasImportResult = {
   skipped: number;
   snapshotsWritten: number;
   statementPeriod: unknown;
+  warnings?: string[];
 };
 
 export async function getPortfolio(): Promise<PortfolioResponse> {
