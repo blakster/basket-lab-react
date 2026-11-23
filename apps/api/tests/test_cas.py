@@ -314,6 +314,24 @@ def test_demat_unreadable_holdings_rejected(client, db, monkeypatch):
     assert latest_snapshots(db) == before
 
 
+def test_demat_nps_only_statement_rejected(client, db, monkeypatch):
+    # NPS holdings parse but are not imported; an NPS-only statement must not
+    # be treated as the issuer's complete picture and tombstone real holdings.
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: demat_statement())
+    client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"oct", "application/pdf")}, data={"password": "x"})
+    before = latest_snapshots(db)
+    nps_only = {"file_type": "CDSL", "statement_period": {"from": "01-Nov-2026", "to": "30-Nov-2026"},
+                "accounts": [{"name": "Demat Account", "dp_id": "", "client_id": "",
+                              "equities": [], "mutual_funds": [], "bonds": []}],
+                "nps": {"pran": "****1234", "value": "1000.00",
+                        "schemes": [{"name": "NPS Tier I", "value": "1000.00"}]}}
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: nps_only)
+    response = client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"nps", "application/pdf")}, data={"password": "x"})
+    assert response.status_code == 400
+    assert "NPS" in response.json()["detail"]
+    assert latest_snapshots(db) == before
+
+
 @pytest.mark.parametrize("error,detail", [(IncorrectPasswordError("bad"), "password"), (CASParseError("bad"), "parse")])
 def test_parser_errors(client, db, monkeypatch, error, detail):
     def parse(*args, **kwargs):
