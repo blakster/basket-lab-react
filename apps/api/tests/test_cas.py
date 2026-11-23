@@ -353,6 +353,27 @@ def test_demat_liquidation_with_nps_imports(client, db, monkeypatch):
     }
 
 
+def test_demat_dropped_rows_rejected(client, db, monkeypatch):
+    # casparser reads account balances from the summary block even when it
+    # drops detail rows; a positive balance with no mapped holding is a
+    # degraded read, not a liquidation, and must not wipe saved snapshots.
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: demat_statement())
+    client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"oct", "application/pdf")}, data={"password": "x"})
+    before = latest_snapshots(db)
+    degraded = demat_statement()
+    degraded["statement_period"] = {"from": "01-Nov-2026", "to": "30-Nov-2026"}
+    degraded["accounts"][0]["equities"] = []
+    degraded["accounts"][0]["mutual_funds"] = []
+    degraded["accounts"][0]["bonds"] = []
+    degraded["accounts"][0]["balance"] = "2010.00"
+    degraded["accounts"][1]["mutual_funds"] = []
+    degraded["accounts"][1]["balance"] = "5010.00"
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: degraded)
+    response = client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"nov", "application/pdf")}, data={"password": "x"})
+    assert response.status_code == 400
+    assert latest_snapshots(db) == before
+
+
 @pytest.mark.parametrize("error,detail", [(IncorrectPasswordError("bad"), "password"), (CASParseError("bad"), "parse")])
 def test_parser_errors(client, db, monkeypatch, error, detail):
     def parse(*args, **kwargs):

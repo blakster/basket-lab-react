@@ -6,7 +6,7 @@ import re
 import threading
 from collections import Counter
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from io import BytesIO
 
 import casparser
@@ -174,6 +174,17 @@ def map_demat_statement(data):
         # a degraded parse, not a liquidation, so the replace must not wipe
         # the issuer's snapshots. A fully redeemed statement skips nothing.
         raise ValueError("Statement holdings could not be read; nothing to import.")
+    if not snapshots:
+        # casparser reads each account's balance from the summary block even
+        # when it drops detail rows it cannot parse; a positive balance with
+        # no mapped holding is a degraded read, not a liquidation.
+        for demat in data["accounts"]:
+            try:
+                balance = Decimal(str(demat.get("balance") or "0"))
+            except InvalidOperation:
+                continue
+            if balance > 0:
+                raise ValueError("Statement balances could not be read; nothing to import.")
     return {"accounts": list(accounts.values()), "instruments": list(instruments.values()),
             "transactions": [], "snapshots": list(snapshots.values()),
             "skipped": skipped, "statement_period": period,
