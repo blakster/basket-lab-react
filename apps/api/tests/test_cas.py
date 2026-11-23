@@ -59,6 +59,7 @@ def test_demat_mapping():
     assert rows["skipped"] == 1
     assert rows["statement_period"] == {"from": "01-Oct-2026", "to": "31-Oct-2026"}
     assert rows["replace_snapshots"] is True
+    assert rows["replace_provider"] == "cdsl"
     assert rows["snapshot_date"] == "2026-10-31"
     assert map_demat_statement(demat_statement()) == rows
 
@@ -192,8 +193,76 @@ def test_demat_reimport_drops_sold_holdings(client, db, monkeypatch):
     november["accounts"][0]["mutual_funds"] = []
     monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: november)
     client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"nov", "application/pdf")}, data={"password": "x"})
-    rows = [tuple(r) for r in db.execute("SELECT account_id, instrument_id, date FROM snapshots")]
-    assert rows == [("cdsl:folio:12345678/90", "amfi:234567", "2026-11-30")]
+    latest = latest_snapshots(db)
+    assert latest == {
+        ("cdsl:demat:1200000012345678", "isin:INE000A01010"): ("2026-11-30", 0.0),
+        ("cdsl:demat:1200000012345678", "amfi:123456"): ("2026-11-30", 0.0),
+        ("cdsl:folio:12345678/90", "amfi:234567"): ("2026-11-30", 100.0),
+    }
+
+
+def latest_snapshots(db):
+    rows = db.execute(
+        "SELECT s.account_id, s.instrument_id, s.date, s.units FROM snapshots s "
+        "JOIN (SELECT account_id, instrument_id, MAX(date) AS d FROM snapshots "
+        "      GROUP BY account_id, instrument_id) latest "
+        "ON latest.account_id = s.account_id AND latest.instrument_id = s.instrument_id "
+        "AND latest.d = s.date"
+    )
+    return {(row["account_id"], row["instrument_id"]): (row["date"], row["units"]) for row in rows}
+
+
+def test_demat_redeemed_folio_stops_counting(client, db, monkeypatch):
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: demat_statement())
+    client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"oct", "application/pdf")}, data={"password": "x"})
+    november = demat_statement()
+    november["statement_period"] = {"from": "01-Nov-2026", "to": "30-Nov-2026"}
+    november["accounts"][0]["equities"] = []
+    november["accounts"][0]["mutual_funds"] = []
+    november["accounts"][1]["mutual_funds"] = []
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: november)
+    client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"nov", "application/pdf")}, data={"password": "x"})
+    # The folio vanishes from the statement entirely, so no account row names
+    # it; its last holding must still stop counting.
+    row = db.execute(
+        "SELECT date, units, value FROM snapshots WHERE account_id = 'cdsl:folio:12345678/90' "
+        "AND instrument_id = 'amfi:234567'"
+    ).fetchone()
+    assert tuple(row) == ("2026-11-30", 0.0, 0.0)
+
+
+def test_demat_older_reimport_keeps_newer_tombstones(client, db, monkeypatch):
+    def upload(content):
+        return client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", content, "application/pdf")}, data={"password": "x"})
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: demat_statement())
+    upload(b"oct")
+    november = demat_statement()
+    november["statement_period"] = {"from": "01-Nov-2026", "to": "30-Nov-2026"}
+    november["accounts"][0]["equities"] = []
+    november["accounts"][0]["mutual_funds"] = []
+    november["accounts"][1]["mutual_funds"] = []
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: november)
+    upload(b"nov")
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: demat_statement())
+    upload(b"oct-again")
+    # Re-importing the older October statement must not resurrect holdings the
+    # November statement already recorded as gone.
+    assert latest_snapshots(db) == {
+        ("cdsl:demat:1200000012345678", "isin:INE000A01010"): ("2026-11-30", 0.0),
+        ("cdsl:demat:1200000012345678", "amfi:123456"): ("2026-11-30", 0.0),
+        ("cdsl:folio:12345678/90", "amfi:234567"): ("2026-11-30", 0.0),
+    }
+
+
+def test_demat_replace_keeps_registrar_snapshots(client, db, monkeypatch, statement):
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: statement)
+    client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"cas", "application/pdf")}, data={"password": "x"})
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: demat_statement())
+    client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"demat", "application/pdf")}, data={"password": "x"})
+    rows = [tuple(r) for r in db.execute(
+        "SELECT account_id, date FROM snapshots WHERE account_id IN ('cams:100001', 'kfintech:200002') ORDER BY account_id"
+    )]
+    assert rows == [("cams:100001", "2024-03-31"), ("kfintech:200002", "2024-03-31")]
 
 
 def test_empty_demat_statement_imports_nothing(client, db, monkeypatch):

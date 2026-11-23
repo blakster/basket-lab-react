@@ -166,9 +166,9 @@ def map_demat_statement(data):
     return {"accounts": list(accounts.values()), "instruments": list(instruments.values()),
             "transactions": [], "snapshots": list(snapshots.values()),
             "skipped": skipped, "statement_period": period,
-            # A depository statement is the account's complete picture at its
+            # A depository statement is the issuer's complete picture at its
             # date, so holdings it no longer lists must stop counting.
-            "replace_snapshots": True, "snapshot_date": day}
+            "replace_snapshots": True, "replace_provider": issuer, "snapshot_date": day}
 
 
 # FastAPI runs sync endpoints on worker threads; casparser's PDFium binding and
@@ -206,13 +206,36 @@ def write_statement(conn, rows, import_id):
             )
             inserted += cursor.rowcount
         if rows.get("replace_snapshots"):
-            ids = [row[0] for row in rows["accounts"]]
-            if ids:
-                conn.execute(
-                    "DELETE FROM snapshots WHERE date <= ? AND account_id IN ("
-                    + ",".join("?" for _ in ids) + ")",
-                    (rows["snapshot_date"], *ids),
+            # One depository CAS covers every account with that depository,
+            # including folios it no longer lists, so replace all of the
+            # issuer's snapshots. A zero snapshot records the absence: without
+            # it a later older statement could resurrect a redeemed holding.
+            provider = rows["replace_provider"]
+            account_ids = [
+                row[0]
+                for row in conn.execute(
+                    "SELECT DISTINCT account_id FROM snapshots WHERE account_id IN "
+                    "(SELECT id FROM accounts WHERE provider = ?)",
+                    (provider,),
                 )
+            ]
+            if account_ids:
+                marks = ",".join("?" for _ in account_ids)
+                known = conn.execute(
+                    f"SELECT DISTINCT account_id, instrument_id FROM snapshots "
+                    f"WHERE account_id IN ({marks})",
+                    account_ids,
+                ).fetchall()
+                conn.execute(
+                    f"DELETE FROM snapshots WHERE date <= ? AND account_id IN ({marks})",
+                    (rows["snapshot_date"], *account_ids),
+                )
+                current = {(row[1], row[2]) for row in rows["snapshots"]}
+                for account_id, instrument_id in known:
+                    if (account_id, instrument_id) not in current:
+                        rows["snapshots"].append(
+                            (rows["snapshot_date"], account_id, instrument_id, 0.0, 0.0)
+                        )
         conn.executemany(
             "INSERT INTO snapshots (date,account_id,instrument_id,units,value) VALUES (?,?,?,?,?) "
             "ON CONFLICT(date,account_id,instrument_id) DO UPDATE SET units=excluded.units,value=excluded.value",
