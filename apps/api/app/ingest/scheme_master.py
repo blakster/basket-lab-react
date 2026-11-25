@@ -31,6 +31,9 @@ class SchemeRow:
     scheme_name: str
     isin: str
     amc: str = ""
+    scheme_plan: str = ""
+    scheme_option: str = ""
+    is_active: bool = True
 
 
 class SchemeMaster:
@@ -57,8 +60,21 @@ class SchemeMaster:
             amc = str(item.get("amc") or "").strip()
             if not code:
                 continue
+            active = str(item.get("is_active") or "true").strip().lower() not in {
+                "false",
+                "0",
+                "no",
+            }
             rows.append(
-                SchemeRow(scheme_code=code, scheme_name=name, isin=isin, amc=amc)
+                SchemeRow(
+                    scheme_code=code,
+                    scheme_name=name,
+                    isin=isin,
+                    amc=amc,
+                    scheme_plan=str(item.get("scheme_plan") or "").strip(),
+                    scheme_option=str(item.get("scheme_option") or "").strip(),
+                    is_active=active,
+                )
             )
         return cls(rows)
 
@@ -109,6 +125,75 @@ class SchemeMaster:
         # de-dupe by code
         uniq = {row.scheme_code: row for row in pool}
         return _prefer_direct_growth(list(uniq.values())).scheme_code
+
+    def direct_counterpart(self, scheme_code: str) -> SchemeRow | None:
+        row = self.by_code(scheme_code)
+        if row is None or _effective_plan(row) != "regular":
+            return None
+        key = _family_key(row.scheme_name)
+        option = _effective_option(row)
+        candidates = [
+            candidate
+            for candidate in self._rows
+            if candidate.is_active
+            and candidate.scheme_code != row.scheme_code
+            and _effective_plan(candidate) == "direct"
+            and _effective_option(candidate) == option
+            and _family_key(candidate.scheme_name) == key
+        ]
+        if not candidates:
+            return None
+        return min(candidates, key=lambda candidate: candidate.scheme_code)
+
+
+def _tokens(text: str) -> list[str]:
+    return _norm(text).split()
+
+
+def _effective_plan(row: SchemeRow) -> str:
+    plan = row.scheme_plan.strip().lower()
+    if plan in {"direct", "regular"}:
+        return plan
+    tokens = _tokens(row.scheme_name)
+    if "direct" in tokens:
+        return "direct"
+    if "regular" in tokens:
+        return "regular"
+    return plan
+
+
+def _effective_option(row: SchemeRow) -> str:
+    option = row.scheme_option.strip().lower()
+    if option:
+        return option
+    tokens = set(_tokens(row.scheme_name))
+    if "idcw" in tokens or "dividend" in tokens:
+        return "idcw"
+    if "bonus" in tokens:
+        return "bonus"
+    if "growth" in tokens:
+        return "growth"
+    return "other"
+
+
+# Plan wrappers disappear from the family key. Payout/reinvestment and the
+# IDCW frequency stay: they are different cashflow options, not wrapper words.
+_FAMILY_WRAPPER_WORDS = {
+    "direct",
+    "regular",
+    "plan",
+    "option",
+    "growth",
+    "idcw",
+    "dividend",
+    "cumulative",
+}
+
+
+def _family_key(name: str) -> str:
+    return " ".join(
+        token for token in _tokens(name) if token not in _FAMILY_WRAPPER_WORDS
+    )
 
 
 def _prefer_direct_growth(rows: list[SchemeRow]) -> SchemeRow:

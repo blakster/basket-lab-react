@@ -22,6 +22,7 @@ from app.portfolio import (
     delete_manual_transaction,
     portfolio,
 )
+from app.portfolio_commission import commission_check
 
 # apps/api/app/main.py → repo root / data / basket.sqlite
 DB_PATH = Path(__file__).resolve().parents[3] / "data" / "basket.sqlite"
@@ -51,8 +52,8 @@ app = FastAPI(lifespan=lifespan)
 app.include_router(cas_router)
 
 
-def _scheme_master(request: Request) -> SchemeMaster | None:
-    master = getattr(request.app.state, "scheme_master", None)
+def _scheme_master(app: FastAPI) -> SchemeMaster:
+    master = getattr(app.state, "scheme_master", None)
     if master is None:
         try:
             master = SchemeMaster.load_cached(DB_PATH.parent)
@@ -60,13 +61,34 @@ def _scheme_master(request: Request) -> SchemeMaster | None:
             # A failed load must not be cached: a transient cache miss would
             # otherwise disable ISIN resolution until the API restarts.
             return SchemeMaster([])
-        request.app.state.scheme_master = master
+        app.state.scheme_master = master
     return master
 
 
 @app.get("/api/portfolio")
 def get_portfolio(request: Request):
-    return portfolio(request.app.state.db, _scheme_master(request))
+    return portfolio(request.app.state.db, _scheme_master(request.app))
+
+
+def _run_commission_check(app: FastAPI, instrument_ids: object):
+    return commission_check(app.state.db, _scheme_master(app), instrument_ids)
+
+
+@app.post("/api/portfolio/commission-check")
+async def post_portfolio_commission_check(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        body = None
+    instrument_ids = body.get("instrumentIds") if isinstance(body, dict) else None
+    try:
+        return await run_in_threadpool(
+            _run_commission_check,
+            request.app,
+            instrument_ids,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.post("/api/portfolio/transactions")

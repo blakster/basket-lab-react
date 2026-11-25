@@ -17,7 +17,9 @@ class DuplicateTransaction(ValueError):
     """The same transaction already exists from a statement or manual entry."""
 
 
-def _scheme_code(instrument_id: str, isin: str | None, master: SchemeMaster | None) -> str | None:
+def scheme_code_for_instrument(
+    instrument_id: str, isin: str | None, master: SchemeMaster | None
+) -> str | None:
     if instrument_id.startswith("amfi:"):
         return instrument_id.split(":", 1)[1] or None
     if isin and master is not None:
@@ -40,7 +42,7 @@ def portfolio(conn: sqlite3.Connection, master: SchemeMaster | None = None) -> d
                 "kind": row["kind"],
                 "name": row["name"],
                 "isin": row["isin"],
-                "schemeCode": _scheme_code(row["id"], row["isin"], master),
+                "schemeCode": scheme_code_for_instrument(row["id"], row["isin"], master),
             }
         )
     transactions = [

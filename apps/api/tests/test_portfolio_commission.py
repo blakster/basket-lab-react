@@ -1,0 +1,179 @@
+import app.portfolio_commission as commission
+from app.ingest.scheme_master import SchemeMaster
+from app.main import app
+from app.portfolio_commission import ExpenseRatio
+
+MASTER_CSV = """scheme_code,scheme_name,isin,scheme_plan,scheme_option,is_active
+2001,Example Flexi Fund - Direct Plan - Growth,INF0000000D1,Direct,Growth,true
+2002,Example Flexi Fund - Regular Plan - Growth,INF0000000R1,Regular,Growth,true
+3001,Example Income Fund - Direct Plan - IDCW,INF0000000D2,Direct,IDCW,true
+"""
+
+
+def install_master():
+    app.state.scheme_master = SchemeMaster.from_csv_text(MASTER_CSV)
+
+
+def add_instrument(db, instrument_id, name, kind="mf", isin=None):
+    db.execute(
+        "INSERT INTO instruments (id, kind, name, isin) VALUES (?, ?, ?, ?)",
+        (instrument_id, kind, name, isin),
+    )
+
+
+def fake_expenses(values):
+    calls = []
+
+    def fetch(code):
+        calls.append(code)
+        value = values.get(code)
+        return None if value is None else ExpenseRatio(value, "2026-10-31")
+
+    return fetch, calls
+
+
+def test_fetch_expense_ratio_reads_only_the_overview(monkeypatch):
+    calls = []
+
+    def fake_call(name, arguments):
+        calls.append((name, arguments))
+        return {
+            "overview": {
+                "expense_ratio_pct": 1.3,
+                "expense_ratio_as_of": "2026-10-31",
+            }
+        }
+
+    monkeypatch.setattr(commission, "call_foliyo_tool", fake_call)
+
+    assert commission.fetch_expense_ratio("2002") == ExpenseRatio(1.3, "2026-10-31")
+    assert calls == [
+        (
+            "get_fund_details",
+            {"fund": "2002", "sections": ["overview"], "holdings_limit": 1},
+        )
+    ]
+
+
+def test_commission_check_matches_direct_and_caches_expense_ratios(client, db, monkeypatch):
+    install_master()
+    add_instrument(
+        db,
+        "amfi:2002",
+        "Example Flexi Fund - Regular Plan - Growth",
+        isin="INF0000000R1",
+    )
+    fetch, calls = fake_expenses({"2002": 1.25, "2001": 0.64})
+    monkeypatch.setattr(commission, "fetch_expense_ratio", fetch)
+
+    response = client.post(
+        "/api/portfolio/commission-check", json={"instrumentIds": ["amfi:2002"]}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["rows"] == [
+        {
+            "instrumentId": "amfi:2002",
+            "schemeCode": "2002",
+            "schemeName": "Example Flexi Fund - Regular Plan - Growth",
+            "directSchemeCode": "2001",
+            "directSchemeName": "Example Flexi Fund - Direct Plan - Growth",
+            "status": "ready",
+            "regularExpenseRatio": 1.25,
+            "directExpenseRatio": 0.64,
+            "expenseGapPct": 0.61,
+            "regularExpenseRatioAsOf": "2026-10-31",
+            "directExpenseRatioAsOf": "2026-10-31",
+        }
+    ]
+    assert sorted(calls) == ["2001", "2002"]
+
+    calls.clear()
+    again = client.post(
+        "/api/portfolio/commission-check", json={"instrumentIds": ["amfi:2002"]}
+    )
+    assert again.status_code == 200
+    assert again.json()["rows"][0]["expenseGapPct"] == 0.61
+    assert calls == []
+
+
+def test_commission_check_ignores_direct_plans_and_non_mutual_funds(client, db, monkeypatch):
+    install_master()
+    add_instrument(db, "amfi:2001", "Example Flexi Fund - Direct Plan - Growth")
+    add_instrument(db, "isin:INE000000001", "Regularly Traded Stock", kind="stock")
+    fetch, calls = fake_expenses({})
+    monkeypatch.setattr(commission, "fetch_expense_ratio", fetch)
+
+    response = client.post(
+        "/api/portfolio/commission-check",
+        json={"instrumentIds": ["amfi:2001", "isin:INE000000001"]},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"rows": []}
+    assert calls == []
+
+
+def test_commission_check_flags_unmatched_regular_plan_without_fetching(client, db, monkeypatch):
+    install_master()
+    add_instrument(db, "amfi:999999", "Unknown Flexi Fund - Regular Plan - Growth")
+    fetch, calls = fake_expenses({})
+    monkeypatch.setattr(commission, "fetch_expense_ratio", fetch)
+
+    response = client.post(
+        "/api/portfolio/commission-check", json={"instrumentIds": ["amfi:999999"]}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["rows"] == [
+        {
+            "instrumentId": "amfi:999999",
+            "schemeCode": "999999",
+            "schemeName": "Unknown Flexi Fund - Regular Plan - Growth",
+            "directSchemeCode": None,
+            "directSchemeName": None,
+            "status": "missing-direct-plan",
+        }
+    ]
+    assert calls == []
+
+
+def test_commission_check_marks_missing_expense_without_inventing_zero(client, db, monkeypatch):
+    install_master()
+    add_instrument(db, "amfi:2002", "Example Flexi Fund - Regular Plan - Growth")
+    fetch, _calls = fake_expenses({"2002": 1.25, "2001": None})
+    monkeypatch.setattr(commission, "fetch_expense_ratio", fetch)
+
+    response = client.post(
+        "/api/portfolio/commission-check", json={"instrumentIds": ["amfi:2002"]}
+    )
+
+    assert response.status_code == 200
+    row = response.json()["rows"][0]
+    assert row["status"] == "missing-expense-ratio"
+    assert "regularExpenseRatio" not in row
+    assert "directExpenseRatio" not in row
+
+
+def test_commission_check_validates_instrument_ids(client):
+    assert client.post("/api/portfolio/commission-check", json={}).status_code == 422
+    assert (
+        client.post(
+            "/api/portfolio/commission-check",
+            json={"instrumentIds": ["x"] * 201},
+        ).status_code
+        == 422
+    )
+
+
+def test_direct_counterpart_preserves_payout_and_reinvestment_options():
+    master = SchemeMaster.from_csv_text(
+        "scheme_code,scheme_name,isin,scheme_plan,scheme_option,is_active\n"
+        "4001,Income Fund - Direct Plan - Payout of Income Distribution cum capital withdrawal option,,Direct,IDCW,true\n"
+        "4002,Income Fund - Regular Plan - Payout of Income Distribution cum capital withdrawal option,,Regular,IDCW,true\n"
+        "4003,Income Fund - Direct Plan - Reinvestment of Income Distribution cum capital withdrawal option,,Direct,IDCW,true\n"
+        "4004,Income Fund - Regular Plan - Reinvestment of Income Distribution cum capital withdrawal option,,Regular,IDCW,true\n"
+    )
+
+    assert master.direct_counterpart("4002").scheme_code == "4001"
+    assert master.direct_counterpart("4004").scheme_code == "4003"
