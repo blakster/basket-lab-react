@@ -24,11 +24,13 @@ def scheme_code_for_instrument(
     name: str | None = None,
     prefer_current: bool = False,
 ) -> str | None:
+    if prefer_current and isin and master is not None:
+        current = master.lookup_current_isin(isin, scheme_name=name)
+        if current:
+            return current
     if instrument_id.startswith("amfi:"):
         return instrument_id.split(":", 1)[1] or None
     if isin and master is not None:
-        if prefer_current:
-            return master.lookup_current_isin(isin, scheme_name=name)
         return master.lookup_isin(isin, scheme_name=name)
     return None
 
