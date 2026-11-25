@@ -511,3 +511,29 @@ def test_commission_check_uses_the_isin_successor_for_a_legacy_amfi_code(client,
     assert row["schemeCode"] == "8001"
     assert row["directSchemeCode"] == "8002"
     assert row["status"] == "ready"
+
+
+def test_commission_check_keeps_an_active_amfi_code_when_its_isin_is_ambiguous(client, db, monkeypatch):
+    app.state.scheme_master = SchemeMaster.from_csv_text(
+        "scheme_code,scheme_name,isin,amc,scheme_plan,scheme_option,is_active\n"
+        "9001,Example active fund - Regular Plan - Growth,INF0000000A8,Example Mutual Fund,Regular,Growth,true\n"
+        "9002,Example active fund - Direct Plan - Growth,INF0000000A8,Example Mutual Fund,Direct,Growth,true\n"
+    )
+    add_instrument(
+        db,
+        "amfi:9001",
+        "Example active fund regular growth",
+        isin="INF0000000A8",
+    )
+    fetch, _calls = fake_expenses({"9001": 1.3, "9002": 0.7})
+    monkeypatch.setattr(commission, "fetch_expense_ratio", fetch)
+
+    response = client.post(
+        "/api/portfolio/commission-check", json={"instrumentIds": ["amfi:9001"]}
+    )
+
+    assert response.status_code == 200
+    rows = response.json()["rows"]
+    assert len(rows) == 1
+    assert rows[0]["schemeCode"] == "9001"
+    assert rows[0]["directSchemeCode"] == "9002"
