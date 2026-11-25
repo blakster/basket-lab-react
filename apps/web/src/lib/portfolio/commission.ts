@@ -24,6 +24,29 @@ export function compoundedSavings(
   return currentValue * (Math.pow(1 + expenseGapPct / 100, years) - 1);
 }
 
+export function valuesForCommission(
+  rows: CommissionCheckRow[],
+  values: Map<string, number>,
+  valuationSchemeByInstrument: Map<string, string>,
+  navBackedSchemes: Set<string>,
+): Map<string, number> {
+  const out = new Map(values);
+  for (const row of rows) {
+    const valuationScheme = valuationSchemeByInstrument.get(row.instrumentId);
+    if (
+      row.schemeCode &&
+      valuationScheme &&
+      row.schemeCode !== valuationScheme &&
+      navBackedSchemes.has(valuationScheme)
+    ) {
+      // A merged fund's old NAV is not today's successor NAV. Without a
+      // successor series, an unavailable saving is better than a stale one.
+      out.set(row.instrumentId, 0);
+    }
+  }
+  return out;
+}
+
 export function summarizeCommission(
   rows: CommissionCheckRow[],
   values: Map<string, number>,

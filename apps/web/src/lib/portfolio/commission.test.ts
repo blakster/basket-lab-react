@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { CommissionCheckRow } from "../api/portfolio";
-import { compoundedSavings, summarizeCommission } from "./commission";
+import {
+  compoundedSavings,
+  summarizeCommission,
+  valuesForCommission,
+} from "./commission";
 
 const readyRow: CommissionCheckRow = {
   instrumentId: "amfi:2002",
@@ -46,6 +50,20 @@ describe("summarizeCommission", () => {
     expect(summary.lines[1].yearlySavings).toBeNull();
     expect(summary.totalYearly).toBeCloseTo(61);
     expect(summary.totalFiveYear).toBeCloseTo(308.74376741);
+    expect(summary.missingCount).toBe(1);
+  });
+
+  it("does not price a successor comparison from the predecessor's stale NAV", () => {
+    const values = valuesForCommission(
+      [readyRow],
+      new Map([["amfi:2002", 10_000]]),
+      new Map([["amfi:2002", "1999"]]),
+      new Set(["1999"]),
+    );
+    const summary = summarizeCommission([readyRow], values);
+
+    expect(summary.lines[0].yearlySavings).toBeNull();
+    expect(summary.totalYearly).toBeNull();
     expect(summary.missingCount).toBe(1);
   });
 

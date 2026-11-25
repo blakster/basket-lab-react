@@ -21,7 +21,7 @@ import {
   postCommissionCheck,
 } from "../lib/api/portfolio";
 import { formatCompactInr, formatInr } from "../lib/format";
-import { summarizeCommission } from "../lib/portfolio/commission";
+import { summarizeCommission, valuesForCommission } from "../lib/portfolio/commission";
 import {
   buildPositions,
   folioGroupKey,
@@ -298,7 +298,16 @@ export function PortfolioWorkspace() {
       .filter((row) => row.position.units !== 0 || row.position.invested > 0 || row.value > 0)
       .sort((a, b) => b.value - a.value);
 
-    const commission = summarizeCommission(commissionQuery.data?.rows ?? [], values);
+    const commissionRows = commissionQuery.data?.rows ?? [];
+    const commission = summarizeCommission(
+      commissionRows,
+      valuesForCommission(
+        commissionRows,
+        values,
+        model.codeByInstrument,
+        new Set(navByCode.keys()),
+      ),
+    );
 
     return {
       totals,
