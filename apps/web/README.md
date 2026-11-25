@@ -13,7 +13,7 @@ npm run dev
 Vite serves `http://localhost:5173` and proxies `/api` to
 `http://127.0.0.1:8000` (configured in `vite.config.ts`). Start the API from
 `apps/api` as well. Without it, Insights and filing upload fail on `/api`
-requests.
+requests. The Portfolio workspace also needs the API.
 
 ## Test
 
@@ -32,7 +32,8 @@ npm run build     # tsc -b && vite build → dist/
 npm run preview
 ```
 
-`npm run preview` serves the built files. It does not proxy `/api`.
+`npm run preview` serves the built files. With this config it proxies `/api`
+too, because Vite inherits `server.proxy` when `preview.proxy` is unset.
 
 ## Conventions
 
