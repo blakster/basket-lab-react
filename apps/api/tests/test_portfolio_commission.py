@@ -193,6 +193,53 @@ def test_commission_check_refetches_stale_cached_expense_ratios(client, db, monk
     assert sorted(calls) == ["2001", "2002"]
 
 
+def test_commission_check_treats_unlabeled_legacy_plan_as_regular_when_direct_exists(
+    client, db, monkeypatch
+):
+    app.state.scheme_master = SchemeMaster.from_csv_text(
+        "scheme_code,scheme_name,isin,scheme_plan,scheme_option,is_active\n"
+        "5001,Example Advantage Fund - Growth Plan - Direct Plan,INF0000000D3,Direct,Growth,true\n"
+        "5002,Example Advantage Fund - Growth Plan,INF0000000R3,Other,Growth,true\n"
+    )
+    add_instrument(db, "amfi:5002", "Example Advantage Fund - Growth Plan")
+    fetch, _calls = fake_expenses({"5002": 1.4, "5001": 0.7})
+    monkeypatch.setattr(commission, "fetch_expense_ratio", fetch)
+
+    response = client.post(
+        "/api/portfolio/commission-check", json={"instrumentIds": ["amfi:5002"]}
+    )
+
+    assert response.status_code == 200
+    row = response.json()["rows"][0]
+    assert row["status"] == "ready"
+    assert row["directSchemeCode"] == "5001"
+
+
+def test_commission_check_resolves_a_secondary_isin(client, db, monkeypatch):
+    app.state.scheme_master = SchemeMaster.from_csv_text(
+        "scheme_code,scheme_name,isin,isin2,scheme_plan,scheme_option,is_active\n"
+        "6001,Example Secondary Fund - Direct Plan - Growth,INF0000000D4,,Direct,Growth,true\n"
+        "6002,Example Secondary Fund - Regular Plan - Growth,INF0000000R4,INF0000000R5,Regular,Growth,true\n"
+    )
+    add_instrument(
+        db,
+        "isin:INF0000000R5",
+        "Example Secondary Fund - Regular Plan - Growth",
+        isin="INF0000000R5",
+    )
+    fetch, _calls = fake_expenses({"6002": 1.4, "6001": 0.7})
+    monkeypatch.setattr(commission, "fetch_expense_ratio", fetch)
+
+    response = client.post(
+        "/api/portfolio/commission-check", json={"instrumentIds": ["isin:INF0000000R5"]}
+    )
+
+    assert response.status_code == 200
+    row = response.json()["rows"][0]
+    assert row["schemeCode"] == "6002"
+    assert row["directSchemeCode"] == "6001"
+
+
 def test_commission_check_validates_instrument_ids(client):
     assert client.post("/api/portfolio/commission-check", json={}).status_code == 422
     assert (

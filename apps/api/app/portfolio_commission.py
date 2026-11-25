@@ -134,12 +134,17 @@ def _expense_ratios(
     return expenses
 
 
-def _is_regular_plan(name: str, row: SchemeRow | None) -> bool:
+def _plan_classification(name: str, row: SchemeRow | None) -> str:
     if row is not None:
         plan = row.scheme_plan.strip().lower()
         if plan in {"direct", "regular"}:
-            return plan == "regular"
-    return "regular" in _norm(name).split()
+            return plan
+    tokens = _norm(name).split()
+    if "direct" in tokens:
+        return "direct"
+    if "regular" in tokens:
+        return "regular"
+    return "unknown"
 
 
 def commission_check(
@@ -177,9 +182,12 @@ def commission_check(
             instrument["id"], instrument["isin"], master
         )
         scheme_row = master.by_code(scheme_code) if scheme_code else None
-        if not _is_regular_plan(instrument["name"], scheme_row):
+        plan = _plan_classification(instrument["name"], scheme_row)
+        if plan == "direct":
             continue
         direct = master.direct_counterpart(scheme_code) if scheme_code else None
+        if plan == "unknown" and direct is None:
+            continue
         item = {
             "instrumentId": instrument_id,
             "schemeCode": scheme_code,

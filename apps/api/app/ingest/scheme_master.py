@@ -34,6 +34,7 @@ class SchemeRow:
     scheme_plan: str = ""
     scheme_option: str = ""
     is_active: bool = True
+    isin2: str = ""
 
 
 class SchemeMaster:
@@ -46,6 +47,8 @@ class SchemeMaster:
             self._by_code[row.scheme_code] = row
             if row.isin:
                 self._by_isin[row.isin.upper()] = row.scheme_code
+            if row.isin2:
+                self._by_isin[row.isin2.upper()] = row.scheme_code
             key = _norm(row.scheme_name)
             if key:
                 self._by_name.setdefault(key, []).append(row)
@@ -56,7 +59,8 @@ class SchemeMaster:
         for item in raw:
             code = str(item.get("scheme_code") or "").strip()
             name = str(item.get("scheme_name") or "").strip()
-            isin = str(item.get("isin") or item.get("isin2") or "").strip()
+            isin = str(item.get("isin") or "").strip()
+            isin2 = str(item.get("isin2") or "").strip()
             amc = str(item.get("amc") or "").strip()
             if not code:
                 continue
@@ -74,6 +78,7 @@ class SchemeMaster:
                     scheme_plan=str(item.get("scheme_plan") or "").strip(),
                     scheme_option=str(item.get("scheme_option") or "").strip(),
                     is_active=active,
+                    isin2=isin2,
                 )
             )
         return cls(rows)
@@ -128,7 +133,7 @@ class SchemeMaster:
 
     def direct_counterpart(self, scheme_code: str) -> SchemeRow | None:
         row = self.by_code(scheme_code)
-        if row is None or _effective_plan(row) != "regular":
+        if row is None or _effective_plan(row) == "direct":
             return None
         key = _family_key(row.scheme_name)
         option = _effective_option(row)
