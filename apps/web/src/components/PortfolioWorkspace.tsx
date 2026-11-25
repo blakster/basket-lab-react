@@ -441,11 +441,12 @@ export function PortfolioWorkspace() {
 
           <CommissionCheck
             summary={
-              commissionQuery.data || model.heldInstrumentIds.length === 0
+              (commissionQuery.data || model.heldInstrumentIds.length === 0) &&
+              !navQuery.isLoading
                 ? derived.commission
                 : null
             }
-            loading={commissionQuery.isLoading}
+            loading={commissionQuery.isLoading || navQuery.isLoading}
             error={commissionQuery.isError}
           />
 
