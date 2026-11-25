@@ -1344,6 +1344,10 @@ button[data-static="true"]:active:not(:disabled) {
   color: var(--ink);
 }
 
+.commission-table {
+  min-width: 42rem;
+}
+
 .commission-table td {
   vertical-align: top;
 }
