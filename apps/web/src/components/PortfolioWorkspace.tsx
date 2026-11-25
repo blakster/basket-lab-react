@@ -18,8 +18,10 @@ import {
   deleteManualTransaction,
   getPortfolio,
   importCas,
+  postCommissionCheck,
 } from "../lib/api/portfolio";
 import { formatCompactInr, formatInr } from "../lib/format";
+import { summarizeCommission } from "../lib/portfolio/commission";
 import {
   buildPositions,
   folioGroupKey,
@@ -30,6 +32,7 @@ import {
   xirrPercent,
   type Position,
 } from "../lib/portfolio/returns";
+import { CommissionCheck } from "./CommissionCheck";
 import { GrowthPathChart } from "./LabPlots";
 import { ManualTransactionDialog } from "./ManualTransactionDialog";
 
@@ -176,6 +179,13 @@ export function PortfolioWorkspace() {
     // Snapshot-only holdings (no trades in the period) still need live NAVs.
     if (!since && earliestSnapshot) since = earliestSnapshot;
     const navCodes = [...new Set(codeByInstrument.values())].sort();
+    const heldInstrumentIds = [...positions.values()]
+      .filter((position) => {
+        const held = holdings.get(position.instrumentId)?.heldUnits ?? position.units;
+        return held > 0 && instrumentsById.get(position.instrumentId)?.kind === "mf";
+      })
+      .map((position) => position.instrumentId)
+      .sort();
 
     return {
       instrumentsById,
@@ -188,6 +198,7 @@ export function PortfolioWorkspace() {
       snapshotByInstrument,
       navCodes,
       since,
+      heldInstrumentIds,
     };
   }, [data]);
 
@@ -197,6 +208,12 @@ export function PortfolioWorkspace() {
     queryFn: () => fetchNav(model!.navCodes, model!.since!, today),
     enabled: !!model && model.navCodes.length > 0 && !!model.since,
     staleTime: 5 * 60 * 1000,
+  });
+  const commissionQuery = useQuery({
+    queryKey: ["portfolio-commission", model?.heldInstrumentIds.join(",") ?? ""],
+    queryFn: () => postCommissionCheck(model!.heldInstrumentIds),
+    enabled: !!model && model.heldInstrumentIds.length > 0,
+    staleTime: 6 * 60 * 60 * 1000,
   });
 
   const derived = useMemo(() => {
@@ -281,8 +298,19 @@ export function PortfolioWorkspace() {
       .filter((row) => row.position.units !== 0 || row.position.invested > 0 || row.value > 0)
       .sort((a, b) => b.value - a.value);
 
-    return { totals, seriesPoints, rows, asOf: asOfDate, complete, snapshotValued, navLoading: navQuery.isLoading };
-  }, [data, model, navQuery.data, navQuery.isLoading, today]);
+    const commission = summarizeCommission(commissionQuery.data?.rows ?? [], values);
+
+    return {
+      totals,
+      seriesPoints,
+      rows,
+      asOf: asOfDate,
+      complete,
+      snapshotValued,
+      navLoading: navQuery.isLoading,
+      commission,
+    };
+  }, [data, model, navQuery.data, navQuery.isLoading, commissionQuery.data, today]);
 
   if (portfolioQuery.isLoading) {
     return <p className="insight-empty" role="status">Loading portfolio…</p>;
@@ -401,6 +429,16 @@ export function PortfolioWorkspace() {
               <span className="kpi-sub">Money-weighted, all cashflows</span>
             </div>
           </div>
+
+          <CommissionCheck
+            summary={
+              commissionQuery.data || model.heldInstrumentIds.length === 0
+                ? derived.commission
+                : null
+            }
+            loading={commissionQuery.isLoading}
+            error={commissionQuery.isError}
+          />
 
           {derived.navLoading && (
             <p className="insight-empty" role="status">

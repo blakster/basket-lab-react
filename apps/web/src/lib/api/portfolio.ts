@@ -49,6 +49,29 @@ export type PortfolioResponse = {
   snapshots: PortfolioSnapshot[];
 };
 
+export type CommissionCheckStatus =
+  | "ready"
+  | "missing-direct-plan"
+  | "missing-expense-ratio";
+
+export type CommissionCheckRow = {
+  instrumentId: string;
+  schemeCode: string | null;
+  schemeName: string;
+  directSchemeCode: string | null;
+  directSchemeName: string | null;
+  status: CommissionCheckStatus;
+  regularExpenseRatio?: number;
+  directExpenseRatio?: number;
+  expenseGapPct?: number;
+  regularExpenseRatioAsOf?: string | null;
+  directExpenseRatioAsOf?: string | null;
+};
+
+export type CommissionCheckResponse = {
+  rows: CommissionCheckRow[];
+};
+
 export type CasImportResult = {
   importId: string;
   accountsInserted: number;
@@ -65,6 +88,18 @@ export async function getPortfolio(): Promise<PortfolioResponse> {
   const res = await fetch("/api/portfolio");
   if (!res.ok) throw new Error("Portfolio unavailable");
   return (await res.json()) as PortfolioResponse;
+}
+
+export async function postCommissionCheck(
+  instrumentIds: string[],
+): Promise<CommissionCheckResponse> {
+  const res = await fetch("/api/portfolio/commission-check", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ instrumentIds }),
+  });
+  if (!res.ok) throw await apiError(res, "Commission check unavailable");
+  return (await res.json()) as CommissionCheckResponse;
 }
 
 export const CAS_FILE_REJECT_MESSAGE =
