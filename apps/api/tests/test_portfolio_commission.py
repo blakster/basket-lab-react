@@ -537,3 +537,4 @@ def test_commission_check_keeps_an_active_amfi_code_when_its_isin_is_ambiguous(c
     assert len(rows) == 1
     assert rows[0]["schemeCode"] == "9001"
     assert rows[0]["directSchemeCode"] == "9002"
+    assert rows[0]["status"] == "ready"
