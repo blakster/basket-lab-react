@@ -1,7 +1,6 @@
-from datetime import date, timedelta
+from datetime import date
 
 import app.portfolio_commission as commission
-from app.ingest.parse import load_fundamentals
 from app.ingest.scheme_master import SchemeMaster
 from app.main import app
 from app.portfolio_commission import ExpenseRatio
@@ -59,7 +58,7 @@ def test_fetch_expense_ratio_reads_only_the_overview(monkeypatch):
     ]
 
 
-def test_commission_check_matches_direct_and_caches_expense_ratios(client, db, monkeypatch):
+def test_commission_check_matches_direct_and_fetches_current_expense_ratios(client, db, monkeypatch):
     install_master()
     add_instrument(
         db,
@@ -99,7 +98,7 @@ def test_commission_check_matches_direct_and_caches_expense_ratios(client, db, m
     )
     assert again.status_code == 200
     assert again.json()["rows"][0]["expenseGapPct"] == 0.61
-    assert calls == []
+    assert sorted(calls) == ["2001", "2002"]
 
 
 def test_commission_check_ignores_direct_plans_and_non_mutual_funds(client, db, monkeypatch):
@@ -173,24 +172,6 @@ def test_scheme_master_plan_metadata_wins_over_a_stale_imported_name(client, db,
     assert response.status_code == 200
     assert response.json() == {"rows": []}
     assert calls == []
-
-
-def test_commission_check_refetches_stale_cached_expense_ratios(client, db, monkeypatch):
-    install_master()
-    add_instrument(db, "amfi:2002", "Example Flexi Fund - Regular Plan - Growth")
-    stale = (date.today() - timedelta(days=90)).isoformat()
-    load_fundamentals(db, stale, "2002", expense_ratio=2.0)
-    load_fundamentals(db, stale, "2001", expense_ratio=1.5)
-    fetch, calls = fake_expenses({"2002": 1.25, "2001": 0.64})
-    monkeypatch.setattr(commission, "fetch_expense_ratio", fetch)
-
-    response = client.post(
-        "/api/portfolio/commission-check", json={"instrumentIds": ["amfi:2002"]}
-    )
-
-    assert response.status_code == 200
-    assert response.json()["rows"][0]["expenseGapPct"] == 0.61
-    assert sorted(calls) == ["2001", "2002"]
 
 
 def test_commission_check_treats_unlabeled_legacy_plan_as_regular_when_direct_exists(

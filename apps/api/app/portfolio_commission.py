@@ -5,16 +5,14 @@ from __future__ import annotations
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date
 from typing import Callable
 
 from app.ingest.foliyo import call_foliyo_tool
-from app.ingest.parse import load_fundamentals
 from app.ingest.scheme_master import SchemeMaster, SchemeRow, _norm
 from app.portfolio import scheme_code_for_instrument
 
 MAX_INSTRUMENT_IDS = 200
-EXPENSE_RATIO_MAX_AGE_DAYS = 45
 
 
 @dataclass(frozen=True)
@@ -67,38 +65,6 @@ def fetch_expense_ratio(scheme_code: str) -> ExpenseRatio | None:
     )
 
 
-def _latest_expenses(
-    conn: sqlite3.Connection, scheme_codes: list[str]
-) -> dict[str, ExpenseRatio]:
-    if not scheme_codes:
-        return {}
-    marks = ",".join("?" for _ in scheme_codes)
-    fresh_after = (
-        date.today() - timedelta(days=EXPENSE_RATIO_MAX_AGE_DAYS)
-    ).isoformat()
-    rows = conn.execute(
-        f"""
-        SELECT f.scheme_code, f.expense_ratio, f.as_of
-        FROM fundamentals f
-        JOIN (
-          SELECT scheme_code, MAX(as_of) AS max_as_of
-          FROM fundamentals
-          WHERE scheme_code IN ({marks})
-            AND as_of >= ?
-          GROUP BY scheme_code
-        ) latest
-          ON latest.scheme_code = f.scheme_code
-         AND latest.max_as_of = f.as_of
-        """,
-        [*scheme_codes, fresh_after],
-    ).fetchall()
-    return {
-        row["scheme_code"]: ExpenseRatio(float(row["expense_ratio"]), row["as_of"])
-        for row in rows
-        if row["expense_ratio"] is not None
-    }
-
-
 def _safe_fetch(fetcher: ExpenseFetcher, scheme_code: str) -> ExpenseRatio | None:
     try:
         return fetcher(scheme_code)
@@ -109,29 +75,18 @@ def _safe_fetch(fetcher: ExpenseFetcher, scheme_code: str) -> ExpenseRatio | Non
 
 
 def _expense_ratios(
-    conn: sqlite3.Connection,
-    scheme_codes: list[str],
-    fetcher: ExpenseFetcher,
+    scheme_codes: list[str], fetcher: ExpenseFetcher
 ) -> dict[str, ExpenseRatio]:
     unique = sorted(set(scheme_codes))
-    expenses = _latest_expenses(conn, unique)
-    missing = [code for code in unique if code not in expenses]
-    if not missing:
-        return expenses
-    with ThreadPoolExecutor(max_workers=min(4, len(missing))) as pool:
-        fetched = list(pool.map(lambda code: _safe_fetch(fetcher, code), missing))
-    for code, expense in zip(missing, fetched):
-        if expense is None:
-            continue
-        expenses[code] = expense
-        if expense.as_of:
-            load_fundamentals(
-                conn,
-                expense.as_of,
-                code,
-                expense_ratio=expense.value,
-            )
-    return expenses
+    if not unique:
+        return {}
+    with ThreadPoolExecutor(max_workers=min(4, len(unique))) as pool:
+        fetched = list(pool.map(lambda code: _safe_fetch(fetcher, code), unique))
+    return {
+        code: expense
+        for code, expense in zip(unique, fetched)
+        if expense is not None
+    }
 
 
 def _plan_classification(name: str, row: SchemeRow | None) -> str:
@@ -199,7 +154,7 @@ def commission_check(
         if direct is not None and scheme_code:
             expense_codes.extend([scheme_code, direct.scheme_code])
 
-    expenses = _expense_ratios(conn, expense_codes, fetcher) if expense_codes else {}
+    expenses = _expense_ratios(expense_codes, fetcher)
     rows = []
     for item in pending:
         if item["directSchemeCode"] is None:
