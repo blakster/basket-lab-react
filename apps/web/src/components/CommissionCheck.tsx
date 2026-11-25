@@ -7,7 +7,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatInrGroup } from "../lib/format";
-import type { CommissionSummary } from "../lib/portfolio/commission";
+import type {
+  CommissionLine,
+  CommissionSummary,
+} from "../lib/portfolio/commission";
 
 function formatPct(n: number): string {
   const text = n.toFixed(2);
@@ -22,6 +25,25 @@ function statusText(status: string): string {
   if (status === "missing-direct-plan") return "No direct match";
   if (status === "missing-expense-ratio") return "Expense unavailable";
   return "";
+}
+
+function ExpenseGap({ line }: { line: CommissionLine }) {
+  const check = line.check;
+  if (check.status !== "ready") {
+    return check.status === "missing-expense-ratio" ? (
+      <>{statusText(check.status)}</>
+    ) : (
+      <>—</>
+    );
+  }
+  return (
+    <>
+      {formatPct(check.expenseGapPct)}
+      <span className="holding-sub commission-ratio">
+        {formatPct(check.regularExpenseRatio)} → {formatPct(check.directExpenseRatio)}
+      </span>
+    </>
+  );
 }
 
 export function CommissionCheck({
@@ -59,10 +81,11 @@ export function CommissionCheck({
   const asOf = [
     ...new Set(
       summary.lines
-        .flatMap((line) => [
-          line.check.regularExpenseRatioAsOf,
-          line.check.directExpenseRatioAsOf,
-        ])
+        .flatMap((line) =>
+          line.check.status === "ready"
+            ? [line.check.regularExpenseRatioAsOf, line.check.directExpenseRatioAsOf]
+            : [],
+        )
         .filter((value): value is string => !!value),
     ),
   ].sort();
@@ -74,7 +97,7 @@ export function CommissionCheck({
           <p>
             {summary.lines.length} regular plan{summary.lines.length === 1 ? "" : "s"}
             {summary.missingCount > 0 &&
-              ` · ${summary.missingCount} without a complete expense match`}
+              ` · ${summary.missingCount} without a complete saving estimate`}
           </p>
         </div>
         <div className="commission-total">
@@ -92,7 +115,7 @@ export function CommissionCheck({
           )}
         </div>
       </div>
-      <div className="table-scroll">
+      <div className="table-scroll commission-table-scroll">
         <Table className="insight-table commission-table">
           <TableHeader>
             <TableRow>
@@ -109,7 +132,7 @@ export function CommissionCheck({
               const status = statusText(check.status);
               return (
                 <TableRow key={check.instrumentId}>
-                  <TableCell>
+                  <TableCell className="align-top">
                     {check.schemeName}
                     <span className="holding-sub">
                       {check.directSchemeName
@@ -117,31 +140,16 @@ export function CommissionCheck({
                         : status}
                     </span>
                   </TableCell>
-                  <TableCell className="text-right" data-label="Expense gap">
-                    {check.expenseGapPct !== undefined ? (
-                      <>
-                        {formatPct(check.expenseGapPct)}
-                        {check.regularExpenseRatio !== undefined &&
-                          check.directExpenseRatio !== undefined && (
-                            <span className="holding-sub commission-ratio">
-                              {formatPct(check.regularExpenseRatio)} →{" "}
-                              {formatPct(check.directExpenseRatio)}
-                            </span>
-                          )}
-                      </>
-                    ) : check.status === "missing-expense-ratio" ? (
-                      status
-                    ) : (
-                      "—"
-                    )}
+                  <TableCell className="text-right align-top">
+                    <ExpenseGap line={line} />
                   </TableCell>
-                  <TableCell className="text-right" data-label="Saved / year">
+                  <TableCell className="text-right align-top">
                     {formatMoney(line.yearlySavings)}
                   </TableCell>
-                  <TableCell className="text-right" data-label="5 years">
+                  <TableCell className="text-right align-top">
                     {formatMoney(line.fiveYearSavings)}
                   </TableCell>
-                  <TableCell className="text-right" data-label="10 years">
+                  <TableCell className="text-right align-top">
                     {formatMoney(line.tenYearSavings)}
                   </TableCell>
                 </TableRow>
@@ -149,6 +157,42 @@ export function CommissionCheck({
             })}
           </TableBody>
         </Table>
+      </div>
+      <div className="commission-cards">
+        {summary.lines.map((line) => {
+          const check = line.check;
+          const status = statusText(check.status);
+          return (
+            <article className="commission-card" key={check.instrumentId}>
+              <div className="commission-card-heading">
+                <h4>{check.schemeName}</h4>
+                <p className="holding-sub">
+                  {check.directSchemeName ? `Direct: ${check.directSchemeName}` : status}
+                </p>
+              </div>
+              <dl className="commission-card-metrics">
+                <div>
+                  <dt>Expense gap</dt>
+                  <dd>
+                    <ExpenseGap line={line} />
+                  </dd>
+                </div>
+                <div>
+                  <dt>Saved / year</dt>
+                  <dd>{formatMoney(line.yearlySavings)}</dd>
+                </div>
+                <div>
+                  <dt>5 years</dt>
+                  <dd>{formatMoney(line.fiveYearSavings)}</dd>
+                </div>
+                <div>
+                  <dt>10 years</dt>
+                  <dd>{formatMoney(line.tenYearSavings)}</dd>
+                </div>
+              </dl>
+            </article>
+          );
+        })}
       </div>
       <p className="commission-note">
         Savings use today's value times the expense-ratio gap. Projections assume
