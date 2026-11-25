@@ -221,6 +221,7 @@ def _family_key(name: str) -> str:
         "weekly",
         "daily",
         "quarterly",
+        "semi",
         "half",
         "yearly",
         "annual",
@@ -232,10 +233,11 @@ def _family_key(name: str) -> str:
     }
     kept = []
     for index, token in enumerate(tokens):
+        previous = tokens[index - 1] if index else ""
         following = tokens[index + 1] if index + 1 < len(tokens) else ""
         if token in {"direct", "regular"} and (not following or following in option_words):
             continue
-        if token == "plan" and following in option_words:
+        if token == "plan" and (previous in option_words or following in option_words):
             continue
         if token in {"option", "growth", "idcw", "dividend", "cumulative"}:
             continue

@@ -6,7 +6,7 @@ import math
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from typing import Callable
 
 from app.ingest.foliyo import call_foliyo_tool
@@ -14,6 +14,7 @@ from app.ingest.scheme_master import SchemeMaster, SchemeRow, _norm
 from app.portfolio import scheme_code_for_instrument
 
 MAX_INSTRUMENT_IDS = 200
+EXPENSE_RATIO_FRESH_DAYS = 45
 
 
 @dataclass(frozen=True)
@@ -75,19 +76,96 @@ def _safe_fetch(fetcher: ExpenseFetcher, scheme_code: str) -> ExpenseRatio | Non
         return None
 
 
+def _fresh_expense(expense: ExpenseRatio, *, today: date | None = None) -> bool:
+    if expense.as_of is None:
+        return False
+    try:
+        as_of = date.fromisoformat(expense.as_of)
+    except ValueError:
+        return False
+    age = ((today or date.today()) - as_of).days
+    return 0 <= age <= EXPENSE_RATIO_FRESH_DAYS
+
+
+def _cached_expenses(
+    conn: sqlite3.Connection | None, scheme_codes: list[str]
+) -> dict[str, ExpenseRatio]:
+    if conn is None or not scheme_codes:
+        return {}
+    marks = ",".join("?" for _ in scheme_codes)
+    try:
+        rows = conn.execute(
+            f"""
+            SELECT scheme_code, expense_ratio, expense_ratio_as_of
+            FROM commission_expense_cache
+            WHERE scheme_code IN ({marks})
+            """,
+            scheme_codes,
+        ).fetchall()
+    except sqlite3.Error:
+        return {}
+    expenses = {}
+    for row in rows:
+        value = _number(row["expense_ratio"])
+        as_of = _iso_date(row["expense_ratio_as_of"])
+        if value is None or as_of is None:
+            continue
+        expense = ExpenseRatio(value, as_of)
+        if _fresh_expense(expense):
+            expenses[row["scheme_code"]] = expense
+    return expenses
+
+
+def _cache_expenses(
+    conn: sqlite3.Connection | None, expenses: dict[str, ExpenseRatio]
+) -> None:
+    if conn is None or not expenses:
+        return
+    fetched_at = datetime.now(timezone.utc).isoformat()
+    try:
+        conn.executemany(
+            """
+            INSERT INTO commission_expense_cache
+              (scheme_code, expense_ratio, expense_ratio_as_of, fetched_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(scheme_code) DO UPDATE SET
+              expense_ratio = excluded.expense_ratio,
+              expense_ratio_as_of = excluded.expense_ratio_as_of,
+              fetched_at = excluded.fetched_at
+            """,
+            [
+                (code, expense.value, expense.as_of, fetched_at)
+                for code, expense in expenses.items()
+            ],
+        )
+        conn.commit()
+    except sqlite3.Error:
+        # The cache is an optimization; a locked or read-only database must not
+        # make the commission check unavailable.
+        pass
+
+
 def _expense_ratios(
-    scheme_codes: list[str], fetcher: ExpenseFetcher
+    cache_conn: sqlite3.Connection | None,
+    scheme_codes: list[str],
+    fetcher: ExpenseFetcher,
 ) -> dict[str, ExpenseRatio]:
     unique = sorted(set(scheme_codes))
     if not unique:
         return {}
-    with ThreadPoolExecutor(max_workers=min(4, len(unique))) as pool:
-        fetched = list(pool.map(lambda code: _safe_fetch(fetcher, code), unique))
-    return {
+    expenses = _cached_expenses(cache_conn, unique)
+    missing = [code for code in unique if code not in expenses]
+    if not missing:
+        return expenses
+    with ThreadPoolExecutor(max_workers=min(4, len(missing))) as pool:
+        fetched = list(pool.map(lambda code: _safe_fetch(fetcher, code), missing))
+    fresh = {
         code: expense
-        for code, expense in zip(unique, fetched)
-        if expense is not None
+        for code, expense in zip(missing, fetched)
+        if expense is not None and _fresh_expense(expense)
     }
+    _cache_expenses(cache_conn, fresh)
+    return {**expenses, **fresh}
 
 
 def _plan_classification(name: str, row: SchemeRow | None) -> str:
@@ -108,6 +186,7 @@ def commission_check(
     master: SchemeMaster,
     instrument_ids: object,
     expense_fetcher: ExpenseFetcher | None = None,
+    cache_conn: sqlite3.Connection | None = None,
 ) -> dict:
     if not isinstance(instrument_ids, list) or len(instrument_ids) > MAX_INSTRUMENT_IDS:
         raise ValueError("instrumentIds must be a list of at most 200 ids.")
@@ -155,7 +234,7 @@ def commission_check(
         if direct is not None and scheme_code:
             expense_codes.extend([scheme_code, direct.scheme_code])
 
-    expenses = _expense_ratios(expense_codes, fetcher)
+    expenses = _expense_ratios(cache_conn, expense_codes, fetcher)
     rows = []
     for item in pending:
         if item["directSchemeCode"] is None:

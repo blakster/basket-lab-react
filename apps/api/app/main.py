@@ -8,7 +8,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
 from app.cas_routes import router as cas_router
-from app.db import init_db
+from app.db import connect_db, init_db
 from app.filing_status import filing_statuses
 from app.ingest.cas import _IMPORT_LOCK as IMPORT_LOCK
 from app.ingest.ensure import _serialize_status, ensure_filings, scheme_codes_from_body
@@ -42,6 +42,7 @@ async def lifespan(app: FastAPI):
             notes=notes or "auto-seed-fixture",
         )
     app.state.db = conn
+    app.state.cache_db_path = DB_PATH
     try:
         yield
     finally:
@@ -71,7 +72,23 @@ def get_portfolio(request: Request):
 
 
 def _run_commission_check(app: FastAPI, instrument_ids: object):
-    return commission_check(app.state.db, _scheme_master(app), instrument_ids)
+    cache_conn = None
+    cache_path = getattr(app.state, "cache_db_path", None)
+    if cache_path:
+        try:
+            cache_conn = connect_db(cache_path)
+        except Exception:
+            cache_conn = None
+    try:
+        return commission_check(
+            app.state.db,
+            _scheme_master(app),
+            instrument_ids,
+            cache_conn=cache_conn,
+        )
+    finally:
+        if cache_conn is not None:
+            cache_conn.close()
 
 
 @app.post("/api/portfolio/commission-check")

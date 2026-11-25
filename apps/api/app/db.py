@@ -40,6 +40,12 @@ CREATE TABLE IF NOT EXISTS ingest_runs (
   files_failed INTEGER NOT NULL,
   notes TEXT
 );
+CREATE TABLE IF NOT EXISTS commission_expense_cache (
+  scheme_code TEXT PRIMARY KEY,
+  expense_ratio REAL NOT NULL,
+  expense_ratio_as_of TEXT NOT NULL,
+  fetched_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS filing_status (
   scheme_code TEXT NOT NULL,
   requested_month TEXT NOT NULL,

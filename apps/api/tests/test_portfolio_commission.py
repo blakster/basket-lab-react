@@ -21,6 +21,9 @@ def add_instrument(db, instrument_id, name, kind="mf", isin=None):
         "INSERT INTO instruments (id, kind, name, isin) VALUES (?, ?, ?, ?)",
         (instrument_id, kind, name, isin),
     )
+    # Keep the separate cache connection realistic: in production instrument
+    # writes are committed before a later commission request reads them.
+    db.commit()
 
 
 def fake_expenses(values):
@@ -98,7 +101,7 @@ def test_commission_check_matches_direct_and_fetches_current_expense_ratios(clie
     )
     assert again.status_code == 200
     assert again.json()["rows"][0]["expenseGapPct"] == 0.61
-    assert sorted(calls) == ["2001", "2002"]
+    assert calls == []
 
 
 def test_commission_check_ignores_direct_plans_and_non_mutual_funds(client, db, monkeypatch):
@@ -354,3 +357,59 @@ def test_isin_lookup_uses_the_instrument_name_to_keep_merged_fund_history():
         == "100153"
     )
     assert master.lookup(scheme_isin="INF173K01AG2") == "149481"
+
+
+def test_commission_check_refreshes_a_stale_cached_ratio(client, db, monkeypatch):
+    install_master()
+    add_instrument(db, "amfi:2002", "Example Flexi Fund - Regular Plan - Growth")
+    db.execute(
+        """
+        INSERT INTO commission_expense_cache
+          (scheme_code, expense_ratio, expense_ratio_as_of, fetched_at)
+        VALUES (?, ?, ?, ?)
+        """,
+        ("2001", 0.64, "2000-01-01", "2000-01-01T00:00:00+00:00"),
+    )
+    db.commit()
+    fetch, calls = fake_expenses({"2002": 1.25, "2001": 0.64})
+    monkeypatch.setattr(commission, "fetch_expense_ratio", fetch)
+
+    response = client.post(
+        "/api/portfolio/commission-check", json={"instrumentIds": ["amfi:2002"]}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["rows"][0]["status"] == "ready"
+    assert sorted(calls) == ["2001", "2002"]
+
+
+def test_commission_check_does_not_use_a_stale_ratio_returned_by_foliyo(client, db, monkeypatch):
+    install_master()
+    add_instrument(db, "amfi:2002", "Example Flexi Fund - Regular Plan - Growth")
+    stale = "2000-01-01"
+
+    def fetch(code):
+        return ExpenseRatio(1.25 if code == "2002" else 0.64, stale)
+
+    monkeypatch.setattr(commission, "fetch_expense_ratio", fetch)
+
+    response = client.post(
+        "/api/portfolio/commission-check", json={"instrumentIds": ["amfi:2002"]}
+    )
+
+    assert response.status_code == 200
+    row = response.json()["rows"][0]
+    assert row["status"] == "missing-expense-ratio"
+
+
+def test_direct_counterpart_matches_growth_plan_and_semi_annual_wrappers():
+    master = SchemeMaster.from_csv_text(
+        "scheme_code,scheme_name,isin,amc,scheme_plan,scheme_option,is_active\n"
+        "9101,Example Advantage Fund - Growth - Direct Plan,,Example Mutual Fund,Direct,Growth,true\n"
+        "9102,Example Advantage Fund - Growth Plan,,Example Mutual Fund,Other,Growth,true\n"
+        "9103,Income Fund - Direct - Semi Annual IDCW,,Example Mutual Fund,Direct,IDCW,true\n"
+        "9104,Income Fund - Regular - Semi Annual IDCW,,Example Mutual Fund,Regular,IDCW,true\n"
+    )
+
+    assert master.direct_counterpart("9102").scheme_code == "9101"
+    assert master.direct_counterpart("9104").scheme_code == "9103"

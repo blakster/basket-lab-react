@@ -22,4 +22,5 @@ def db(tmp_path):
 @pytest.fixture
 def client(db):
     app.state.db = db
+    app.state.cache_db_path = db.execute("PRAGMA database_list").fetchone()[2]
     return TestClient(app)
