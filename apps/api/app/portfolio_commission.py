@@ -214,7 +214,7 @@ def commission_check(
         if instrument is None or instrument["kind"] != "mf":
             continue
         scheme_code = scheme_code_for_instrument(
-            instrument["id"], instrument["isin"], master
+            instrument["id"], instrument["isin"], master, instrument["name"]
         )
         scheme_row = master.by_code(scheme_code) if scheme_code else None
         plan = _plan_classification(instrument["name"], scheme_row)

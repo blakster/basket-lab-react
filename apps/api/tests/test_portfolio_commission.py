@@ -3,6 +3,7 @@ from datetime import date
 import app.portfolio_commission as commission
 from app.ingest.scheme_master import SchemeMaster
 from app.main import app
+from app.portfolio import scheme_code_for_instrument
 from app.portfolio_commission import ExpenseRatio
 
 MASTER_CSV = """scheme_code,scheme_name,isin,scheme_plan,scheme_option,is_active
@@ -413,3 +414,47 @@ def test_direct_counterpart_matches_growth_plan_and_semi_annual_wrappers():
 
     assert master.direct_counterpart("9102").scheme_code == "9101"
     assert master.direct_counterpart("9104").scheme_code == "9103"
+
+
+def test_commission_check_uses_the_instrument_name_for_shared_isins(client, db, monkeypatch):
+    app.state.scheme_master = SchemeMaster.from_csv_text(
+        "scheme_code,scheme_name,isin,amc,scheme_plan,scheme_option,is_active\n"
+        "7001,Example Merged Fund - Direct Plan - Growth,INF0000000D5,Example Mutual Fund,Direct,Growth,true\n"
+        "7002,Example Merged Fund - Regular Plan - Growth,INF0000000S1,Example Mutual Fund,Regular,Growth,false\n"
+        "7003,Example Merged Fund (Formerly Known as Example Merged Fund) - Direct Plan - Growth,INF0000000S1,Example Mutual Fund,Direct,Growth,true\n"
+    )
+    add_instrument(
+        db,
+        "isin:INF0000000S1",
+        "Example Merged Fund - Regular Plan - Growth",
+        isin="INF0000000S1",
+    )
+    fetch, _calls = fake_expenses({"7002": 1.3, "7001": 0.7})
+    monkeypatch.setattr(commission, "fetch_expense_ratio", fetch)
+
+    response = client.post(
+        "/api/portfolio/commission-check", json={"instrumentIds": ["isin:INF0000000S1"]}
+    )
+
+    assert response.status_code == 200
+    row = response.json()["rows"][0]
+    assert row["schemeCode"] == "7002"
+    assert row["directSchemeCode"] == "7001"
+    assert row["status"] == "ready"
+
+
+def test_portfolio_isin_miss_does_not_fuzzy_match_a_direct_plan():
+    master = SchemeMaster.from_csv_text(
+        "scheme_code,scheme_name,isin,scheme_plan,scheme_option,is_active\n"
+        "2001,Example Flexi Fund - Direct Plan - Growth,INF0000000D1,Direct,Growth,true\n"
+    )
+
+    assert (
+        scheme_code_for_instrument(
+            "isin:INF0000000XX",
+            "INF0000000XX",
+            master,
+            "Example Flexi Fund - Regular Plan - Growth",
+        )
+        is None
+    )

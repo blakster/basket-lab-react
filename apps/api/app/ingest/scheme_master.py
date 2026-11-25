@@ -110,6 +110,26 @@ class SchemeMaster:
     def by_code(self, code: str) -> SchemeRow | None:
         return self._by_code.get(str(code).strip())
 
+    def lookup_isin(self, isin: str, *, scheme_name: str | None = None) -> str | None:
+        hits = self._by_isin.get(isin.strip().upper()) or []
+        if not hits:
+            return None
+        if len(hits) == 1 or not scheme_name:
+            return hits[-1]
+        rows = [self._by_code[hit] for hit in hits]
+        name_key = _norm(scheme_name)
+        exact = [row for row in rows if _norm(row.scheme_name) == name_key]
+        if len(exact) == 1:
+            return exact[0].scheme_code
+        partial = [
+            row
+            for row in rows
+            if name_key and (name_key in _norm(row.scheme_name) or _norm(row.scheme_name) in name_key)
+        ]
+        if len(partial) == 1:
+            return partial[0].scheme_code
+        return hits[-1]
+
     def lookup(
         self,
         *,
@@ -117,23 +137,9 @@ class SchemeMaster:
         scheme_name: str | None = None,
     ) -> str | None:
         if scheme_isin:
-            hits = self._by_isin.get(scheme_isin.strip().upper()) or []
-            if hits:
-                if len(hits) == 1 or not scheme_name:
-                    return hits[-1]
-                rows = [self._by_code[hit] for hit in hits]
-                name_key = _norm(scheme_name)
-                exact = [row for row in rows if _norm(row.scheme_name) == name_key]
-                if len(exact) == 1:
-                    return exact[0].scheme_code
-                partial = [
-                    row
-                    for row in rows
-                    if name_key and (name_key in _norm(row.scheme_name) or _norm(row.scheme_name) in name_key)
-                ]
-                if len(partial) == 1:
-                    return partial[0].scheme_code
-                return hits[-1]
+            hit = self.lookup_isin(scheme_isin, scheme_name=scheme_name)
+            if hit:
+                return hit
         if not scheme_name:
             return None
         key = _norm(scheme_name)

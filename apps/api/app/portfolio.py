@@ -26,7 +26,7 @@ def scheme_code_for_instrument(
     if instrument_id.startswith("amfi:"):
         return instrument_id.split(":", 1)[1] or None
     if isin and master is not None:
-        return master.lookup(scheme_isin=isin, scheme_name=name)
+        return master.lookup_isin(isin, scheme_name=name)
     return None
 
 
