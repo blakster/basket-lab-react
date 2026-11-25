@@ -6,7 +6,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatInr } from "../lib/format";
+import { formatInrGroup } from "../lib/format";
 import type { CommissionSummary } from "../lib/portfolio/commission";
 
 function formatPct(n: number): string {
@@ -15,7 +15,7 @@ function formatPct(n: number): string {
 }
 
 function formatMoney(value: number | null): string {
-  return value === null ? "—" : formatInr(value);
+  return value === null ? "—" : `₹${formatInrGroup(Math.round(value))}`;
 }
 
 function statusText(status: string): string {
@@ -83,7 +83,7 @@ export function CommissionCheck({
           ) : (
             <>
               <span>Switching to direct saves</span>
-              <strong>{formatInr(summary.totalYearly)}/yr</strong>
+              <strong>{formatMoney(summary.totalYearly)}/yr</strong>
               <span>
                 {formatMoney(summary.totalFiveYear)} in 5y ·{" "}
                 {formatMoney(summary.totalTenYear)} in 10y
@@ -117,7 +117,7 @@ export function CommissionCheck({
                         : status}
                     </span>
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-right" data-label="Expense gap">
                     {check.expenseGapPct !== undefined ? (
                       <>
                         {formatPct(check.expenseGapPct)}
@@ -135,13 +135,13 @@ export function CommissionCheck({
                       "—"
                     )}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-right" data-label="Saved / year">
                     {formatMoney(line.yearlySavings)}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-right" data-label="5 years">
                     {formatMoney(line.fiveYearSavings)}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-right" data-label="10 years">
                     {formatMoney(line.tenYearSavings)}
                   </TableCell>
                 </TableRow>

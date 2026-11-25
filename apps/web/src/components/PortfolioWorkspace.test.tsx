@@ -87,7 +87,7 @@ describe("PortfolioWorkspace commission check", () => {
     expect(postCommissionCheckMock).toHaveBeenCalledWith(["amfi:2002"]);
     expect(screen.getByText("Switching to direct saves")).toBeInTheDocument();
     expect(screen.getByText("₹61/yr")).toBeInTheDocument();
-    expect(screen.getByText("₹308.74 in 5y · ₹627.02 in 10y")).toBeInTheDocument();
+    expect(screen.getByText("₹309 in 5y · ₹627 in 10y")).toBeInTheDocument();
     expect(screen.getByText("Direct: Example Flexi Fund - Direct Plan - Growth")).toBeInTheDocument();
     expect(screen.getByText("1.25% → 0.64%")).toBeInTheDocument();
     expect(screen.getByText("Expense ratios dated 2026-10-31.", { exact: false })).toBeInTheDocument();
