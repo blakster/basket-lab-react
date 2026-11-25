@@ -31,22 +31,21 @@ export function summarizeCommission(
   const lines = rows.map((check) => {
     const value = values.get(check.instrumentId) ?? 0;
     const currentValue = value > 0 ? value : null;
-    const calculable =
-      check.status === "ready" &&
-      check.expenseGapPct !== undefined &&
-      currentValue !== null;
+    if (check.status !== "ready" || currentValue === null) {
+      return {
+        check,
+        currentValue,
+        yearlySavings: null,
+        fiveYearSavings: null,
+        tenYearSavings: null,
+      };
+    }
     return {
       check,
       currentValue,
-      yearlySavings: calculable
-        ? compoundedSavings(currentValue, check.expenseGapPct!, 1)
-        : null,
-      fiveYearSavings: calculable
-        ? compoundedSavings(currentValue, check.expenseGapPct!, 5)
-        : null,
-      tenYearSavings: calculable
-        ? compoundedSavings(currentValue, check.expenseGapPct!, 10)
-        : null,
+      yearlySavings: compoundedSavings(currentValue, check.expenseGapPct, 1),
+      fiveYearSavings: compoundedSavings(currentValue, check.expenseGapPct, 5),
+      tenYearSavings: compoundedSavings(currentValue, check.expenseGapPct, 10),
     };
   });
   const total = (key: "yearlySavings" | "fiveYearSavings" | "tenYearSavings") => {
@@ -65,6 +64,6 @@ export function summarizeCommission(
     totalYearly: total("yearlySavings"),
     totalFiveYear: total("fiveYearSavings"),
     totalTenYear: total("tenYearSavings"),
-    missingCount: lines.filter((line) => line.check.status !== "ready").length,
+    missingCount: lines.filter((line) => line.yearlySavings === null).length,
   };
 }

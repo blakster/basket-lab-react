@@ -27,10 +27,12 @@ describe("compoundedSavings", () => {
 describe("summarizeCommission", () => {
   it("joins ready rows to current values and sums only calculable savings", () => {
     const missing: CommissionCheckRow = {
-      ...readyRow,
       instrumentId: "amfi:999999",
+      schemeCode: "999999",
+      schemeName: "Example Flexi Fund - Regular Plan - Growth",
+      directSchemeCode: "999998",
+      directSchemeName: "Example Flexi Fund - Direct Plan - Growth",
       status: "missing-expense-ratio",
-      expenseGapPct: undefined,
     };
     const summary = summarizeCommission(
       [readyRow, missing],
@@ -52,5 +54,6 @@ describe("summarizeCommission", () => {
 
     expect(summary.lines[0].yearlySavings).toBeNull();
     expect(summary.totalYearly).toBeNull();
+    expect(summary.missingCount).toBe(1);
   });
 });

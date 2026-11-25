@@ -88,8 +88,10 @@ describe("PortfolioWorkspace commission check", () => {
     expect(screen.getByText("Switching to direct saves")).toBeInTheDocument();
     expect(screen.getByText("₹61/yr")).toBeInTheDocument();
     expect(screen.getByText("₹309 in 5y · ₹627 in 10y")).toBeInTheDocument();
-    expect(screen.getByText("Direct: Example Flexi Fund - Direct Plan - Growth")).toBeInTheDocument();
-    expect(screen.getByText("1.25% → 0.64%")).toBeInTheDocument();
+    expect(
+      screen.getAllByText("Direct: Example Flexi Fund - Direct Plan - Growth"),
+    ).toHaveLength(2);
+    expect(screen.getAllByText("1.25% → 0.64%")).toHaveLength(2);
     expect(screen.getByText("Expense ratios dated 2026-10-31.", { exact: false })).toBeInTheDocument();
   });
 });
