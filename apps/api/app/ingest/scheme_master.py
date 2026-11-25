@@ -130,6 +130,15 @@ class SchemeMaster:
             return partial[0].scheme_code
         return hits[-1]
 
+    def lookup_current_isin(self, isin: str, *, scheme_name: str | None = None) -> str | None:
+        hits = self._by_isin.get(isin.strip().upper()) or []
+        if len(hits) > 1:
+            rows = [self._by_code[hit] for hit in hits]
+            active = [row for row in rows if row.is_active]
+            if len(active) == 1:
+                return active[0].scheme_code
+        return self.lookup_isin(isin, scheme_name=scheme_name)
+
     def lookup(
         self,
         *,

@@ -416,12 +416,38 @@ def test_direct_counterpart_matches_growth_plan_and_semi_annual_wrappers():
     assert master.direct_counterpart("9104").scheme_code == "9103"
 
 
-def test_commission_check_uses_the_instrument_name_for_shared_isins(client, db, monkeypatch):
+def test_commission_check_prefers_an_active_successor_for_shared_isins(client, db, monkeypatch):
+    app.state.scheme_master = SchemeMaster.from_csv_text(
+        "scheme_code,scheme_name,isin,amc,scheme_plan,scheme_option,is_active\n"
+        "7002,Example Merged Fund - Regular Plan - Growth,INF0000000S1,Example Mutual Fund,Regular,Growth,false\n"
+        "7003,Example Merged Fund (Formerly Known as Example Merged Fund) - Direct Plan - Growth,INF0000000S1,Example Mutual Fund,Direct,Growth,true\n"
+    )
+    add_instrument(
+        db,
+        "isin:INF0000000S1",
+        "Example Merged Fund - Regular Plan - Growth",
+        isin="INF0000000S1",
+    )
+    fetch, calls = fake_expenses({})
+    monkeypatch.setattr(commission, "fetch_expense_ratio", fetch)
+
+    response = client.post(
+        "/api/portfolio/commission-check", json={"instrumentIds": ["isin:INF0000000S1"]}
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"rows": []}
+    assert calls == []
+
+
+def test_commission_check_uses_the_instrument_name_when_no_active_successor_exists(
+    client, db, monkeypatch
+):
     app.state.scheme_master = SchemeMaster.from_csv_text(
         "scheme_code,scheme_name,isin,amc,scheme_plan,scheme_option,is_active\n"
         "7001,Example Merged Fund - Direct Plan - Growth,INF0000000D5,Example Mutual Fund,Direct,Growth,true\n"
         "7002,Example Merged Fund - Regular Plan - Growth,INF0000000S1,Example Mutual Fund,Regular,Growth,false\n"
-        "7003,Example Merged Fund (Formerly Known as Example Merged Fund) - Direct Plan - Growth,INF0000000S1,Example Mutual Fund,Direct,Growth,true\n"
+        "7003,Example Merged Fund (Formerly Known as Example Merged Fund) - Direct Plan - Growth,INF0000000S1,Example Mutual Fund,Direct,Growth,false\n"
     )
     add_instrument(
         db,

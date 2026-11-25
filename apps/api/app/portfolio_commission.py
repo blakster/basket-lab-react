@@ -213,8 +213,15 @@ def commission_check(
         instrument = instruments.get(instrument_id)
         if instrument is None or instrument["kind"] != "mf":
             continue
+        # Commission is about the holding today. A merged fund can keep the
+        # first-imported name while TigZig carries its active successor on the
+        # same ISIN; portfolio history deliberately uses the older exact name.
         scheme_code = scheme_code_for_instrument(
-            instrument["id"], instrument["isin"], master, instrument["name"]
+            instrument["id"],
+            instrument["isin"],
+            master,
+            instrument["name"],
+            prefer_current=True,
         )
         scheme_row = master.by_code(scheme_code) if scheme_code else None
         plan = _plan_classification(instrument["name"], scheme_row)

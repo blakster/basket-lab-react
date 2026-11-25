@@ -22,10 +22,13 @@ def scheme_code_for_instrument(
     isin: str | None,
     master: SchemeMaster | None,
     name: str | None = None,
+    prefer_current: bool = False,
 ) -> str | None:
     if instrument_id.startswith("amfi:"):
         return instrument_id.split(":", 1)[1] or None
     if isin and master is not None:
+        if prefer_current:
+            return master.lookup_current_isin(isin, scheme_name=name)
         return master.lookup_isin(isin, scheme_name=name)
     return None
 
