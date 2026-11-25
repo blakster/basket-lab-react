@@ -243,3 +243,114 @@ def test_direct_counterpart_preserves_payout_and_reinvestment_options():
 
     assert master.direct_counterpart("4002").scheme_code == "4001"
     assert master.direct_counterpart("4004").scheme_code == "4003"
+
+
+def test_fetch_expense_ratio_rejects_non_finite_values(monkeypatch):
+    monkeypatch.setattr(
+        commission,
+        "call_foliyo_tool",
+        lambda _name, _arguments: {
+            "overview": {
+                "expense_ratio_pct": float("inf"),
+                "expense_ratio_as_of": "2026-10-31",
+            }
+        },
+    )
+
+    assert commission.fetch_expense_ratio("2002") is None
+
+
+def test_commission_check_isolates_a_fetcher_failure(client, db, monkeypatch):
+    install_master()
+    add_instrument(db, "amfi:2002", "Example Flexi Fund - Regular Plan - Growth")
+
+    def fetch(code):
+        if code == "2001":
+            raise RuntimeError("Foliyo unavailable")
+        return ExpenseRatio(1.25, date.today().isoformat())
+
+    monkeypatch.setattr(commission, "fetch_expense_ratio", fetch)
+
+    response = client.post(
+        "/api/portfolio/commission-check", json={"instrumentIds": ["amfi:2002"]}
+    )
+
+    assert response.status_code == 200
+    row = response.json()["rows"][0]
+    assert row["status"] == "missing-expense-ratio"
+    assert row["schemeCode"] == "2002"
+
+
+def test_commission_check_requires_json_content_type(client):
+    response = client.post(
+        "/api/portfolio/commission-check",
+        content='{"instrumentIds": []}',
+        headers={"Content-Type": "text/plain"},
+    )
+
+    assert response.status_code == 415
+
+
+def test_scheme_master_preserves_typed_inactive_rows():
+    master = SchemeMaster.from_rows(
+        [
+            {
+                "scheme_code": "7001",
+                "scheme_name": "Example Fund - Direct Plan - Growth",
+                "is_active": False,
+            }
+        ]
+    )
+
+    assert master.by_code("7001").is_active is False
+
+
+def test_direct_counterpart_preserves_regular_inside_a_fund_name():
+    master = SchemeMaster.from_csv_text(
+        "scheme_code,scheme_name,isin,amc,scheme_plan,scheme_option,is_active\n"
+        "123183,ICICI Prudential Regular Savings Fund - Direct Plan - Bonus,,ICICI Prudential Mutual Fund,Direct,Bonus,true\n"
+        "128110,ICICI Prudential Regular Savings Fund - Plan - Bonus,,ICICI Prudential Mutual Fund,Regular,Bonus,true\n"
+        "130900,ICICI Prudential Savings Fund - Bonus,,ICICI Prudential Mutual Fund,Other,Bonus,true\n"
+        "130952,ICICI Prudential Savings Fund - Direct Plan Bonus,,ICICI Prudential Mutual Fund,Direct,Bonus,true\n"
+    )
+
+    assert master.direct_counterpart("128110").scheme_code == "123183"
+    assert master.direct_counterpart("130900").scheme_code == "130952"
+
+
+def test_direct_counterpart_requires_the_same_amc():
+    master = SchemeMaster.from_csv_text(
+        "scheme_code,scheme_name,isin,amc,scheme_plan,scheme_option,is_active\n"
+        "8001,Income Fund - Direct Plan - Growth,,First Mutual Fund,Direct,Growth,true\n"
+        "8002,Income Fund - Regular Plan - Growth,,Second Mutual Fund,Regular,Growth,true\n"
+    )
+
+    assert master.direct_counterpart("8002") is None
+
+
+def test_direct_counterpart_rejects_ambiguous_direct_matches():
+    master = SchemeMaster.from_csv_text(
+        "scheme_code,scheme_name,isin,amc,scheme_plan,scheme_option,is_active\n"
+        "9001,Income Fund - Direct Plan - Growth,,Example Mutual Fund,Direct,Growth,true\n"
+        "9002,Income Fund Direct Plan Growth,,Example Mutual Fund,Direct,Growth,true\n"
+        "9003,Income Fund - Regular Plan - Growth,,Example Mutual Fund,Regular,Growth,true\n"
+    )
+
+    assert master.direct_counterpart("9003") is None
+
+
+def test_isin_lookup_uses_the_instrument_name_to_keep_merged_fund_history():
+    master = SchemeMaster.from_csv_text(
+        "scheme_code,scheme_name,isin,scheme_plan,scheme_option,is_active\n"
+        "100153,Principal Nifty 100 Equal Weight Fund-Growth,INF173K01AG2,Other,Growth,false\n"
+        "149481,Sundaram Nifty 100 Equal Weight Fund (Formerly Known as Principal Nifty 100 Equal Weight Fund)-Growth,INF173K01AG2,Other,Growth,true\n"
+    )
+
+    assert (
+        master.lookup(
+            scheme_isin="INF173K01AG2",
+            scheme_name="Principal Nifty 100 Equal Weight Fund-Growth",
+        )
+        == "100153"
+    )
+    assert master.lookup(scheme_isin="INF173K01AG2") == "149481"

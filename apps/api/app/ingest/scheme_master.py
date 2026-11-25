@@ -41,17 +41,21 @@ class SchemeMaster:
     def __init__(self, rows: list[SchemeRow]):
         self._rows = rows
         self._by_code: dict[str, SchemeRow] = {}
-        self._by_isin: dict[str, str] = {}
+        self._by_isin: dict[str, list[str]] = {}
         self._by_name: dict[str, list[SchemeRow]] = {}
+        self._direct_candidates: dict[tuple[str, str], list[SchemeRow]] = {}
         for row in rows:
             self._by_code[row.scheme_code] = row
             if row.isin:
-                self._by_isin[row.isin.upper()] = row.scheme_code
+                self._by_isin.setdefault(row.isin.upper(), []).append(row.scheme_code)
             if row.isin2:
-                self._by_isin[row.isin2.upper()] = row.scheme_code
+                self._by_isin.setdefault(row.isin2.upper(), []).append(row.scheme_code)
             key = _norm(row.scheme_name)
             if key:
                 self._by_name.setdefault(key, []).append(row)
+            if row.is_active and _effective_plan(row) == "direct":
+                direct_key = (_family_key(row.scheme_name), _effective_option(row))
+                self._direct_candidates.setdefault(direct_key, []).append(row)
 
     @classmethod
     def from_rows(cls, raw: Iterable[dict[str, Any]]) -> SchemeMaster:
@@ -64,11 +68,13 @@ class SchemeMaster:
             amc = str(item.get("amc") or "").strip()
             if not code:
                 continue
-            active = str(item.get("is_active") or "true").strip().lower() not in {
-                "false",
-                "0",
-                "no",
-            }
+            raw_active = item.get("is_active")
+            active = (
+                raw_active
+                if isinstance(raw_active, bool)
+                else str(raw_active if raw_active is not None else "true").strip().lower()
+                not in {"false", "0", "no"}
+            )
             rows.append(
                 SchemeRow(
                     scheme_code=code,
@@ -111,9 +117,23 @@ class SchemeMaster:
         scheme_name: str | None = None,
     ) -> str | None:
         if scheme_isin:
-            hit = self._by_isin.get(scheme_isin.strip().upper())
-            if hit:
-                return hit
+            hits = self._by_isin.get(scheme_isin.strip().upper()) or []
+            if hits:
+                if len(hits) == 1 or not scheme_name:
+                    return hits[-1]
+                rows = [self._by_code[hit] for hit in hits]
+                name_key = _norm(scheme_name)
+                exact = [row for row in rows if _norm(row.scheme_name) == name_key]
+                if len(exact) == 1:
+                    return exact[0].scheme_code
+                partial = [
+                    row
+                    for row in rows
+                    if name_key and (name_key in _norm(row.scheme_name) or _norm(row.scheme_name) in name_key)
+                ]
+                if len(partial) == 1:
+                    return partial[0].scheme_code
+                return hits[-1]
         if not scheme_name:
             return None
         key = _norm(scheme_name)
@@ -137,18 +157,15 @@ class SchemeMaster:
             return None
         key = _family_key(row.scheme_name)
         option = _effective_option(row)
+        amc = _norm(row.amc)
         candidates = [
             candidate
-            for candidate in self._rows
-            if candidate.is_active
-            and candidate.scheme_code != row.scheme_code
-            and _effective_plan(candidate) == "direct"
-            and _effective_option(candidate) == option
-            and _family_key(candidate.scheme_name) == key
+            for candidate in self._direct_candidates.get((key, option), [])
+            if candidate.scheme_code != row.scheme_code and _norm(candidate.amc) == amc
         ]
-        if not candidates:
+        if len(candidates) != 1:
             return None
-        return min(candidates, key=lambda candidate: candidate.scheme_code)
+        return candidates[0]
 
 
 def _tokens(text: str) -> list[str]:
@@ -181,24 +198,49 @@ def _effective_option(row: SchemeRow) -> str:
     return "other"
 
 
-# Plan wrappers disappear from the family key. Payout/reinvestment and the
-# IDCW frequency stay: they are different cashflow options, not wrapper words.
-_FAMILY_WRAPPER_WORDS = {
-    "direct",
-    "regular",
-    "plan",
-    "option",
-    "growth",
-    "idcw",
-    "dividend",
-    "cumulative",
-}
-
-
+# Plan markers disappear only when they are wrapper words around the plan
+# option. A word such as Regular inside a fund name (Regular Savings Fund)
+# is part of the fund family and must survive.
 def _family_key(name: str) -> str:
-    return " ".join(
-        token for token in _tokens(name) if token not in _FAMILY_WRAPPER_WORDS
+    text = re.sub(r"\b(?:direct|regular)\s+plan\b", " ", (name or "").lower())
+    text = re.sub(
+        r"(?:^|[-–—(])\s*(?:direct|regular|plan)\s*(?=$|[-–—)])",
+        " ",
+        text,
     )
+    tokens = _tokens(text)
+    option_words = {
+        "plan",
+        "growth",
+        "idcw",
+        "dividend",
+        "income",
+        "bonus",
+        "option",
+        "monthly",
+        "weekly",
+        "daily",
+        "quarterly",
+        "half",
+        "yearly",
+        "annual",
+        "annually",
+        "payout",
+        "reinvestment",
+        "institutional",
+        "retail",
+    }
+    kept = []
+    for index, token in enumerate(tokens):
+        following = tokens[index + 1] if index + 1 < len(tokens) else ""
+        if token in {"direct", "regular"} and (not following or following in option_words):
+            continue
+        if token == "plan" and following in option_words:
+            continue
+        if token in {"option", "growth", "idcw", "dividend", "cumulative"}:
+            continue
+        kept.append(token)
+    return " ".join(kept)
 
 
 def _prefer_direct_growth(rows: list[SchemeRow]) -> SchemeRow:

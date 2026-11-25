@@ -18,12 +18,15 @@ class DuplicateTransaction(ValueError):
 
 
 def scheme_code_for_instrument(
-    instrument_id: str, isin: str | None, master: SchemeMaster | None
+    instrument_id: str,
+    isin: str | None,
+    master: SchemeMaster | None,
+    name: str | None = None,
 ) -> str | None:
     if instrument_id.startswith("amfi:"):
         return instrument_id.split(":", 1)[1] or None
     if isin and master is not None:
-        return master.lookup(scheme_isin=isin)
+        return master.lookup(scheme_isin=isin, scheme_name=name)
     return None
 
 
@@ -42,7 +45,9 @@ def portfolio(conn: sqlite3.Connection, master: SchemeMaster | None = None) -> d
                 "kind": row["kind"],
                 "name": row["name"],
                 "isin": row["isin"],
-                "schemeCode": scheme_code_for_instrument(row["id"], row["isin"], master),
+                "schemeCode": scheme_code_for_instrument(
+                    row["id"], row["isin"], master, row["name"]
+                ),
             }
         )
     transactions = [

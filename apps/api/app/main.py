@@ -76,6 +76,8 @@ def _run_commission_check(app: FastAPI, instrument_ids: object):
 
 @app.post("/api/portfolio/commission-check")
 async def post_portfolio_commission_check(request: Request):
+    if not request.headers.get("content-type", "").lower().startswith("application/json"):
+        raise HTTPException(status_code=415, detail="Expected application/json.")
     try:
         body = await request.json()
     except Exception:
