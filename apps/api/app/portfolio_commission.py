@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from typing import Callable
 
 from app.ingest.foliyo import call_foliyo_tool
@@ -14,6 +14,7 @@ from app.ingest.scheme_master import SchemeMaster, SchemeRow, _norm
 from app.portfolio import scheme_code_for_instrument
 
 MAX_INSTRUMENT_IDS = 200
+EXPENSE_RATIO_MAX_AGE_DAYS = 45
 
 
 @dataclass(frozen=True)
@@ -72,6 +73,9 @@ def _latest_expenses(
     if not scheme_codes:
         return {}
     marks = ",".join("?" for _ in scheme_codes)
+    fresh_after = (
+        date.today() - timedelta(days=EXPENSE_RATIO_MAX_AGE_DAYS)
+    ).isoformat()
     rows = conn.execute(
         f"""
         SELECT f.scheme_code, f.expense_ratio, f.as_of
@@ -80,12 +84,13 @@ def _latest_expenses(
           SELECT scheme_code, MAX(as_of) AS max_as_of
           FROM fundamentals
           WHERE scheme_code IN ({marks})
+            AND as_of >= ?
           GROUP BY scheme_code
         ) latest
           ON latest.scheme_code = f.scheme_code
          AND latest.max_as_of = f.as_of
         """,
-        scheme_codes,
+        [*scheme_codes, fresh_after],
     ).fetchall()
     return {
         row["scheme_code"]: ExpenseRatio(float(row["expense_ratio"]), row["as_of"])
@@ -130,8 +135,10 @@ def _expense_ratios(
 
 
 def _is_regular_plan(name: str, row: SchemeRow | None) -> bool:
-    if row is not None and row.scheme_plan.strip().lower() == "regular":
-        return True
+    if row is not None:
+        plan = row.scheme_plan.strip().lower()
+        if plan in {"direct", "regular"}:
+            return plan == "regular"
     return "regular" in _norm(name).split()
 
 

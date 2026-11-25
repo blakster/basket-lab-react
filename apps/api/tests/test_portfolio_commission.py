@@ -1,4 +1,7 @@
+from datetime import date, timedelta
+
 import app.portfolio_commission as commission
+from app.ingest.parse import load_fundamentals
 from app.ingest.scheme_master import SchemeMaster
 from app.main import app
 from app.portfolio_commission import ExpenseRatio
@@ -23,11 +26,12 @@ def add_instrument(db, instrument_id, name, kind="mf", isin=None):
 
 def fake_expenses(values):
     calls = []
+    as_of = date.today().isoformat()
 
     def fetch(code):
         calls.append(code)
         value = values.get(code)
-        return None if value is None else ExpenseRatio(value, "2026-10-31")
+        return None if value is None else ExpenseRatio(value, as_of)
 
     return fetch, calls
 
@@ -65,6 +69,7 @@ def test_commission_check_matches_direct_and_caches_expense_ratios(client, db, m
     )
     fetch, calls = fake_expenses({"2002": 1.25, "2001": 0.64})
     monkeypatch.setattr(commission, "fetch_expense_ratio", fetch)
+    as_of = date.today().isoformat()
 
     response = client.post(
         "/api/portfolio/commission-check", json={"instrumentIds": ["amfi:2002"]}
@@ -82,8 +87,8 @@ def test_commission_check_matches_direct_and_caches_expense_ratios(client, db, m
             "regularExpenseRatio": 1.25,
             "directExpenseRatio": 0.64,
             "expenseGapPct": 0.61,
-            "regularExpenseRatioAsOf": "2026-10-31",
-            "directExpenseRatioAsOf": "2026-10-31",
+            "regularExpenseRatioAsOf": as_of,
+            "directExpenseRatioAsOf": as_of,
         }
     ]
     assert sorted(calls) == ["2001", "2002"]
@@ -153,6 +158,39 @@ def test_commission_check_marks_missing_expense_without_inventing_zero(client, d
     assert row["status"] == "missing-expense-ratio"
     assert "regularExpenseRatio" not in row
     assert "directExpenseRatio" not in row
+
+
+def test_scheme_master_plan_metadata_wins_over_a_stale_imported_name(client, db, monkeypatch):
+    install_master()
+    add_instrument(db, "amfi:2001", "Example Flexi Fund - Regular Plan - Growth")
+    fetch, calls = fake_expenses({})
+    monkeypatch.setattr(commission, "fetch_expense_ratio", fetch)
+
+    response = client.post(
+        "/api/portfolio/commission-check", json={"instrumentIds": ["amfi:2001"]}
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"rows": []}
+    assert calls == []
+
+
+def test_commission_check_refetches_stale_cached_expense_ratios(client, db, monkeypatch):
+    install_master()
+    add_instrument(db, "amfi:2002", "Example Flexi Fund - Regular Plan - Growth")
+    stale = (date.today() - timedelta(days=90)).isoformat()
+    load_fundamentals(db, stale, "2002", expense_ratio=2.0)
+    load_fundamentals(db, stale, "2001", expense_ratio=1.5)
+    fetch, calls = fake_expenses({"2002": 1.25, "2001": 0.64})
+    monkeypatch.setattr(commission, "fetch_expense_ratio", fetch)
+
+    response = client.post(
+        "/api/portfolio/commission-check", json={"instrumentIds": ["amfi:2002"]}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["rows"][0]["expenseGapPct"] == 0.61
+    assert sorted(calls) == ["2001", "2002"]
 
 
 def test_commission_check_validates_instrument_ids(client):
