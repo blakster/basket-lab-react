@@ -129,8 +129,10 @@ export function CommissionCheck({
                             </span>
                           )}
                       </>
+                    ) : check.status === "missing-expense-ratio" ? (
+                      status
                     ) : (
-                      status || "—"
+                      "—"
                     )}
                   </TableCell>
                   <TableCell className="text-right">
