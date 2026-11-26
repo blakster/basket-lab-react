@@ -17,11 +17,24 @@ class DuplicateTransaction(ValueError):
     """The same transaction already exists from a statement or manual entry."""
 
 
-def _scheme_code(instrument_id: str, isin: str | None, master: SchemeMaster | None) -> str | None:
-    if instrument_id.startswith("amfi:"):
-        return instrument_id.split(":", 1)[1] or None
+def scheme_code_for_instrument(
+    instrument_id: str,
+    isin: str | None,
+    master: SchemeMaster | None,
+    name: str | None = None,
+    prefer_current: bool = False,
+) -> str | None:
+    amfi_code = instrument_id.split(":", 1)[1] if instrument_id.startswith("amfi:") else None
+    if prefer_current and isin and master is not None:
+        master_row = master.by_code(amfi_code) if amfi_code else None
+        if master_row is None or not master_row.is_active:
+            current = master.lookup_current_isin(isin, scheme_name=name)
+            if current:
+                return current
+    if amfi_code:
+        return amfi_code or None
     if isin and master is not None:
-        return master.lookup(scheme_isin=isin)
+        return master.lookup_isin(isin, scheme_name=name)
     return None
 
 
@@ -40,7 +53,9 @@ def portfolio(conn: sqlite3.Connection, master: SchemeMaster | None = None) -> d
                 "kind": row["kind"],
                 "name": row["name"],
                 "isin": row["isin"],
-                "schemeCode": _scheme_code(row["id"], row["isin"], master),
+                "schemeCode": scheme_code_for_instrument(
+                    row["id"], row["isin"], master, row["name"]
+                ),
             }
         )
     transactions = [

@@ -8,7 +8,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
 from app.cas_routes import router as cas_router
-from app.db import init_db
+from app.db import connect_db, init_db
 from app.filing_status import filing_statuses
 from app.ingest.cas import _IMPORT_LOCK as IMPORT_LOCK
 from app.ingest.ensure import _serialize_status, ensure_filings, scheme_codes_from_body
@@ -22,6 +22,7 @@ from app.portfolio import (
     delete_manual_transaction,
     portfolio,
 )
+from app.portfolio_commission import commission_check
 
 # apps/api/app/main.py → repo root / data / basket.sqlite
 DB_PATH = Path(__file__).resolve().parents[3] / "data" / "basket.sqlite"
@@ -41,6 +42,7 @@ async def lifespan(app: FastAPI):
             notes=notes or "auto-seed-fixture",
         )
     app.state.db = conn
+    app.state.cache_db_path = DB_PATH
     try:
         yield
     finally:
@@ -51,8 +53,8 @@ app = FastAPI(lifespan=lifespan)
 app.include_router(cas_router)
 
 
-def _scheme_master(request: Request) -> SchemeMaster | None:
-    master = getattr(request.app.state, "scheme_master", None)
+def _scheme_master(app: FastAPI) -> SchemeMaster:
+    master = getattr(app.state, "scheme_master", None)
     if master is None:
         try:
             master = SchemeMaster.load_cached(DB_PATH.parent)
@@ -60,13 +62,52 @@ def _scheme_master(request: Request) -> SchemeMaster | None:
             # A failed load must not be cached: a transient cache miss would
             # otherwise disable ISIN resolution until the API restarts.
             return SchemeMaster([])
-        request.app.state.scheme_master = master
+        app.state.scheme_master = master
     return master
 
 
 @app.get("/api/portfolio")
 def get_portfolio(request: Request):
-    return portfolio(request.app.state.db, _scheme_master(request))
+    return portfolio(request.app.state.db, _scheme_master(request.app))
+
+
+def _run_commission_check(app: FastAPI, instrument_ids: object):
+    cache_conn = None
+    cache_path = getattr(app.state, "cache_db_path", None)
+    if cache_path:
+        try:
+            cache_conn = connect_db(cache_path)
+        except Exception:
+            cache_conn = None
+    try:
+        return commission_check(
+            app.state.db,
+            _scheme_master(app),
+            instrument_ids,
+            cache_conn=cache_conn,
+        )
+    finally:
+        if cache_conn is not None:
+            cache_conn.close()
+
+
+@app.post("/api/portfolio/commission-check")
+async def post_portfolio_commission_check(request: Request):
+    if not request.headers.get("content-type", "").lower().startswith("application/json"):
+        raise HTTPException(status_code=415, detail="Expected application/json.")
+    try:
+        body = await request.json()
+    except Exception:
+        body = None
+    instrument_ids = body.get("instrumentIds") if isinstance(body, dict) else None
+    try:
+        return await run_in_threadpool(
+            _run_commission_check,
+            request.app,
+            instrument_ids,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.post("/api/portfolio/transactions")

@@ -49,6 +49,43 @@ export type PortfolioResponse = {
   snapshots: PortfolioSnapshot[];
 };
 
+export type CommissionCheckStatus =
+  | "ready"
+  | "missing-direct-plan"
+  | "missing-expense-ratio";
+
+type CommissionCheckBase = {
+  instrumentId: string;
+  schemeCode: string | null;
+  schemeName: string;
+  directSchemeCode: string | null;
+  directSchemeName: string | null;
+};
+
+export type CommissionCheckRow = CommissionCheckBase &
+  (
+    | {
+        status: "ready";
+        regularExpenseRatio: number;
+        directExpenseRatio: number;
+        expenseGapPct: number;
+        regularExpenseRatioAsOf: string | null;
+        directExpenseRatioAsOf: string | null;
+      }
+    | {
+        status: Exclude<CommissionCheckStatus, "ready">;
+        regularExpenseRatio?: never;
+        directExpenseRatio?: never;
+        expenseGapPct?: never;
+        regularExpenseRatioAsOf?: never;
+        directExpenseRatioAsOf?: never;
+      }
+  );
+
+export type CommissionCheckResponse = {
+  rows: CommissionCheckRow[];
+};
+
 export type CasImportResult = {
   importId: string;
   accountsInserted: number;
@@ -65,6 +102,29 @@ export async function getPortfolio(): Promise<PortfolioResponse> {
   const res = await fetch("/api/portfolio");
   if (!res.ok) throw new Error("Portfolio unavailable");
   return (await res.json()) as PortfolioResponse;
+}
+
+const COMMISSION_CHECK_CHUNK = 200;
+
+export async function postCommissionCheck(
+  instrumentIds: string[],
+): Promise<CommissionCheckResponse> {
+  const chunks: string[][] = [];
+  for (let start = 0; start < instrumentIds.length; start += COMMISSION_CHECK_CHUNK) {
+    chunks.push(instrumentIds.slice(start, start + COMMISSION_CHECK_CHUNK));
+  }
+  const responses = await Promise.all(
+    chunks.map(async (ids) => {
+      const res = await fetch("/api/portfolio/commission-check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ instrumentIds: ids }),
+      });
+      if (!res.ok) throw await apiError(res, "Commission check unavailable");
+      return (await res.json()) as CommissionCheckResponse;
+    }),
+  );
+  return { rows: responses.flatMap((response) => response.rows) };
 }
 
 export const CAS_FILE_REJECT_MESSAGE =
