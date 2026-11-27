@@ -437,6 +437,7 @@ function useInsightsDesk() {
     beesMissing,
     beesCagr,
     focusedId,
+    insightsCount: insightsBaskets.length,
     focusedInactive: Boolean(focusedBasket && !focusedBasket.active),
     activateFocused:
       focusedBasket && !focusedBasket.active && setBaskets
@@ -478,6 +479,7 @@ function InsightsDesk({
   beesMissing,
   beesCagr,
   focusedId,
+  insightsCount,
   focusedInactive,
   activateFocused,
   focusedResult,
@@ -519,7 +521,7 @@ function InsightsDesk({
     return map;
   }, [data]);
   const switchable = baskets.filter((b) => b.active);
-  const showOverlap = switchable.length >= 2;
+  const showOverlap = insightsCount >= 2;
 
   const switchRef = useRef<HTMLDivElement>(null);
   const [switchFade, setSwitchFade] = useState({ left: false, right: false });

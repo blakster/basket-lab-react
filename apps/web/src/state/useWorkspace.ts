@@ -94,10 +94,13 @@ export function useWorkspace(baskets: Basket[]) {
   );
 
   const openInsights = useCallback(
-    (basketId?: string) => {
+    (basketId?: string, options?: { allowPending?: boolean }) => {
       const asked =
         typeof basketId === "string" && basketId ? basketId : undefined;
-      const id = pickInsightsId(insightsBasketId, asked);
+      const id =
+        options?.allowPending && asked
+          ? asked
+          : pickInsightsId(insightsBasketId, asked);
       setInsightsBasketId(id);
       writeWorkspaceHash("insights", id);
       setWorkspaceState("insights");

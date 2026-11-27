@@ -6,7 +6,7 @@ import type {
   TimePoint,
 } from "../../types";
 import { calculateXirr } from "./xirr";
-import { firstIso, navDatesInRange } from "../series";
+import { addMonthsClamped, firstIso, navDatesInRange } from "../series";
 
 export { resolveRange } from "../resolveSettings";
 
@@ -17,15 +17,6 @@ export function cagr(initial: number, final: number, years: number): number {
 
 function parseDay(iso: string): Date {
   return new Date(`${iso}T00:00:00`);
-}
-
-/** Add `months` to `base` without overflowing month-end dates (Jan 31 + 1m -> Feb 28/29). */
-function addMonthsClamped(base: Date, months: number): Date {
-  const totalMonths = base.getFullYear() * 12 + base.getMonth() + months;
-  const targetYear = Math.floor(totalMonths / 12);
-  const targetMonth = ((totalMonths % 12) + 12) % 12;
-  const maxDay = new Date(targetYear, targetMonth + 1, 0).getDate();
-  return new Date(targetYear, targetMonth, Math.min(base.getDate(), maxDay));
 }
 
 /** NAV series are sorted ascending by ISO date (normalized at fetch time). */

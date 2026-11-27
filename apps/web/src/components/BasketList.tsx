@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import defaults from "../data/defaults.json";
@@ -30,6 +30,11 @@ export function BasketList() {
   } = useLab();
   const { theme } = useTheme();
   const [confirmReset, setConfirmReset] = useState(false);
+  const cancelResetRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (confirmReset) cancelResetRef.current?.focus();
+  }, [confirmReset]);
 
   function toggleActive(id: string) {
     setBaskets((prev) =>
@@ -90,6 +95,7 @@ export function BasketList() {
           {confirmReset ? (
             <span className="inline-confirm" role="group" aria-label="Confirm reset defaults">
               <Button
+                ref={cancelResetRef}
                 type="button"
                 variant="outline"
                 size="sm"

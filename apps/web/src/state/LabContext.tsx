@@ -41,7 +41,7 @@ type LabContextValue = {
   setWorkspace: (workspace: Workspace) => void;
   insightsOpen: boolean;
   insightsBasketId: string | null;
-  openInsights: (basketId?: string) => void;
+  openInsights: (basketId?: string, options?: { allowPending?: boolean }) => void;
   closeInsights: () => void;
 };
 

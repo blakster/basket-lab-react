@@ -39,6 +39,15 @@ export function unionDates(results: BacktestResult[]): string[] {
   return [...dates].sort();
 }
 
+/** Add `months` to `base` without overflowing month-end dates (Jan 31 + 1m -> Feb 28/29). */
+export function addMonthsClamped(base: Date, months: number): Date {
+  const totalMonths = base.getFullYear() * 12 + base.getMonth() + months;
+  const targetYear = Math.floor(totalMonths / 12);
+  const targetMonth = ((totalMonths % 12) + 12) % 12;
+  const maxDay = new Date(targetYear, targetMonth + 1, 0).getDate();
+  return new Date(targetYear, targetMonth, Math.min(base.getDate(), maxDay));
+}
+
 /** Per-basket map: only that basket's codes, empty series omitted. */
 export function navsForBasket(
   basket: Basket,

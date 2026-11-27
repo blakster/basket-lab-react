@@ -32,11 +32,15 @@ function formatFileSize(bytes: number): string {
 }
 
 function summarizeImport(result: CasImportResult): string {
-  const parts = [
-    `Imported ${result.imported} transaction${result.imported === 1 ? "" : "s"}`,
-  ];
-  if (result.snapshotsWritten > 0 && result.imported === 0) {
-    parts[0] = `Imported ${result.snapshotsWritten} holding snapshot${result.snapshotsWritten === 1 ? "" : "s"}`;
+  const parts: string[] = [];
+  if (result.imported > 0 || result.snapshotsWritten === 0) {
+    parts.push(
+      `Imported ${result.imported} transaction${result.imported === 1 ? "" : "s"}`,
+    );
+  }
+  if (result.snapshotsWritten > 0) {
+    const label = `${result.snapshotsWritten} holding snapshot${result.snapshotsWritten === 1 ? "" : "s"}`;
+    parts.push(parts.length === 0 ? `Imported ${label}` : label);
   }
   if (result.duplicates > 0) parts.push(`${result.duplicates} already known`);
   if (result.skipped > 0) parts.push(`${result.skipped} skipped`);
@@ -67,6 +71,7 @@ export function CasImportDialog({ open, onOpenChange, onImported }: Props) {
   };
 
   const handleOpenChange = (next: boolean) => {
+    if (!next && importMutation.isPending) return;
     if (!next) reset();
     onOpenChange(next);
   };
@@ -95,7 +100,8 @@ export function CasImportDialog({ open, onOpenChange, onImported }: Props) {
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["portfolio"] });
       onImported(summarizeImport(result));
-      handleOpenChange(false);
+      reset();
+      onOpenChange(false);
     },
     onError: (err: Error) => {
       setError(err.message || "Could not read this statement.");
@@ -104,7 +110,15 @@ export function CasImportDialog({ open, onOpenChange, onImported }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent>
+      <DialogContent
+        showCloseButton={!importMutation.isPending}
+        onEscapeKeyDown={(event) => {
+          if (importMutation.isPending) event.preventDefault();
+        }}
+        onInteractOutside={(event) => {
+          if (importMutation.isPending) event.preventDefault();
+        }}
+      >
         <DialogHeader>
           <DialogTitle className="editor-title">Import CAS statement</DialogTitle>
           <DialogDescription className="editor-description">
@@ -196,7 +210,11 @@ export function CasImportDialog({ open, onOpenChange, onImported }: Props) {
 
           <DialogFooter>
             <DialogClose asChild>
-              <Button type="button" variant="outline">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={importMutation.isPending}
+              >
                 Cancel
               </Button>
             </DialogClose>

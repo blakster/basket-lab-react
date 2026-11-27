@@ -1,6 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { LabProvider, useLab } from "../state/LabContext";
+import { ThemeProvider } from "../state/ThemeContext";
 import { PortfolioWorkspace } from "./PortfolioWorkspace";
 
 const { getPortfolioMock, postCommissionCheckMock } = vi.hoisted(() => ({
@@ -93,5 +95,55 @@ describe("PortfolioWorkspace commission check", () => {
     ).toHaveLength(2);
     expect(screen.getAllByText("1.25% → 0.64%")).toHaveLength(2);
     expect(screen.getByText("Expense ratios dated 2026-10-31.", { exact: false })).toBeInTheDocument();
+  });
+
+  it("first Health check click opens the newly saved portfolio basket in Insights", async () => {
+    getPortfolioMock.mockResolvedValue({
+      accounts: [{ id: "cams:1", provider: "cams", label: "CAMS · 1" }],
+      instruments: [
+        {
+          id: "amfi:122639",
+          kind: "mf",
+          name: "Parag Parikh Flexi Cap Fund - Direct Plan - Growth",
+          isin: "INF879O01027",
+          schemeCode: "122639",
+        },
+      ],
+      transactions: [],
+      snapshots: [
+        {
+          date: "2026-10-31",
+          accountId: "cams:1",
+          instrumentId: "amfi:122639",
+          units: 100,
+          value: 10_000,
+        },
+      ],
+    });
+    postCommissionCheckMock.mockResolvedValue({ rows: [] });
+    const api: { current: ReturnType<typeof useLab> | null } = { current: null };
+    function Spy() {
+      api.current = useLab();
+      return null;
+    }
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, retryDelay: 0 } },
+    });
+    render(
+      <ThemeProvider>
+        <LabProvider>
+          <Spy />
+          <QueryClientProvider client={client}>
+            <PortfolioWorkspace />
+          </QueryClientProvider>
+        </LabProvider>
+      </ThemeProvider>,
+    );
+    const btn = await screen.findByRole("button", { name: /health check/i });
+    fireEvent.click(btn);
+    expect(api.current?.workspace).toBe("insights");
+    expect(api.current?.insightsBasketId).toBe("portfolio-mirror");
+    expect(api.current?.baskets.some((b) => b.id === "portfolio-mirror")).toBe(true);
+    window.localStorage.removeItem("basket-lab-v1");
   });
 });

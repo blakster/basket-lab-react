@@ -140,7 +140,8 @@ button[data-slot="checkbox"]:hover:not(:disabled) {
   font-weight: 500;
 }
 
-.editor-allocation-heading > span {
+.editor-allocation-heading > span,
+.editor-allocation-title > span {
   color: var(--ink-soft);
   font-size: 0.8125rem;
 }
@@ -410,7 +411,7 @@ button[data-slot="checkbox"]:hover:not(:disabled) {
 }
 
 .dialog-overlay[data-state="closed"] {
-  animation: dialog-overlay-out 140ms var(--ease-out) both;
+  animation: dialog-overlay-out var(--duration-exit) var(--ease-out) both;
 }
 
 .dialog-content[data-state="open"] {
@@ -418,7 +419,7 @@ button[data-slot="checkbox"]:hover:not(:disabled) {
 }
 
 .dialog-content[data-state="closed"] {
-  animation: dialog-content-out 150ms var(--ease-out) both;
+  animation: dialog-content-out var(--duration-exit) var(--ease-out) both;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -689,6 +690,14 @@ button[data-slot="checkbox"]:hover:not(:disabled) {
   border-bottom: 1px solid var(--rule-faint);
   font-size: 0.78rem;
   font-family: var(--mono);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 600px) {
+  .holding-tx-list li {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.2rem 0.75rem;
+  }
 }
 
 .holding-tx-list li:last-child {

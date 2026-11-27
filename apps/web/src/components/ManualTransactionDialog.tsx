@@ -18,9 +18,8 @@ import {
 } from "../lib/api/portfolio";
 import { searchFunds } from "../lib/api/search";
 import {
-  loadCachedPortfolioNav,
   localTodayIso,
-  navPointOnOrBefore,
+  lookupNavOnOrBefore,
 } from "../lib/portfolio/portfolioNav";
 import {
   armFetch,
@@ -57,6 +56,8 @@ export function ManualTransactionDialog({ open, onOpenChange }: Props) {
   const [error, setError] = useState<string | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
   const immediateRef = useRef(false);
+  const runRef = useRef(searchRun);
+  runRef.current = searchRun;
 
   const hits = searchHits(searchRun).slice(0, 8);
   const phase = searchPhase(searchRun);
@@ -73,14 +74,9 @@ export function ManualTransactionDialog({ open, onOpenChange }: Props) {
     controllerRef.current = controller;
 
     const timer = window.setTimeout(() => {
-      let started = false;
-      setSearchRun((prev) => {
-        const next = beginFetch(prev, request);
-        if (!next) return prev;
-        started = true;
-        return next;
-      });
-      if (!started) return;
+      const next = beginFetch(runRef.current, request);
+      if (!next) return;
+      setSearchRun(next);
 
       searchFunds(request, fetch, controller.signal)
         .then((results) => {
@@ -104,10 +100,7 @@ export function ManualTransactionDialog({ open, onOpenChange }: Props) {
   // Fetch NAV on or before the chosen trade date so users can auto-fill units/amount.
   const navLookupQuery = useQuery({
     queryKey: ["manual-nav-lookup", selected?.schemeCode ?? "", date],
-    queryFn: async () => {
-      const map = await loadCachedPortfolioNav([selected!.schemeCode], date, date);
-      return navPointOnOrBefore(map[selected!.schemeCode], date);
-    },
+    queryFn: () => lookupNavOnOrBefore(selected!.schemeCode, date),
     enabled: Boolean(open && selected?.schemeCode && date),
     staleTime: 10 * 60 * 1000,
     retry: false,

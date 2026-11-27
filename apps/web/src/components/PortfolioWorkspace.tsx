@@ -371,8 +371,9 @@ export function PortfolioWorkspace() {
     if (!lab) return;
     const basket = buildPortfolioBasket(mfHoldingsForBasket, lab.baskets);
     if (!basket) return;
-    lab.saveBasket(basket);
-    lab.openInsights(basket.id);
+    if (lab.saveBasket(basket)) {
+      lab.openInsights(basket.id, { allowPending: true });
+    }
   }
 
   return (

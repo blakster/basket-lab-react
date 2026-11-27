@@ -1,4 +1,5 @@
 import type { NavPoint, TimePoint } from "../types";
+import { addMonthsClamped } from "./series";
 
 export type CashflowSpec = {
   mode: "lumpsum" | "sip";
@@ -20,14 +21,6 @@ export type AlphaBeta = { alpha: number; beta: number };
 
 function parseDay(iso: string): Date {
   return new Date(`${iso}T00:00:00`);
-}
-
-function addMonthsClamped(base: Date, months: number): Date {
-  const totalMonths = base.getFullYear() * 12 + base.getMonth() + months;
-  const targetYear = Math.floor(totalMonths / 12);
-  const targetMonth = ((totalMonths % 12) + 12) % 12;
-  const maxDay = new Date(targetYear, targetMonth + 1, 0).getDate();
-  return new Date(targetYear, targetMonth, Math.min(base.getDate(), maxDay));
 }
 
 function yearsBetween(a: string, b: string): number {

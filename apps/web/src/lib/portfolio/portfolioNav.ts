@@ -1,6 +1,7 @@
 import { fetchNav } from "../api/nav";
 import {
   isNavCacheFresh,
+  next2100IstAfterDate,
   readNavCacheEntry,
   writeNavCache,
   type NavCacheEntry,
@@ -39,17 +40,33 @@ function coversEnd(points: NavPoint[], to: string): boolean {
   return gap <= RANGE_SLACK_DAYS;
 }
 
-function cacheUsable(entry: NavCacheEntry, since: string, to: string): boolean {
-  if (!entry.points.length) return false;
-  if (!entry.points.some((p) => p.date <= since)) return false;
-  if (!coversEnd(entry.points, to)) return false;
+function coversWindow(points: NavPoint[], since: string, to: string): boolean {
+  if (!points.length) return false;
+  if (!points.some((p) => p.date <= since)) return false;
+  return coversEnd(points, to);
+}
+
+function cacheUsable(
+  entry: NavCacheEntry,
+  since: string,
+  to: string,
+  now: number = Date.now(),
+): boolean {
+  if (!coversWindow(entry.points, since, to)) return false;
   const min = firstIso(entry.points);
   const max = lastIso(entry.points);
+  // When the live endpoint `to` is missing from cache, only reuse yesterday's
+  // quote before the next 21:00 IST publication cutoff; never let a historical
+  // write-time TTL certify a missing live NAV after publication time.
+  if (max < to && now >= next2100IstAfterDate(max)) {
+    return false;
+  }
   return isNavCacheFresh(
     entry.points,
     since < min ? min : since,
     to > max ? max : to,
     entry.writtenAt,
+    now,
   );
 }
 
@@ -114,7 +131,7 @@ export async function loadCachedPortfolioNav(
             // Ignore IndexedDB quota/private-mode errors.
           }
           navs[code] = merged;
-        } else if (prev?.points.length) {
+        } else if (prev && coversWindow(prev.points, since, to)) {
           navs[code] = prev.points;
         } else {
           navs[code] = [];
@@ -124,6 +141,29 @@ export async function loadCachedPortfolioNav(
   }
 
   return navs;
+}
+
+/**
+ * Look up a single fund's NAV on or shortly before `isoDate` for manual entry
+ * autofill. Reads from cache only when a quote exists within the 7-day lookback
+ * window, and fetches without writing disjoint narrow slices into the shared cache.
+ */
+export async function lookupNavOnOrBefore(
+  code: string,
+  isoDate: string,
+): Promise<NavPoint | null> {
+  if (!code || !isoDate) return null;
+  const lookbackStart = shiftIsoDays(isoDate, -PORTFOLIO_NAV_LOOKBACK_DAYS);
+  try {
+    const cached = await readNavCacheEntry(code);
+    const hit = navPointOnOrBefore(cached?.points, isoDate);
+    if (hit && hit.date >= lookbackStart) return hit;
+  } catch {
+    // Fall through to network fetch.
+  }
+  const fetched = await fetchNav([code], lookbackStart, isoDate);
+  const hit = navPointOnOrBefore(fetched[code], isoDate);
+  return hit && hit.date >= lookbackStart ? hit : null;
 }
 
 export function navPointOnOrBefore(

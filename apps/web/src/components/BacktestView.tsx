@@ -309,7 +309,17 @@ export function BacktestView() {
             return (
               <li key={r.basketId} className="league-col">
                 <span className="league-tick" aria-hidden="true" />
-                <p className="league-name">{name}</p>
+                <div className="league-col-head">
+                  <button
+                    type="button"
+                    className="league-col-trigger"
+                    onClick={() => openInsights(r.basketId)}
+                    aria-label={`Inspect ${name} weights and filings`}
+                  >
+                    <span>{name}</span>
+                    <ChevronRight aria-hidden="true" />
+                  </button>
+                </div>
                 <p className="league-rate num-empty">No NAV</p>
                 <p
                   className="league-value num-empty"

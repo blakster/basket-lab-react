@@ -334,6 +334,23 @@ describe("calculateXirr", () => {
     ).toBeNull();
   });
 
+  it("converges accurately on 1-day ₹0.01 gain and tiny cashflow magnitudes", () => {
+    const oneDay = calculateXirrSafe([
+      { date: new Date("2024-01-01"), amount: -1000 },
+      { date: new Date("2024-01-02"), amount: 1000.01 },
+    ]);
+    expect(oneDay).not.toBeNull();
+    expect(oneDay!).toBeGreaterThan(0.35);
+    expect(oneDay!).toBeLessThan(0.38);
+
+    const tiny = calculateXirrSafe([
+      { date: new Date("2023-01-01"), amount: -0.0001 },
+      { date: new Date("2024-01-01"), amount: 0.0002 },
+    ]);
+    expect(tiny).not.toBeNull();
+    expect(tiny!).toBeCloseTo(100, 0);
+  });
+
   it("clamps month-end SIP schedules instead of skipping February", () => {
     const sipBasket: Basket = {
       id: "m-end",

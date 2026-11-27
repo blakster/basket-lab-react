@@ -97,12 +97,11 @@
   --shadow-border: 0 0 0 1px var(--rule);
   --umbra: 0 24px 48px rgb(18 18 18 / 0.28);
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
-  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
   --duration-press: 160ms;
   --duration-ui: 180ms;
   --duration-exit: 150ms;
-  --duration-sheet: 240ms;
+  --duration-sheet: 280ms;
   --press-scale: 0.97;
   --sans: "IBM Plex Sans", system-ui, sans-serif;
   --condensed: "IBM Plex Sans", system-ui, sans-serif;
