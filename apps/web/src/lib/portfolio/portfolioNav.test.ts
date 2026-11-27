@@ -51,6 +51,23 @@ describe("portfolioNav", () => {
     expect(writeCacheMock).not.toHaveBeenCalled();
   });
 
+  it("keeps a newer cached quote when the provider returns an older fallback quote", async () => {
+    readCacheMock.mockResolvedValue({
+      points: [{ date: "2026-04-15", nav: 103 }],
+      writtenAt: Date.parse("2026-04-15T16:00:00Z"),
+    });
+    fetchNavMock.mockResolvedValue({
+      "122639": [{ date: "2026-04-14", nav: 101 }] as NavPoint[],
+    });
+
+    const hit = await lookupNavOnOrBefore(
+      "122639",
+      "2026-04-16",
+      Date.parse("2026-04-16T17:00:00Z"),
+    );
+    expect(hit).toEqual({ date: "2026-04-15", nav: 103 });
+  });
+
   it("keeps recent cached quotes offline for funds bought after the shared portfolio start", async () => {
     readCacheMock.mockResolvedValue({
       points: [

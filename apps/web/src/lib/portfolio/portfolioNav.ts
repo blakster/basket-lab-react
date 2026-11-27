@@ -183,7 +183,13 @@ export async function lookupNavOnOrBefore(
   try {
     const fetched = await fetchNav([code], lookbackStart, isoDate);
     const hit = navPointOnOrBefore(fetched[code], isoDate);
-    if (hit && hit.date >= lookbackStart) return hit;
+    if (
+      hit &&
+      hit.date >= lookbackStart &&
+      (!cachedHit || hit.date >= cachedHit.date)
+    ) {
+      return hit;
+    }
   } catch {
     // Fall back to cached quote if network fails.
   }
