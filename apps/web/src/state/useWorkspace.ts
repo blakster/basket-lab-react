@@ -37,12 +37,23 @@ function writeWorkspaceHash(workspace: Workspace, basketId?: string | null): voi
   window.history.replaceState(null, "", next);
 }
 
+const WORKSPACE_TITLES: Record<Workspace, string> = {
+  compare: "Compare · Basket Lab",
+  portfolio: "Portfolio · Basket Lab",
+  baskets: "Baskets · Basket Lab",
+  insights: "Insights · Basket Lab",
+};
+
 export function useWorkspace(baskets: Basket[]) {
   const [workspace, setWorkspaceState] = useState<Workspace>(workspaceFromHash);
   const [insightsBasketId, setInsightsBasketId] = useState<string | null>(
     readInsightsBasketId,
   );
   const insightsOpen = workspace === "insights";
+
+  useEffect(() => {
+    document.title = WORKSPACE_TITLES[workspace];
+  }, [workspace]);
 
   useEffect(() => {
     const sync = () => {

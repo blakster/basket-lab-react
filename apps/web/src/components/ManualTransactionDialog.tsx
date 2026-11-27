@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useId, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -17,6 +17,27 @@ import {
   type ManualTransactionKind,
 } from "../lib/api/portfolio";
 import { searchFunds } from "../lib/api/search";
+import {
+  loadCachedPortfolioNav,
+  localTodayIso,
+  navPointOnOrBefore,
+} from "../lib/portfolio/portfolioNav";
+import {
+  armFetch,
+  beginFetch,
+  BOOT_SEARCH_RUN,
+  clearAfterSelect,
+  dismissSearch,
+  failFetch,
+  finishFetch,
+  moveActive,
+  searchHits,
+  searchListOpen,
+  searchPhase,
+  searchStale,
+  typeQuery,
+  type SearchRun,
+} from "../state/searchRun";
 import type { SearchHit } from "../types";
 
 type Props = {
@@ -26,51 +47,80 @@ type Props = {
 
 export function ManualTransactionDialog({ open, onOpenChange }: Props) {
   const queryClient = useQueryClient();
-  const [query, setQuery] = useState("");
-  const [hits, setHits] = useState<SearchHit[]>([]);
-  const [searching, setSearching] = useState(false);
+  const listId = useId();
+  const [searchRun, setSearchRun] = useState<SearchRun>(BOOT_SEARCH_RUN);
   const [selected, setSelected] = useState<SearchHit | null>(null);
   const [kind, setKind] = useState<ManualTransactionKind>("buy");
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => localTodayIso());
   const [units, setUnits] = useState("");
   const [amount, setAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const controllerRef = useRef<AbortController | null>(null);
+  const immediateRef = useRef(false);
+
+  const hits = searchHits(searchRun).slice(0, 8);
+  const phase = searchPhase(searchRun);
+  const stale = searchStale(searchRun);
+  const listOpen = !selected && searchListOpen(searchRun);
+  const activeIndex = searchRun.activeIndex;
 
   useEffect(() => {
-    const q = query.trim();
-    // Drop the previous query's results immediately; they must not stay
-    // selectable while the new query is still resolving.
-    setHits([]);
-    if (q.length < 2 || selected) {
-      setSearching(false);
-      return;
-    }
+    const request = searchRun.query.trim();
+    if (request.length < 2 || selected) return;
+    const delay = immediateRef.current ? 0 : 220;
+    immediateRef.current = false;
     const controller = new AbortController();
-    const timer = setTimeout(() => {
-      setSearching(true);
-      searchFunds(q, fetch, controller.signal)
+    controllerRef.current = controller;
+
+    const timer = window.setTimeout(() => {
+      let started = false;
+      setSearchRun((prev) => {
+        const next = beginFetch(prev, request);
+        if (!next) return prev;
+        started = true;
+        return next;
+      });
+      if (!started) return;
+
+      searchFunds(request, fetch, controller.signal)
         .then((results) => {
-          if (!controller.signal.aborted) setHits(results.slice(0, 8));
+          if (controller.signal.aborted) return;
+          setSearchRun((prev) => finishFetch(prev, request, results) ?? prev);
         })
-        .catch(() => {
-          if (!controller.signal.aborted) setHits([]);
-        })
-        .finally(() => {
-          if (!controller.signal.aborted) setSearching(false);
+        .catch((err: unknown) => {
+          if (controller.signal.aborted) return;
+          if (err instanceof DOMException && err.name === "AbortError") return;
+          setSearchRun((prev) => failFetch(prev, request) ?? prev);
         });
-    }, 250);
+    }, delay);
+
     return () => {
-      clearTimeout(timer);
+      window.clearTimeout(timer);
       controller.abort();
+      if (controllerRef.current === controller) controllerRef.current = null;
     };
-  }, [query, selected]);
+  }, [searchRun.query, searchRun.attempt, selected]);
+
+  // Fetch NAV on or before the chosen trade date so users can auto-fill units/amount.
+  const navLookupQuery = useQuery({
+    queryKey: ["manual-nav-lookup", selected?.schemeCode ?? "", date],
+    queryFn: async () => {
+      const map = await loadCachedPortfolioNav([selected!.schemeCode], date, date);
+      return navPointOnOrBefore(map[selected!.schemeCode], date);
+    },
+    enabled: Boolean(open && selected?.schemeCode && date),
+    staleTime: 10 * 60 * 1000,
+    retry: false,
+  });
+
+  const navMatch = navLookupQuery.data ?? null;
 
   const reset = () => {
-    setQuery("");
-    setHits([]);
+    controllerRef.current?.abort();
+    setSearchRun(BOOT_SEARCH_RUN);
     setSelected(null);
     setKind("buy");
-    setDate(new Date().toISOString().slice(0, 10));
+    setDate(localTodayIso());
     setUnits("");
     setAmount("");
     setError(null);
@@ -79,6 +129,13 @@ export function ManualTransactionDialog({ open, onOpenChange }: Props) {
   const handleOpenChange = (next: boolean) => {
     if (!next) reset();
     onOpenChange(next);
+  };
+
+  const pickHit = (hit: SearchHit) => {
+    controllerRef.current?.abort();
+    setSelected(hit);
+    setSearchRun(clearAfterSelect);
+    setError(null);
   };
 
   const mutation = useMutation({
@@ -112,12 +169,25 @@ export function ManualTransactionDialog({ open, onOpenChange }: Props) {
     onError: (err: Error) => setError(err.message || "Could not add this transaction."),
   });
 
+  const amountNum = Number(amount);
+  const unitsNum = Number(units);
+  const canFillUnits = Boolean(navMatch && navMatch.nav > 0 && Number.isFinite(amountNum) && amountNum > 0);
+  const canFillAmount = Boolean(navMatch && navMatch.nav > 0 && Number.isFinite(unitsNum) && unitsNum > 0);
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent>
+      <DialogContent
+        onEscapeKeyDown={(event) => {
+          if (listOpen) {
+            event.preventDefault();
+            controllerRef.current?.abort();
+            setSearchRun(dismissSearch);
+          }
+        }}
+      >
         <DialogHeader>
-          <DialogTitle>Add transaction</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className="editor-title">Add transaction</DialogTitle>
+          <DialogDescription className="editor-description">
             Record a buy or sell by hand. If the same trade later arrives in a CAS
             statement, the import skips it instead of counting it twice.
           </DialogDescription>
@@ -133,13 +203,16 @@ export function ManualTransactionDialog({ open, onOpenChange }: Props) {
           <div className="fund-picker">
             {selected ? (
               <div className="fund-picker-selected">
-                <span className="fund-picker-name">{selected.schemeName}</span>
+                <span className="fund-picker-name">
+                  {selected.schemeName}
+                  <span className="editor-fund-code">{selected.schemeCode}</span>
+                </span>
                 <button
                   type="button"
                   className="fund-picker-change"
                   onClick={() => {
                     setSelected(null);
-                    setQuery("");
+                    setSearchRun(BOOT_SEARCH_RUN);
                   }}
                 >
                   Change
@@ -148,36 +221,99 @@ export function ManualTransactionDialog({ open, onOpenChange }: Props) {
             ) : (
               <>
                 <Input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
+                  role="combobox"
+                  aria-expanded={listOpen}
+                  aria-controls={listId}
+                  aria-autocomplete="list"
+                  aria-activedescendant={
+                    listOpen && activeIndex >= 0
+                      ? `${listId}-${activeIndex}`
+                      : undefined
+                  }
+                  value={searchRun.query}
+                  onChange={(event) =>
+                    setSearchRun((prev) => typeQuery(prev, event.target.value))
+                  }
+                  onKeyDown={(event) => {
+                    if (!listOpen) return;
+                    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                      event.preventDefault();
+                      const delta = event.key === "ArrowDown" ? 1 : -1;
+                      const next =
+                        activeIndex < 0
+                          ? delta > 0
+                            ? 0
+                            : hits.length - 1
+                          : (activeIndex + delta + hits.length) % hits.length;
+                      setSearchRun((prev) => moveActive(prev, next));
+                    } else if (event.key === "Enter" && !stale) {
+                      const chosen = hits[activeIndex] ?? hits[0];
+                      if (chosen) {
+                        event.preventDefault();
+                        pickHit(chosen);
+                      }
+                    } else if (event.key === "Escape") {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      controllerRef.current?.abort();
+                      setSearchRun(dismissSearch);
+                    }
+                  }}
                   placeholder="Search mutual fund schemes"
                   aria-label="Search mutual fund schemes"
+                  autoComplete="off"
                 />
-                {hits.length > 0 && (
-                  <ul className="fund-picker-list">
-                    {hits.map((hit) => (
+                {listOpen && (
+                  <ul id={listId} role="listbox" className="fund-picker-list">
+                    {hits.map((hit, idx) => (
                       <li key={`${hit.schemeCode}-${hit.schemeName}`}>
                         <button
+                          id={`${listId}-${idx}`}
                           type="button"
-                          onClick={() => {
-                            setSelected(hit);
-                            setHits([]);
-                            setQuery("");
-                          }}
+                          role="option"
+                          aria-selected={idx === activeIndex}
+                          disabled={stale}
+                          onMouseEnter={() =>
+                            setSearchRun((prev) => moveActive(prev, idx))
+                          }
+                          onClick={() => pickHit(hit)}
                         >
                           {hit.schemeName}
+                          <span className="fund-search-code">{hit.schemeCode}</span>
                         </button>
                       </li>
                     ))}
                   </ul>
                 )}
-                {searching && <span className="cas-hint">Searching…</span>}
-                {!searching &&
-                  !selected &&
-                  query.trim().length >= 2 &&
+                {phase === "loading" && (
+                  <span className="cas-hint" role="status">
+                    Searching funds…
+                  </span>
+                )}
+                {phase === "ready" &&
+                  !stale &&
+                  searchRun.query.trim().length >= 2 &&
                   hits.length === 0 && (
-                    <span className="cas-hint">No funds found.</span>
+                    <span className="cas-hint" role="status">
+                      No funds found. Try another scheme name.
+                    </span>
                   )}
+                {phase === "error" && !stale && (
+                  <div className="fund-search-error" role="alert">
+                    <p>Search unavailable. Check your connection.</p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        immediateRef.current = true;
+                        setSearchRun(armFetch);
+                      }}
+                    >
+                      Retry
+                    </Button>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -202,20 +338,8 @@ export function ManualTransactionDialog({ open, onOpenChange }: Props) {
               <Input
                 type="date"
                 value={date}
-                max={new Date().toISOString().slice(0, 10)}
+                max={localTodayIso()}
                 onChange={(event) => setDate(event.target.value)}
-              />
-            </label>
-            <label className="manual-field">
-              <span>Units</span>
-              <Input
-                type="number"
-                inputMode="decimal"
-                step="any"
-                min="0"
-                placeholder="0.000"
-                value={units}
-                onChange={(event) => setUnits(event.target.value)}
               />
             </label>
             <label className="manual-field">
@@ -230,9 +354,59 @@ export function ManualTransactionDialog({ open, onOpenChange }: Props) {
                 onChange={(event) => setAmount(event.target.value)}
               />
             </label>
+            <label className="manual-field">
+              <span>Units</span>
+              <Input
+                type="number"
+                inputMode="decimal"
+                step="any"
+                min="0"
+                placeholder="0.000"
+                value={units}
+                onChange={(event) => setUnits(event.target.value)}
+              />
+            </label>
           </div>
 
-          {error && <span className="cas-note cas-error">{error}</span>}
+          {selected && navMatch && (
+            <div className="nav-autofill-row">
+              <span>
+                NAV ({navMatch.date}): <strong>₹{navMatch.nav.toFixed(4)}</strong>
+              </span>
+              <div className="inline-confirm">
+                {canFillUnits && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="xs"
+                    onClick={() =>
+                      setUnits((amountNum / navMatch.nav).toFixed(3))
+                    }
+                  >
+                    Fill units
+                  </Button>
+                )}
+                {canFillAmount && !canFillUnits && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="xs"
+                    onClick={() =>
+                      setAmount((unitsNum * navMatch.nav).toFixed(2))
+                    }
+                  >
+                    Fill amount
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <p className="cas-note cas-error" role="alert">
+              {error}
+            </p>
+          )}
 
           <DialogFooter>
             <DialogClose asChild>

@@ -141,12 +141,18 @@ select {
 }
 
 .app-nav button {
-  min-height: 2.1rem;
-  padding: 0.2rem 0.75rem;
+  min-height: 2.25rem;
+  padding: 0.25rem 0.75rem;
   border-radius: 0;
   font-weight: 500;
   font-size: 0.9rem;
+  color: var(--ink-soft);
   white-space: nowrap;
+  transition: color var(--duration-ui) var(--ease-out), box-shadow var(--duration-ui) var(--ease-out);
+}
+
+.app-nav button:active:not(:disabled) {
+  transform: none;
 }
 
 .app-nav button[aria-current="page"] {
@@ -186,18 +192,6 @@ select {
   line-height: 1.2;
   letter-spacing: var(--display-tracking);
   text-transform: none;
-  animation: enter-name 700ms var(--ease-out) both;
-}
-
-@keyframes enter-name {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
 }
 
 .masthead-desk {
@@ -277,6 +271,7 @@ button {
   border-radius: var(--r-btn);
   padding: 0.4rem 0.85rem;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
   transition-property: transform, background-color, color, box-shadow, opacity;
   transition-duration: var(--duration-press);
   transition-timing-function: var(--ease-out);
@@ -290,7 +285,11 @@ button[data-slot="button"][data-variant="default"] {
 @media (hover: hover) and (pointer: fine) {
   button:hover:not(:disabled) {
     background: var(--ink-wash);
-    transform: translateY(-1px);
+  }
+
+  .app-nav button:hover:not(:disabled) {
+    background: transparent;
+    color: var(--ink);
   }
 
   button[data-slot="button"][data-variant="default"]:hover:not(:disabled) {
@@ -307,18 +306,24 @@ button[data-slot="button"][data-variant="default"] {
 
 button[data-slot="button"][data-variant="outline"] {
   background: var(--paper-well);
+  border: 1px solid transparent;
   box-shadow: var(--shadow-border);
 }
 
 @media (hover: hover) and (pointer: fine) {
   button[data-slot="button"][data-variant="outline"]:hover:not(:disabled) {
-    background: var(--paper);
+    background: var(--ink-wash-soft);
     color: var(--ink);
   }
 }
 
 button:active:not(:disabled) {
-  transform: translateY(1px) scale(var(--press-scale));
+  transform: scale(var(--press-scale));
+}
+
+button[role="tab"]:active:not(:disabled),
+button[data-slot="toggle-group-item"]:active:not(:disabled) {
+  transform: none;
 }
 
 button[aria-pressed="true"],
@@ -382,8 +387,13 @@ button[data-static="true"]:active:not(:disabled) {
   padding: 0.2rem 0;
 }
 
-.field-amount input:hover,
-.field-amount input:focus {
+@media (hover: hover) and (pointer: fine) {
+  .field-amount input:hover {
+    border-bottom-color: var(--ink);
+  }
+}
+
+.field-amount input:focus-visible {
   border-bottom-color: var(--ink);
 }
 
@@ -395,10 +405,12 @@ button[data-static="true"]:active:not(:disabled) {
   box-shadow: none;
 }
 
-.text-tabs button:hover:not(:disabled) {
-  background: transparent;
-  text-decoration: underline;
-  text-underline-offset: 0.2em;
+@media (hover: hover) and (pointer: fine) {
+  .text-tabs button:hover:not(:disabled) {
+    background: transparent;
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+  }
 }
 
 .text-tabs button[aria-pressed="true"] {
@@ -469,8 +481,7 @@ button[data-static="true"]:active:not(:disabled) {
 }
 
 .field input {
-  border: 0;
-  border-bottom: 0;
+  border: 1px solid transparent;
   border-radius: var(--r-sm);
   background: var(--paper);
   padding: 0.45rem 0.65rem;
@@ -489,8 +500,13 @@ button[data-static="true"]:active:not(:disabled) {
   min-width: 9rem;
 }
 
-.field input:hover,
-.field input:focus {
+@media (hover: hover) and (pointer: fine) {
+  .field input:hover {
+    background: var(--ink-wash-soft);
+  }
+}
+
+.field input:focus-visible {
   background: var(--ink-wash-soft);
 }
 
@@ -517,6 +533,7 @@ button[data-static="true"]:active:not(:disabled) {
   font-weight: 400;
   letter-spacing: -0.02em;
   line-height: 1.35;
+  text-wrap: balance;
   color: var(--ink);
 }
 
@@ -1482,6 +1499,7 @@ button[data-static="true"]:active:not(:disabled) {
   border: 1px solid var(--rule);
   max-height: 16rem;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .fund-picker-list button {
@@ -1493,12 +1511,18 @@ button[data-static="true"]:active:not(:disabled) {
   font-size: 0.88rem;
   color: var(--ink);
   text-align: left;
-  padding: 0.4rem 0.55rem;
+  padding: 0.45rem 0.6rem;
   cursor: pointer;
 }
 
-.fund-picker-list button:hover {
-  background: var(--secondary);
+@media (hover: hover) and (pointer: fine) {
+  .fund-picker-list button:hover {
+    background: var(--ink-wash);
+  }
+}
+
+.fund-picker-list button[aria-selected="true"] {
+  background: var(--ink-wash);
 }
 
 .manual-kind {
@@ -1581,13 +1605,17 @@ button[data-static="true"]:active:not(:disabled) {
   font: inherit;
   font-size: 0.78rem;
   color: var(--ink-soft);
-  padding: 0.25rem 0.6rem;
+  padding: 0.28rem 0.65rem;
+  min-height: 2rem;
   cursor: pointer;
 }
 
-.manual-remove:hover {
-  color: var(--loss);
-  border-color: var(--loss);
+@media (hover: hover) and (pointer: fine) {
+  .manual-remove:hover:not(:disabled) {
+    color: var(--loss);
+    border-color: var(--loss);
+    background: transparent;
+  }
 }
 
 

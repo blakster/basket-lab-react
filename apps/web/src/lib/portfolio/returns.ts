@@ -1,4 +1,4 @@
-import { calculateXirr } from "../backtest/xirr";
+import { calculateXirrSafe } from "../backtest/xirr";
 import type { NavPoint } from "../../types";
 import type { PortfolioSnapshot, PortfolioTransaction } from "../api/portfolio";
 
@@ -241,7 +241,7 @@ export function xirrPercent(
   if (flows.length < 2) return null;
   // XIRR annualizes over time; same-day flows have no defined rate.
   if (new Set(flows.map((f) => f.date)).size < 2) return null;
-  return calculateXirr(flows.map((f) => ({ date: new Date(f.date), amount: f.amount })));
+  return calculateXirrSafe(flows.map((f) => ({ date: new Date(f.date), amount: f.amount })));
 }
 
 export function portfolioTotals(

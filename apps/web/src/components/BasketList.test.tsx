@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { LabProvider } from "../state/LabContext";
 import { ThemeProvider } from "../state/ThemeContext";
@@ -42,5 +42,17 @@ describe("BasketList", () => {
       name: /^insights$/i,
     });
     expect(insightButtons.length).toBeGreaterThan(0);
+  });
+
+  it("asks for confirmation before resetting defaults", () => {
+    renderBasketList();
+    fireEvent.click(screen.getByRole("button", { name: /reset defaults/i }));
+    expect(
+      screen.getByRole("button", { name: /confirm reset/i }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
+    expect(
+      screen.getByRole("button", { name: /reset defaults/i }),
+    ).toBeInTheDocument();
   });
 });

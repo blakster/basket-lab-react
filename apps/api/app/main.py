@@ -192,7 +192,8 @@ async def post_ingest(request: Request):
             master = SchemeMaster.load_cached(DB_PATH.parent)
         except Exception:
             master = None
-    return run_ingest(
+    return await run_in_threadpool(
+        run_ingest,
         request.app.state.db,
         month=month,
         files=files,
@@ -216,7 +217,8 @@ async def post_ingest_ensure(request: Request):
             content={"error": "bad_request", "message": "schemeCodes required"},
         )
     codes_s = [str(c) for c in codes]
-    return ensure_filings(
+    return await run_in_threadpool(
+        ensure_filings,
         request.app.state.db,
         codes_s,
         incoming=DB_PATH.parent / "incoming",

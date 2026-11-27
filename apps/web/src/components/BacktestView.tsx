@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
 import { loadNiftyBeesNav, NIFTY_BEES_CODE } from "../lib/api/benchmarkNav";
 import {
@@ -26,7 +27,7 @@ const BEES_ID = "__nifty-bees";
 const BEES_BASKET: Basket = {
   id: BEES_ID,
   name: "Nifty BeES",
-  color: "#6B6B6B",
+  color: "var(--steel)",
   active: true,
   funds: [
     {
@@ -195,7 +196,7 @@ function LeadStory({ beesRateById }: { beesRateById: Map<string, number> }) {
 }
 
 export function BacktestView() {
-  const { baskets, results, analyzing, runAnalysis, settings } = useLab();
+  const { baskets, results, analyzing, runAnalysis, settings, openInsights } = useLab();
   const prevModeRef = useRef(settings.mode);
 
   useEffect(() => {
@@ -250,9 +251,7 @@ export function BacktestView() {
     }
     return out;
   }, [results, benchQuery.data, benchRun]);
-  const showBeesOverlay =
-    settings.mode === "lumpsum" &&
-    !baskets.some((b) => b.active && isBeesOnly(b));
+  const showBeesOverlay = !baskets.some((b) => b.active && isBeesOnly(b));
   const beesResult = useMemo((): BacktestResult | null => {
     if (!showBeesOverlay) return null;
     // One overlay line: start it with the earliest basket so it shares that
@@ -330,7 +329,17 @@ export function BacktestView() {
               className={`league-col${isLead ? " is-lead" : ""}`}
             >
               <span className="league-tick" aria-hidden="true" />
-              <p className="league-name">{name}</p>
+              <div className="league-col-head">
+                <button
+                  type="button"
+                  className="league-col-trigger"
+                  onClick={() => openInsights(r.basketId)}
+                  aria-label={`Inspect ${name} weights and filings`}
+                >
+                  <span>{name}</span>
+                  <ChevronRight aria-hidden="true" />
+                </button>
+              </div>
               <p className="league-rate">{formatPct(r.stats.cagr)}</p>
               <p className="league-value">{formatInr(r.stats.final)}</p>
               {fund ? <p className="league-fund">{fund}</p> : null}
@@ -377,10 +386,7 @@ export function BacktestView() {
                 <dd>—</dd>
               </div>
               {LEAGUE_METRICS.map((id) => {
-                const value =
-                  id === "mdd"
-                    ? null
-                    : METRICS[id].compute(beesResult, {});
+                const value = METRICS[id].compute(beesResult, {});
                 return (
                   <div key={id} className="league-metric">
                     <dt>{metricLabel(id)}</dt>

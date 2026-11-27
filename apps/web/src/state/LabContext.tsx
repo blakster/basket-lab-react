@@ -136,3 +136,7 @@ export function useLab(): LabContextValue {
   if (!ctx) throw new Error("useLab must be used within LabProvider");
   return ctx;
 }
+
+export function useOptionalLab(): LabContextValue | null {
+  return useContext(LabContext);
+}

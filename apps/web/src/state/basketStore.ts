@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useState,
   type Dispatch,
   type SetStateAction,
@@ -61,9 +62,20 @@ export function useBasketStore() {
     }
   }, [baskets, settings]);
 
+  // Only trigger filing refresh when the unique scheme codes actually change,
+  // not when toggling active checkboxes, renaming, or changing chart colors.
+  const schemeCodesKey = useMemo(
+    () =>
+      [...new Set(baskets.flatMap((b) => b.funds.map((f) => f.schemeCode)).filter(Boolean))]
+        .sort()
+        .join(","),
+    [baskets],
+  );
+
   useEffect(() => {
-    ensureFilings(baskets.flatMap((b) => b.funds.map((f) => f.schemeCode)));
-  }, [baskets]);
+    if (!schemeCodesKey) return;
+    ensureFilings(schemeCodesKey.split(","));
+  }, [schemeCodesKey]);
 
   const setSettings = useCallback<Dispatch<SetStateAction<LabSettings>>>((action) => {
     setSettingsState(action);

@@ -19,6 +19,15 @@ function parseDay(iso: string): Date {
   return new Date(`${iso}T00:00:00`);
 }
 
+/** Add `months` to `base` without overflowing month-end dates (Jan 31 + 1m -> Feb 28/29). */
+function addMonthsClamped(base: Date, months: number): Date {
+  const totalMonths = base.getFullYear() * 12 + base.getMonth() + months;
+  const targetYear = Math.floor(totalMonths / 12);
+  const targetMonth = ((totalMonths % 12) + 12) % 12;
+  const maxDay = new Date(targetYear, targetMonth + 1, 0).getDate();
+  return new Date(targetYear, targetMonth, Math.min(base.getDate(), maxDay));
+}
+
 /** NAV series are sorted ascending by ISO date (normalized at fetch time). */
 function navOnOrBefore(history: NavPoint[], iso: string): number | null {
   let lo = 0;
@@ -120,7 +129,6 @@ export function backtestPlan(
 ): BacktestResult {
   const requestedStartIso = settings.customStart!;
   const endIso = settings.customEnd!;
-  const endDate = parseDay(endIso);
 
   let startIso = requestedStartIso;
   for (const f of basket.funds) {
@@ -144,7 +152,6 @@ export function backtestPlan(
     settings,
     startIso,
     requestedStartIso,
-    endDate,
     startDate,
     timeline,
     plan,
@@ -163,7 +170,6 @@ function runBacktest(
   settings: LabSettings,
   startIso: string,
   requestedStartIso: string,
-  endDate: Date,
   startDate: Date,
   timeline: string[],
   plan: CashflowPlan,
@@ -190,7 +196,7 @@ function runBacktest(
           value = NaN;
           break;
         }
-        value += holdings[f.schemeCode] * px;
+        value += holdings[f.schemeCode]! * px;
       }
       if (!Number.isFinite(value)) continue;
       if (value > peak) peak = value;
@@ -200,9 +206,10 @@ function runBacktest(
     }
     if (series.length === 0) return noNav(basket.id);
     const final = series.at(-1)?.y ?? 0;
-    // Day-count / 365 so a non-leap calendar year is exactly 1.0 (matches CAGR fixtures).
+    const lastDate = parseDay(series.at(-1)!.x);
+    // Day-count / 365 using the last priced NAV date (matches SIP's final date).
     const years =
-      (endDate.getTime() - startDate.getTime()) / (365 * 86400000);
+      (lastDate.getTime() - startDate.getTime()) / (365 * 86400000);
     return {
       basketId: basket.id,
       series,
@@ -272,8 +279,7 @@ function runBacktest(
         totalInvested += installment;
       }
       sipCount += 1;
-      nextSip = new Date(startDate);
-      nextSip.setMonth(nextSip.getMonth() + sipCount);
+      nextSip = addMonthsClamped(startDate, sipCount);
     }
     let value = 0;
     for (const f of basket.funds) {
@@ -283,7 +289,7 @@ function runBacktest(
         value = NaN;
         break;
       }
-      value += holdings[f.schemeCode].units * px;
+      value += holdings[f.schemeCode]!.units * px;
     }
     if (!Number.isFinite(value) || totalInvested === 0) continue;
     if (value > peak) peak = value;

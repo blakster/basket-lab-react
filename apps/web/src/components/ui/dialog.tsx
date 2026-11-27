@@ -29,37 +29,42 @@ function DialogClose({
   return <DialogPrimitive.Close data-slot="dialog-close" {...props} />
 }
 
-function DialogOverlay({
-  className,
-  ...props
-}: React.ComponentProps<typeof DialogPrimitive.Overlay>) {
+const DialogOverlay = React.forwardRef<
+  React.ElementRef<typeof DialogPrimitive.Overlay>,
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
+>(function DialogOverlay({ className, ...props }, ref) {
   return (
     <DialogPrimitive.Overlay
+      ref={ref}
       data-slot="dialog-overlay"
       className={cn(
-        "fixed inset-0 z-50 bg-[var(--overlay)] duration-200 ease-[cubic-bezier(0.2,0,0,1)] data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
+        "dialog-overlay fixed inset-0 z-50 bg-[var(--overlay)]",
         className
       )}
       {...props}
     />
   )
-}
+})
 
-function DialogContent({
+const DialogContent = React.forwardRef<
+  React.ElementRef<typeof DialogPrimitive.Content>,
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+    showCloseButton?: boolean
+  }
+>(function DialogContent({
   className,
   children,
   showCloseButton = true,
   ...props
-}: React.ComponentProps<typeof DialogPrimitive.Content> & {
-  showCloseButton?: boolean
-}) {
+}, ref) {
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay />
       <DialogPrimitive.Content
+        ref={ref}
         data-slot="dialog-content"
         className={cn(
-          "fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-[var(--r-lg)] border border-[var(--rule)] bg-background p-6 shadow-[var(--umbra)] duration-200 ease-[cubic-bezier(0.2,0,0,1)] outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:max-w-lg",
+          "dialog-content fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] max-h-[90dvh] overflow-y-auto overscroll-contain translate-x-[-50%] translate-y-[-50%] gap-4 rounded-[var(--r-lg)] border border-[var(--rule)] bg-background p-6 shadow-[var(--umbra)] sm:max-w-lg",
           className
         )}
         {...props}
@@ -68,7 +73,7 @@ function DialogContent({
         {showCloseButton && (
           <DialogPrimitive.Close
             data-slot="dialog-close"
-            className="absolute top-4 right-4 rounded-[var(--r-btn)] opacity-70 transition-opacity hover:opacity-100 disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
+            className="absolute top-3 right-3 grid size-9 place-items-center rounded-[var(--r-btn)] text-[var(--ink-soft)] transition-[color,background-color,transform] duration-[var(--duration-press)] ease-[var(--ease-out)] hover:bg-[var(--ink-wash)] hover:text-[var(--ink)] active:scale-[var(--press-scale)] disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
           >
             <XIcon />
             <span className="sr-only">Close</span>
@@ -77,7 +82,7 @@ function DialogContent({
       </DialogPrimitive.Content>
     </DialogPortal>
   )
-}
+})
 
 function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (

@@ -20,6 +20,7 @@ const { labState, loadBeesMock } = vi.hoisted(() => ({
     analyzing: false,
     runAnalysis: vi.fn(),
     setWorkspace: vi.fn(),
+    openInsights: vi.fn(),
     settings: {
       mode: "lumpsum",
       amount: 100_000,
@@ -358,5 +359,25 @@ describe("BacktestView table", () => {
     expect(screen.queryByText("-46.00%")).toBeNull();
     expect(beesXirr).toBeGreaterThan(14);
     expect(screen.getByText("Flexi Cap trails Nifty BeES")).toBeInTheDocument();
+  });
+
+  it("opens Insights when a basket column is clicked", () => {
+    labState.openInsights.mockReset();
+    labState.baskets = [basket];
+    labState.results = [
+      {
+        basketId: basket.id,
+        series: [
+          { x: "2023-01-01", y: 100000, drawdown: 0 },
+          { x: "2024-01-01", y: 120000, drawdown: -4 },
+        ],
+        stats: { initial: 100000, final: 120000, abs: 20, cagr: 20, mdd: -4 },
+      },
+    ];
+    renderView();
+    fireEvent.click(
+      screen.getByRole("button", { name: /inspect flexi cap weights and filings/i }),
+    );
+    expect(labState.openInsights).toHaveBeenCalledWith(basket.id);
   });
 });

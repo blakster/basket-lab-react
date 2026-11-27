@@ -10,7 +10,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { formatCompactInr } from "../lib/format";
+import { formatCompactInr, formatInr } from "../lib/format";
 import {
   formatFullDate,
   formatPctValue,
@@ -88,127 +88,91 @@ export function GrowthPathChart({
   data,
   series,
   startAmount,
+  ariaLabel = "Growth over time",
 }: {
   data: Array<Record<string, string | number | null>>;
   series: PathSeries[];
   startAmount: number;
+  ariaLabel?: string;
 }) {
-  const plot = useMemo(() => {
-    const values: number[] = [startAmount];
+  const domain = useMemo(() => {
+    const values: number[] = [];
+    if (Number.isFinite(startAmount) && startAmount > 0) values.push(startAmount);
     for (const row of data) {
       for (const s of series) {
         const n = row[s.key];
         if (typeof n === "number" && Number.isFinite(n)) values.push(n);
       }
     }
+    if (!values.length) return [0, 1] as const;
     const lo = Math.min(...values);
     const hi = Math.max(...values);
-    const pad = (hi - lo) * 0.08 || 1;
-    const min = lo - pad;
-    const max = hi + pad;
-    return { min, max };
+    const pad = (hi - lo) * 0.08 || Math.max(Math.abs(hi) * 0.08, 1);
+    return [Math.max(0, lo - pad), hi + pad] as const;
   }, [data, series, startAmount]);
 
   if (!data.length || !series.length) {
     return <p className="chart-empty">No NAV series to plot.</p>;
   }
 
-  const W = 1000;
-  const H = 240;
-  const L = 52;
-  const R = 12;
-  const T = 12;
-  const B = 28;
-  const innerW = W - L - R;
-  const innerH = H - T - B;
-  const n = Math.max(data.length - 1, 1);
-  const xAt = (i: number) => L + (i / n) * innerW;
-  const yAt = (v: number) =>
-    T + ((plot.max - v) / (plot.max - plot.min || 1)) * innerH;
-
   const lastIdx = data.length - 1;
-  const ticks = [plot.min, startAmount, plot.max];
-  const xLabels = [0, Math.round(n / 2), lastIdx];
 
   return (
-    <div className="path-chart">
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        className="path-chart-svg"
-        role="img"
-        aria-label="Growth of each basket"
-      >
-        <line
-          x1={L}
-          y1={yAt(startAmount)}
-          x2={L + innerW}
-          y2={yAt(startAmount)}
-          stroke="var(--rule)"
-          strokeWidth="1.25"
-        />
-        {ticks.map((t) => (
-          <text
-            key={`y-${t}`}
-            x={L - 8}
-            y={yAt(t) + 4}
-            textAnchor="end"
-            fill="var(--ink-soft)"
-            fontSize="11"
-            fontFamily="IBM Plex Mono, ui-monospace, monospace"
-          >
-            {formatCompactInr(t)}
-          </text>
-        ))}
-        {series.map((s) => {
-          const pts: string[] = [];
-          data.forEach((row, i) => {
-            const n = row[s.key];
-            if (typeof n !== "number" || !Number.isFinite(n)) return;
-            pts.push(`${xAt(i).toFixed(1)},${yAt(n).toFixed(1)}`);
-          });
-          if (pts.length < 2) return null;
-          return (
-            <polyline
-              key={s.key}
-              fill="none"
-              points={pts.join(" ")}
-              stroke={s.lead ? "var(--ink)" : s.color}
-              strokeWidth={s.lead ? 2.4 : 1.4}
-              strokeDasharray={s.dashed ? "6 5" : undefined}
-              strokeLinejoin="round"
-              strokeLinecap="round"
+    <div className="path-chart" role="region" aria-label={ariaLabel}>
+      <div className="lab-plot lab-plot--growth">
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={data} margin={{ top: 8, right: 12, bottom: 4, left: 4 }}>
+            <CartesianGrid vertical={false} stroke={GRID} strokeDasharray="0" />
+            <XAxis
+              dataKey="date"
+              tick={tickStyle()}
+              tickLine={false}
+              axisLine={false}
+              minTickGap={36}
+              tickFormatter={(v) => formatTick(String(v))}
             />
-          );
-        })}
-        {series.map((s) => {
-          const last = data[lastIdx]?.[s.key];
-          if (typeof last !== "number" || !Number.isFinite(last)) return null;
-          return (
-            <circle
-              key={`${s.key}-end`}
-              cx={xAt(lastIdx)}
-              cy={yAt(last)}
-              r={s.lead ? 4 : 2.5}
-              fill={s.lead ? "var(--ink)" : s.color}
-              stroke="var(--paper)"
-              strokeWidth="1.25"
+            <YAxis
+              domain={[domain[0], domain[1]]}
+              tick={tickStyle(11)}
+              tickLine={false}
+              axisLine={false}
+              width={60}
+              tickFormatter={(v) => formatCompactInr(Number(v))}
             />
-          );
-        })}
-        {xLabels.map((i) => (
-          <text
-            key={`x-${i}`}
-            x={xAt(i)}
-            y={H - 6}
-            textAnchor={i === 0 ? "start" : i === lastIdx ? "end" : "middle"}
-            fill="var(--ink-soft)"
-            fontSize="11"
-            fontFamily="IBM Plex Sans, system-ui, sans-serif"
-          >
-            {formatTick(String(data[i]?.date ?? ""))}
-          </text>
-        ))}
-      </svg>
+            {Number.isFinite(startAmount) && startAmount > 0 && (
+              <ReferenceLine
+                y={startAmount}
+                stroke={INK}
+                strokeOpacity={0.28}
+                strokeDasharray="4 4"
+              />
+            )}
+            <Tooltip
+              content={
+                <FrostTooltip
+                  formatLabel={(label) => formatFullDate(label)}
+                  formatValue={(v) => formatInr(v)}
+                />
+              }
+            />
+            {series.map((s) => (
+              <Line
+                key={s.key}
+                type="monotone"
+                dataKey={s.key}
+                name={s.label}
+                stroke={s.lead ? INK : s.color}
+                strokeWidth={s.lead ? 2.4 : 1.5}
+                strokeDasharray={s.dashed ? "6 5" : undefined}
+                dot={false}
+                activeDot={{ r: s.lead ? 4.5 : 3.5, strokeWidth: 0 }}
+                isAnimationActive={false}
+                connectNulls
+              />
+            ))}
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
       <ul className="path-legend">
         {series.map((s) => {
           const last = data[lastIdx]?.[s.key];
