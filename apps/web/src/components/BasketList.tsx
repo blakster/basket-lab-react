@@ -30,10 +30,17 @@ export function BasketList() {
   } = useLab();
   const { theme } = useTheme();
   const [confirmReset, setConfirmReset] = useState(false);
-  const cancelResetRef = useRef<HTMLButtonElement>(null);
+  const cancelResetRef = useRef<HTMLElement>(null);
+  const resetTriggerRef = useRef<HTMLElement>(null);
+  const wasConfirmingRef = useRef(false);
 
   useEffect(() => {
-    if (confirmReset) cancelResetRef.current?.focus();
+    if (confirmReset) {
+      cancelResetRef.current?.focus();
+    } else if (wasConfirmingRef.current) {
+      resetTriggerRef.current?.focus();
+    }
+    wasConfirmingRef.current = confirmReset;
   }, [confirmReset]);
 
   function toggleActive(id: string) {
@@ -114,6 +121,7 @@ export function BasketList() {
             </span>
           ) : (
             <Button
+              ref={resetTriggerRef}
               type="button"
               variant="ghost"
               size="sm"

@@ -5,10 +5,28 @@ import { LabProvider, useLab } from "../state/LabContext";
 import { ThemeProvider } from "../state/ThemeContext";
 import { PortfolioWorkspace } from "./PortfolioWorkspace";
 
-const { getPortfolioMock, postCommissionCheckMock } = vi.hoisted(() => ({
+const { getPortfolioMock, postCommissionCheckMock, ensureFilingsMock, loadPortfolioNavMock } = vi.hoisted(() => ({
   getPortfolioMock: vi.fn(),
   postCommissionCheckMock: vi.fn(),
+  ensureFilingsMock: vi.fn(),
+  loadPortfolioNavMock: vi.fn(),
 }));
+
+vi.mock("../lib/api/insights", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/api/insights")>();
+  return {
+    ...actual,
+    ensureFilings: (...args: unknown[]) => ensureFilingsMock(...args),
+  };
+});
+
+vi.mock("../lib/portfolio/portfolioNav", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/portfolio/portfolioNav")>();
+  return {
+    ...actual,
+    loadCachedPortfolioNav: (...args: unknown[]) => loadPortfolioNavMock(...args),
+  };
+});
 
 vi.mock("../lib/api/portfolio", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../lib/api/portfolio")>();
@@ -32,6 +50,8 @@ function renderWorkspace() {
 
 describe("PortfolioWorkspace commission check", () => {
   beforeEach(() => {
+    ensureFilingsMock.mockResolvedValue({ fetched: 0, missing: [], amcs: [], filings: [] });
+    loadPortfolioNavMock.mockResolvedValue({});
     getPortfolioMock.mockResolvedValue({
       accounts: [
         { id: "cdsl:folio:123456", provider: "cdsl", label: "MF folio 123456" },

@@ -227,8 +227,17 @@ export function PortfolioWorkspace() {
   }, [data]);
 
   const today = useMemo(() => localTodayIso(), []);
+  const sinceByCodeKey = model
+    ? model.navCodes.map((c) => `${c}:${model.sinceByCode[c] ?? ""}`).join(",")
+    : "";
   const navQuery = useQuery({
-    queryKey: ["portfolio-nav", model?.navCodes.join(",") ?? "", model?.since ?? "", today],
+    queryKey: [
+      "portfolio-nav",
+      model?.navCodes.join(",") ?? "",
+      model?.since ?? "",
+      sinceByCodeKey,
+      today,
+    ],
     queryFn: () =>
       loadCachedPortfolioNav(
         model!.navCodes,

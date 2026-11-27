@@ -122,7 +122,11 @@ export async function loadCachedPortfolioNav(
   );
 
   if (toFetch.length) {
-    const fetchSince = shiftIsoDays(since, -PORTFOLIO_NAV_LOOKBACK_DAYS);
+    const earliestSince = toFetch.reduce((min, code) => {
+      const codeSince = sinceByCode?.[code] ?? since;
+      return codeSince < min ? codeSince : min;
+    }, since);
+    const fetchSince = shiftIsoDays(earliestSince, -PORTFOLIO_NAV_LOOKBACK_DAYS);
     let fetched: Record<string, NavPoint[]> = {};
     try {
       fetched = await fetchNav(toFetch, fetchSince, to);

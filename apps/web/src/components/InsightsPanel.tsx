@@ -491,7 +491,20 @@ function InsightsDesk({
 }: ReturnType<typeof useInsightsDesk>) {
   const { openInsights } = useLab();
   const bodyRef = useRef<HTMLDivElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
   const [activeSection, setActiveSection] = useState("insight-snapshot");
+
+  // When navigating from an unmounted control (e.g. a Compare league header or
+  // Portfolio Health check), focus falls back to document.body; move it onto
+  // the Insights heading so keyboard users stay oriented.
+  useEffect(() => {
+    if (
+      document.activeElement === null ||
+      document.activeElement === document.body
+    ) {
+      headingRef.current?.focus();
+    }
+  }, []);
   const sectorCats = useMemo(
     () => (data ? topCategories(data.baskets.map((b) => b.sector)) : []),
     [data],
@@ -638,7 +651,9 @@ function InsightsDesk({
     <div className="insights-desk">
       <div className="insights-chrome">
         <header className="insights-sheet-header">
-          <h2 className="insights-sheet-title">Insights</h2>
+          <h2 ref={headingRef} tabIndex={-1} className="insights-sheet-title">
+            Insights
+          </h2>
           <p id="insights-desk-desc" className="insights-sheet-desc">
             {data?.asOf
               ? `${focusedName}. Filings as of ${data.asOf}. Missing PE or expense stays empty.`

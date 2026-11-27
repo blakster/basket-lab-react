@@ -62,11 +62,13 @@ describe("BasketList", () => {
       screen.getByRole("button", { name: /confirm reset/i }),
     ).toBeInTheDocument();
     fireEvent.click(cancelBtn);
+    expect(screen.getByRole("button", { name: /reset defaults/i })).toHaveFocus();
     expect(
       screen.getAllByRole("button", { name: /^delete$/i }),
     ).toHaveLength(initialDeleteCount + 1);
     fireEvent.click(screen.getByRole("button", { name: /reset defaults/i }));
     fireEvent.click(screen.getByRole("button", { name: /confirm reset/i }));
+    expect(screen.getByRole("button", { name: /reset defaults/i })).toHaveFocus();
     expect(
       screen.getAllByRole("button", { name: /^delete$/i }),
     ).toHaveLength(initialDeleteCount);
