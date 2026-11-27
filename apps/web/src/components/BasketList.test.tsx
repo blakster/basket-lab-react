@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { LabProvider } from "../state/LabContext";
 import { ThemeProvider } from "../state/ThemeContext";
@@ -42,5 +42,35 @@ describe("BasketList", () => {
       name: /^insights$/i,
     });
     expect(insightButtons.length).toBeGreaterThan(0);
+  });
+
+  it("asks for confirmation before resetting defaults", () => {
+    renderBasketList();
+    const initialDeleteCount = screen.getAllByRole("button", {
+      name: /^delete$/i,
+    }).length;
+    fireEvent.click(
+      screen.getAllByRole("button", { name: /^duplicate$/i })[0]!,
+    );
+    expect(
+      screen.getAllByRole("button", { name: /^delete$/i }),
+    ).toHaveLength(initialDeleteCount + 1);
+    fireEvent.click(screen.getByRole("button", { name: /reset defaults/i }));
+    const cancelBtn = screen.getByRole("button", { name: /^cancel$/i });
+    expect(cancelBtn).toHaveFocus();
+    expect(
+      screen.getByRole("button", { name: /confirm reset/i }),
+    ).toBeInTheDocument();
+    fireEvent.click(cancelBtn);
+    expect(screen.getByRole("button", { name: /reset defaults/i })).toHaveFocus();
+    expect(
+      screen.getAllByRole("button", { name: /^delete$/i }),
+    ).toHaveLength(initialDeleteCount + 1);
+    fireEvent.click(screen.getByRole("button", { name: /reset defaults/i }));
+    fireEvent.click(screen.getByRole("button", { name: /confirm reset/i }));
+    expect(screen.getByRole("button", { name: /reset defaults/i })).toHaveFocus();
+    expect(
+      screen.getAllByRole("button", { name: /^delete$/i }),
+    ).toHaveLength(initialDeleteCount);
   });
 });

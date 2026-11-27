@@ -111,7 +111,7 @@ function basketName(id: string, labBaskets: Basket[]): string {
 }
 
 function basketColor(id: string, labBaskets: Basket[]): string {
-  return labBaskets.find((b) => b.id === id)?.color ?? "#111111";
+  return labBaskets.find((b) => b.id === id)?.color ?? "var(--ink)";
 }
 
 function cashflowOf(settings: LabSettings): CashflowSpec {
@@ -207,7 +207,7 @@ function buildRiskRow(
   return {
     id: result.basketId,
     name: basket?.name ?? result.basketId,
-    color: basket?.color ?? "#111111",
+    color: basket?.color ?? "var(--ink)",
     vol: metrics.vol,
     sharpe: metrics.sharpe,
     sortino: metrics.sortino,
@@ -238,6 +238,7 @@ function riskRowHasContent(row: RiskRow, beesMissing: boolean): boolean {
 function useInsightsDesk() {
   const {
     baskets,
+    setBaskets,
     results,
     analyzing,
     reportStatus,
@@ -246,9 +247,26 @@ function useInsightsDesk() {
     insightsOpen,
   } = useLab();
   const active = useMemo(() => baskets.filter((b) => b.active), [baskets]);
+  const focusedId =
+    insightsBasketId ??
+    active[0]?.id ??
+    baskets[0]?.id ??
+    null;
+  const focusedBasket = useMemo(
+    () => (focusedId ? baskets.find((b) => b.id === focusedId) ?? null : null),
+    [baskets, focusedId],
+  );
+  // Include an inactive focused basket in filings/insights fetches so clicking
+  // "Insights" on an inactive basket from Baskets never lands on an empty screen.
+  const insightsBaskets = useMemo(() => {
+    if (focusedBasket && !focusedBasket.active) {
+      return [...active, focusedBasket];
+    }
+    return active;
+  }, [active, focusedBasket]);
   const basketSignature = useMemo(
-    () => insightsBasketSignature(active),
-    [active],
+    () => insightsBasketSignature(insightsBaskets),
+    [insightsBaskets],
   );
   const range = useMemo(
     () =>
@@ -261,17 +279,19 @@ function useInsightsDesk() {
   const schemeCodes = useMemo(
     () => [
       ...new Set(
-        active.flatMap((b) => b.funds.map((f) => f.schemeCode)).filter(Boolean),
+        insightsBaskets
+          .flatMap((b) => b.funds.map((f) => f.schemeCode))
+          .filter(Boolean),
       ),
     ],
-    [active],
+    [insightsBaskets],
   );
 
   const { data, isError, isSuccess, isLoading, refetch } = useQuery({
     queryKey: ["insights", basketSignature],
-    queryFn: () => postInsights(active),
+    queryFn: () => postInsights(insightsBaskets),
     retry: 1,
-    enabled: active.length > 0,
+    enabled: insightsBaskets.length > 0,
     staleTime: 0,
   });
 
@@ -350,12 +370,6 @@ function useInsightsDesk() {
     return out;
   }, [riskRows]);
 
-  const focusedId =
-    insightsBasketId ??
-    active[0]?.id ??
-    baskets[0]?.id ??
-    null;
-
   const focusedData = useMemo(() => {
     if (!data || !focusedId) return data;
     return {
@@ -423,6 +437,17 @@ function useInsightsDesk() {
     beesMissing,
     beesCagr,
     focusedId,
+    insightsCount: insightsBaskets.length,
+    focusedInactive: Boolean(focusedBasket && !focusedBasket.active),
+    activateFocused:
+      focusedBasket && !focusedBasket.active && setBaskets
+        ? () =>
+            setBaskets((prev) =>
+              prev.map((b) =>
+                b.id === focusedBasket.id ? { ...b, active: true } : b,
+              ),
+            )
+        : null,
     focusedResult,
     runStale,
     mode: settings.mode,
@@ -454,6 +479,9 @@ function InsightsDesk({
   beesMissing,
   beesCagr,
   focusedId,
+  insightsCount,
+  focusedInactive,
+  activateFocused,
   focusedResult,
   runStale,
   mode,
@@ -463,7 +491,20 @@ function InsightsDesk({
 }: ReturnType<typeof useInsightsDesk>) {
   const { openInsights } = useLab();
   const bodyRef = useRef<HTMLDivElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
   const [activeSection, setActiveSection] = useState("insight-snapshot");
+
+  // When navigating from an unmounted control (e.g. a Compare league header or
+  // Portfolio Health check), focus falls back to document.body; move it onto
+  // the Insights heading so keyboard users stay oriented.
+  useEffect(() => {
+    if (
+      document.activeElement === null ||
+      document.activeElement === document.body
+    ) {
+      headingRef.current?.focus();
+    }
+  }, []);
   const sectorCats = useMemo(
     () => (data ? topCategories(data.baskets.map((b) => b.sector)) : []),
     [data],
@@ -493,7 +534,7 @@ function InsightsDesk({
     return map;
   }, [data]);
   const switchable = baskets.filter((b) => b.active);
-  const showOverlap = switchable.length >= 2;
+  const showOverlap = insightsCount >= 2;
 
   const switchRef = useRef<HTMLDivElement>(null);
   const [switchFade, setSwitchFade] = useState({ left: false, right: false });
@@ -610,7 +651,9 @@ function InsightsDesk({
     <div className="insights-desk">
       <div className="insights-chrome">
         <header className="insights-sheet-header">
-          <h2 className="insights-sheet-title">Insights</h2>
+          <h2 ref={headingRef} tabIndex={-1} className="insights-sheet-title">
+            Insights
+          </h2>
           <p id="insights-desk-desc" className="insights-sheet-desc">
             {data?.asOf
               ? `${focusedName}. Filings as of ${data.asOf}. Missing PE or expense stays empty.`
@@ -627,6 +670,23 @@ function InsightsDesk({
             listRef={switchRef}
             fades={switchFade}
           />
+        )}
+        {focusedInactive && (
+          <div className="insights-inactive-bar" role="status">
+            <span>
+              Inactive on Compare — filings load here; activate to include in
+              backtests and risk metrics.
+            </span>
+            {activateFocused && (
+              <button
+                type="button"
+                className="ds-btn-outlined"
+                onClick={activateFocused}
+              >
+                Activate on Compare
+              </button>
+            )}
+          </div>
         )}
         {isError && (
           <p className="insight-empty insight-alert" role="status">

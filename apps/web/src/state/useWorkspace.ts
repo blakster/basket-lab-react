@@ -37,12 +37,23 @@ function writeWorkspaceHash(workspace: Workspace, basketId?: string | null): voi
   window.history.replaceState(null, "", next);
 }
 
+const WORKSPACE_TITLES: Record<Workspace, string> = {
+  compare: "Compare · Basket Lab",
+  portfolio: "Portfolio · Basket Lab",
+  baskets: "Baskets · Basket Lab",
+  insights: "Insights · Basket Lab",
+};
+
 export function useWorkspace(baskets: Basket[]) {
   const [workspace, setWorkspaceState] = useState<Workspace>(workspaceFromHash);
   const [insightsBasketId, setInsightsBasketId] = useState<string | null>(
     readInsightsBasketId,
   );
   const insightsOpen = workspace === "insights";
+
+  useEffect(() => {
+    document.title = WORKSPACE_TITLES[workspace];
+  }, [workspace]);
 
   useEffect(() => {
     const sync = () => {
@@ -83,10 +94,13 @@ export function useWorkspace(baskets: Basket[]) {
   );
 
   const openInsights = useCallback(
-    (basketId?: string) => {
+    (basketId?: string, options?: { allowPending?: boolean }) => {
       const asked =
         typeof basketId === "string" && basketId ? basketId : undefined;
-      const id = pickInsightsId(insightsBasketId, asked);
+      const id =
+        options?.allowPending && asked
+          ? asked
+          : pickInsightsId(insightsBasketId, asked);
       setInsightsBasketId(id);
       writeWorkspaceHash("insights", id);
       setWorkspaceState("insights");

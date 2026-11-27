@@ -1,8 +1,8 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowUpRight, ChevronRight, Plus, Upload } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -11,17 +11,19 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { fetchNav } from "../lib/api/nav";
 import {
-  CAS_FILE_REJECT_MESSAGE,
-  casFileRejected,
   deleteManualTransaction,
   getPortfolio,
-  importCas,
   postCommissionCheck,
+  type PortfolioTransaction,
 } from "../lib/api/portfolio";
 import { formatCompactInr, formatInr } from "../lib/format";
 import { summarizeCommission, valuesForCommission } from "../lib/portfolio/commission";
+import {
+  buildPortfolioBasket,
+  loadCachedPortfolioNav,
+  localTodayIso,
+} from "../lib/portfolio/portfolioNav";
 import {
   buildPositions,
   folioGroupKey,
@@ -32,6 +34,8 @@ import {
   xirrPercent,
   type Position,
 } from "../lib/portfolio/returns";
+import { useOptionalLab } from "../state/LabContext";
+import { CasImportDialog } from "./CasImportDialog";
 import { CommissionCheck } from "./CommissionCheck";
 import { GrowthPathChart } from "./LabPlots";
 import { ManualTransactionDialog } from "./ManualTransactionDialog";
@@ -47,44 +51,41 @@ function formatSignedInr(n: number): string {
   return `${sign}${formatInr(Math.abs(n))}`;
 }
 
+function formatKindLabel(kind: string): string {
+  switch (kind) {
+    case "buy":
+      return "Buy";
+    case "sip":
+      return "SIP";
+    case "sell":
+      return "Sell";
+    case "switch-in":
+      return "Switch in";
+    case "switch-out":
+      return "Switch out";
+    case "dividend":
+      return "Dividend";
+    default:
+      return kind;
+  }
+}
+
 export function PortfolioWorkspace() {
+  const lab = useOptionalLab();
   const queryClient = useQueryClient();
   const portfolioQuery = useQuery({ queryKey: ["portfolio"], queryFn: getPortfolio });
-  const [file, setFile] = useState<File | null>(null);
-  const [password, setPassword] = useState("");
-  const [formError, setFormError] = useState<string | null>(null);
-  const [importNote, setImportNote] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
+  const [importNote, setImportNote] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-
-  const importMutation = useMutation({
-    mutationFn: () => {
-      if (!file) throw new Error("Choose a CAS PDF first.");
-      return importCas(file, password);
-    },
-    onSuccess: (result) => {
-      setFile(null);
-      setPassword("");
-      setFormError(null);
-      setImportNote(
-        `Imported ${result.imported} transaction${result.imported === 1 ? "" : "s"}` +
-          (result.duplicates > 0 ? `, ${result.duplicates} already known` : "") +
-          (result.skipped > 0 ? `, ${result.skipped} skipped` : "") +
-          (result.warnings?.length ? `, ${result.warnings.length} parser warning${result.warnings.length === 1 ? "" : "s"}` : "") +
-          ".",
-      );
-      queryClient.invalidateQueries({ queryKey: ["portfolio"] });
-    },
-    onError: (error: Error) => {
-      setFormError(error.message || "Could not read this statement.");
-      setImportNote(null);
-    },
-  });
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteManualTransaction(id),
     onSuccess: () => {
       setDeleteError(null);
+      setConfirmDeleteId(null);
       queryClient.invalidateQueries({ queryKey: ["portfolio"] });
     },
     onError: (error: Error) => {
@@ -100,9 +101,16 @@ export function PortfolioWorkspace() {
     const accountsById = new Map(data.accounts.map((a) => [a.id, a]));
     const positions = buildPositions(data.transactions);
     const units = unitsByInstrument(data.transactions);
+    const txByInstrument = new Map<string, PortfolioTransaction[]>();
+    for (const tx of data.transactions) {
+      const list = txByInstrument.get(tx.instrumentId);
+      if (list) list.push(tx);
+      else txByInstrument.set(tx.instrumentId, [tx]);
+    }
+    for (const list of txByInstrument.values()) {
+      list.sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+    }
 
-    // Held units per instrument: statement closing units extended by any
-    // later transactions, with coverage of the statement period itself.
     const holdings = holdingsFromStatements(data.transactions, data.snapshots);
     for (const [id, holding] of holdings) {
       if (!positions.has(id)) {
@@ -128,16 +136,26 @@ export function PortfolioWorkspace() {
       if (!prev || tx.date < prev) firstTxDateByInstrument.set(tx.instrumentId, tx.date);
     }
 
-    // One snapshot per folio group + instrument, summed across groups: a fund
-    // held in several folios keeps every one, while a folio reported by both a
-    // registrar and a depository statement counts once, dated by the latest.
-    // Equal dates go to the account with transactions, the same snapshot
-    // holdingsFromStatements picks for units, so value and units agree.
     const tradedAccounts = new Set(data.transactions.map((t) => `${t.instrumentId} ${t.accountId}`));
     let earliestSnapshot: string | null = null;
     const snapshotGroups = new Map<string, Map<string, { date: string; value: number; traded: boolean }>>();
+    const accountsByInstrument = new Map<string, Set<string>>();
+    for (const tx of data.transactions) {
+      let set = accountsByInstrument.get(tx.instrumentId);
+      if (!set) {
+        set = new Set();
+        accountsByInstrument.set(tx.instrumentId, set);
+      }
+      set.add(tx.accountId);
+    }
     for (const snap of data.snapshots) {
       if (!earliestSnapshot || snap.date < earliestSnapshot) earliestSnapshot = snap.date;
+      let set = accountsByInstrument.get(snap.instrumentId);
+      if (!set) {
+        set = new Set();
+        accountsByInstrument.set(snap.instrumentId, set);
+      }
+      set.add(snap.accountId);
       let groups = snapshotGroups.get(snap.instrumentId);
       if (!groups) {
         groups = new Map();
@@ -169,14 +187,17 @@ export function PortfolioWorkspace() {
       snapshotByInstrument.set(id, { date, value });
     }
 
-    // NAV fetch window: earliest transaction of any NAV-backed fund → today.
     let since: string | null = null;
-    for (const id of codeByInstrument.keys()) {
-      if (!firstTxDateByInstrument.has(id)) continue;
-      const d = firstTxDateByInstrument.get(id)!;
-      if (!since || d < since) since = d;
+    const sinceByCode: Record<string, string> = {};
+    for (const [id, code] of codeByInstrument.entries()) {
+      const d =
+        firstTxDateByInstrument.get(id) ??
+        snapshotByInstrument.get(id)?.date ??
+        null;
+      if (!d) continue;
+      if (!sinceByCode[code] || d < sinceByCode[code]) sinceByCode[code] = d;
+      if (firstTxDateByInstrument.has(id) && (!since || d < since)) since = d;
     }
-    // Snapshot-only holdings (no trades in the period) still need live NAVs.
     if (!since && earliestSnapshot) since = earliestSnapshot;
     const navCodes = [...new Set(codeByInstrument.values())].sort();
     const heldInstrumentIds = [...positions.values()]
@@ -190,6 +211,8 @@ export function PortfolioWorkspace() {
     return {
       instrumentsById,
       accountsById,
+      accountsByInstrument,
+      txByInstrument,
       positions,
       units,
       holdings,
@@ -198,14 +221,30 @@ export function PortfolioWorkspace() {
       snapshotByInstrument,
       navCodes,
       since,
+      sinceByCode,
       heldInstrumentIds,
     };
   }, [data]);
 
-  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const today = useMemo(() => localTodayIso(), []);
+  const sinceByCodeKey = model
+    ? model.navCodes.map((c) => `${c}:${model.sinceByCode[c] ?? ""}`).join(",")
+    : "";
   const navQuery = useQuery({
-    queryKey: ["portfolio-nav", model?.navCodes.join(",") ?? "", model?.since ?? ""],
-    queryFn: () => fetchNav(model!.navCodes, model!.since!, today),
+    queryKey: [
+      "portfolio-nav",
+      model?.navCodes.join(",") ?? "",
+      model?.since ?? "",
+      sinceByCodeKey,
+      today,
+    ],
+    queryFn: () =>
+      loadCachedPortfolioNav(
+        model!.navCodes,
+        model!.since!,
+        today,
+        model!.sinceByCode,
+      ),
     enabled: !!model && model.navCodes.length > 0 && !!model.since,
     staleTime: 5 * 60 * 1000,
   });
@@ -225,15 +264,17 @@ export function PortfolioWorkspace() {
 
     const values = new Map<string, number>();
     const valueDateByInstrument = new Map<string, string>();
+    const latestNavByInstrument = new Map<string, number>();
     const snapshotValued = new Set<string>();
     for (const id of model.positions.keys()) {
       const code = model.codeByInstrument.get(id);
       const series = code ? navByCode.get(code) : undefined;
       const held = model.holdings.get(id)?.heldUnits ?? model.units.get(id)?.total ?? 0;
       if (series && series.length) {
-        const latest = series[series.length - 1];
+        const latest = series[series.length - 1]!;
         values.set(id, held > 0 ? held * latest.nav : 0);
         valueDateByInstrument.set(id, latest.date);
+        latestNavByInstrument.set(id, latest.nav);
       } else {
         snapshotValued.add(id);
         const snap = model.snapshotByInstrument.get(id);
@@ -242,9 +283,6 @@ export function PortfolioWorkspace() {
       }
     }
 
-    // A fund's value date is its own freshest valuation, never before its last
-    // transaction: XIRR cannot credit a purchase before the money went out,
-    // and one fund's newer NAV must not redate another fund's return.
     const valueDate = (id: string) => {
       const v = valueDateByInstrument.get(id) ?? today;
       const t = model.positions.get(id)?.lastDate;
@@ -256,8 +294,6 @@ export function PortfolioWorkspace() {
       if (d > asOf) asOf = d;
     }
     const asOfDate = asOf || today;
-    // A statement that closes above the summed transactions carries an
-    // opening balance it does not describe; gains and XIRR are unknowable.
     const complete = [...model.positions.keys()].every(
       (id) => model.holdings.get(id)?.covered ?? true,
     );
@@ -274,17 +310,17 @@ export function PortfolioWorkspace() {
       .map((position: Position) => {
         const instrument = model.instrumentsById.get(position.instrumentId);
         const value = values.get(position.instrumentId) ?? 0;
+        const heldUnits = model.holdings.get(position.instrumentId)?.heldUnits ?? position.units;
         const covered = model.holdings.get(position.instrumentId)?.covered ?? true;
         const gain = covered ? value + position.proceeds + position.income - position.invested : null;
-        const accountIds = new Set(
-          data.transactions
-            .filter((t) => t.instrumentId === position.instrumentId)
-            .map((t) => t.accountId),
-        );
+        const accountIds = model.accountsByInstrument.get(position.instrumentId) ?? new Set<string>();
         return {
           position,
+          heldUnits,
           instrument,
           value,
+          valDate: valueDateByInstrument.get(position.instrumentId) ?? asOfDate,
+          latestNav: latestNavByInstrument.get(position.instrumentId) ?? null,
           gain,
           gainPct: covered && gain !== null && position.invested > 0 ? (gain / position.invested) * 100 : null,
           covered,
@@ -293,6 +329,7 @@ export function PortfolioWorkspace() {
             .map((id) => model.accountsById.get(id))
             .filter(Boolean)
             .map((a) => a!.label),
+          transactions: model.txByInstrument.get(position.instrumentId) ?? [],
         };
       })
       .filter((row) => row.position.units !== 0 || row.position.invested > 0 || row.value > 0)
@@ -336,72 +373,102 @@ export function PortfolioWorkspace() {
   const manualTransactions = data.transactions
     .filter((tx) => tx.manual)
     .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
-  const chartData = derived.seriesPoints.map((p) => ({ date: p.date, value: p.value }));
+  const chartData = derived.seriesPoints.map((p) => ({ date: p.date, value: Math.round(p.value) }));
   const showChart =
     derived.complete && chartData.length >= 2 && chartData.some((p) => p.value > 0);
   const fallbackCount = derived.rows.filter((row) =>
     derived.snapshotValued.has(row.position.instrumentId),
   ).length;
+  const mfHoldingsForBasket = derived.rows
+    .filter((row) => row.instrument?.kind === "mf" && row.instrument.schemeCode && row.value > 0)
+    .map((row) => ({
+      schemeCode: row.instrument!.schemeCode!,
+      schemeName: row.instrument!.name,
+      isin: row.instrument!.isin,
+      value: row.value,
+    }));
+
+  function handleAnalyzeInInsights() {
+    if (!lab) return;
+    const basket = buildPortfolioBasket(mfHoldingsForBasket, lab.baskets);
+    if (!basket) return;
+    if (lab.saveBasket(basket)) {
+      lab.openInsights(basket.id, { allowPending: true });
+    }
+  }
 
   return (
     <div className="portfolio-desk">
-      <form
-        className="cas-import"
-        onSubmit={(event) => {
-          event.preventDefault();
-          importMutation.mutate();
-        }}
-      >
-        <label className="cas-import-file">
-          <span className="cas-import-label">CAS PDF</span>
-          <input
-            type="file"
-            accept="application/pdf,.pdf"
-            onChange={(event) => {
-              const picked = event.target.files?.[0] ?? null;
-              if (picked && casFileRejected(picked)) {
-                setFormError(CAS_FILE_REJECT_MESSAGE);
-                setFile(null);
-              } else {
-                setFormError(null);
-                setFile(picked);
-              }
-            }}
-          />
-        </label>
-        <Input
-          className="cas-password"
-          type="password"
-          placeholder="Statement password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          aria-label="CAS statement password"
-        />
-        <Button type="submit" disabled={!file || importMutation.isPending}>
-          {importMutation.isPending ? "Importing…" : "Import"}
-        </Button>
-        {importNote && <span className="cas-note cas-ok">{importNote}</span>}
-        {formError && <span className="cas-note cas-error">{formError}</span>}
-      </form>
-      <p className="cas-hint">
-        CAMS or KFintech consolidated account statement, or an NSDL/CDSL
-        depository statement. Depository files import holdings only: units and
-        value, with gain and XIRR hidden. Re-importing the same file adds
-        nothing twice.
-      </p>
-      <div className="portfolio-actions">
-        <Button type="button" onClick={() => setManualOpen(true)}>
-          Add transaction
-        </Button>
-        <ManualTransactionDialog open={manualOpen} onOpenChange={setManualOpen} />
-        {deleteError && <span className="cas-note cas-error">{deleteError}</span>}
-      </div>
+      <header className="portfolio-header">
+        <div className="portfolio-header-copy">
+          <h2>Portfolio</h2>
+          <p>
+            {hasHoldings
+              ? `Valued as of ${derived.asOf} · ${derived.rows.length} holding${derived.rows.length === 1 ? "" : "s"}`
+              : "Track real mutual fund holdings locally from CAS PDFs or manual entries."}
+          </p>
+        </div>
+        <div className="portfolio-header-actions">
+          {lab && mfHoldingsForBasket.length > 0 && (
+            <Button type="button" variant="outline" size="sm" onClick={handleAnalyzeInInsights}>
+              Health check
+              <ArrowUpRight className="size-3.5" aria-hidden="true" />
+            </Button>
+          )}
+          <Button type="button" variant="outline" size="sm" onClick={() => setManualOpen(true)}>
+            <Plus className="size-3.5" aria-hidden="true" />
+            Add transaction
+          </Button>
+          <Button type="button" size="sm" onClick={() => setImportOpen(true)}>
+            <Upload className="size-3.5" aria-hidden="true" />
+            Import CAS
+          </Button>
+        </div>
+      </header>
+
+      <CasImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onImported={(summary) => setImportNote(summary)}
+      />
+      <ManualTransactionDialog open={manualOpen} onOpenChange={setManualOpen} />
+
+      {importNote && (
+        <div className="portfolio-banner" role="status">
+          <span>{importNote}</span>
+          <Button type="button" variant="ghost" size="xs" onClick={() => setImportNote(null)}>
+            Dismiss
+          </Button>
+        </div>
+      )}
+      {deleteError && (
+        <div className="portfolio-banner is-error" role="alert">
+          <span>{deleteError}</span>
+          <Button type="button" variant="ghost" size="xs" onClick={() => setDeleteError(null)}>
+            Dismiss
+          </Button>
+        </div>
+      )}
 
       {!hasHoldings ? (
-        <p className="insight-empty">
-          No holdings yet. Import a CAS PDF above or add a transaction by
-          hand to see returns, XIRR and the growth graph.
-        </p>
+        <section className="portfolio-empty-card" aria-label="Get started">
+          <h3>Import your real holdings to see XIRR and regular-plan leaks</h3>
+          <p>
+            Upload a CAMS, KFintech, NSDL, or CDSL consolidated account
+            statement, or log a trade by hand. Everything stays in your local
+            SQLite database.
+          </p>
+          <div className="portfolio-empty-actions">
+            <Button type="button" onClick={() => setImportOpen(true)}>
+              <Upload className="size-4" aria-hidden="true" />
+              Import CAS PDF
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setManualOpen(true)}>
+              <Plus className="size-4" aria-hidden="true" />
+              Add transaction
+            </Button>
+          </div>
+        </section>
       ) : (
         <>
           <div className="desk-kpis">
@@ -439,6 +506,26 @@ export function PortfolioWorkspace() {
             </div>
           </div>
 
+          {derived.navLoading && (
+            <p className="insight-empty" role="status">
+              Loading NAV history…
+            </p>
+          )}
+          {showChart && (
+            <section className="portfolio-chart-block" aria-label="Portfolio growth">
+              <div className="portfolio-chart-head">
+                <h3>Portfolio value</h3>
+                <span>Hover to inspect daily value</span>
+              </div>
+              <GrowthPathChart
+                data={chartData}
+                startAmount={derived.totals.invested}
+                ariaLabel="Portfolio value over time"
+                series={[{ key: "value", label: "Portfolio", color: "var(--ink)", lead: true }]}
+              />
+            </section>
+          )}
+
           <CommissionCheck
             summary={
               (commissionQuery.data || model.heldInstrumentIds.length === 0) &&
@@ -450,22 +537,10 @@ export function PortfolioWorkspace() {
             error={commissionQuery.isError}
           />
 
-          {derived.navLoading && (
-            <p className="insight-empty" role="status">
-              Loading NAV history…
-            </p>
-          )}
-          {showChart && (
-            <GrowthPathChart
-              data={chartData}
-              startAmount={derived.totals.invested}
-              series={[{ key: "value", label: "Portfolio", color: "var(--ink)", lead: true }]}
-            />
-          )}
           {fallbackCount > 0 && (
             <p className="cas-hint">
               {fallbackCount} holding{fallbackCount === 1 ? "" : "s"} without NAV
-              history valued at the statement's latest figure.
+              history valued at the statement&apos;s latest figure.
             </p>
           )}
           {!derived.complete && (
@@ -487,37 +562,85 @@ export function PortfolioWorkspace() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {derived.rows.map((row) => (
-                  <TableRow key={row.position.instrumentId}>
-                    <TableCell>
-                      {row.instrument?.name ?? row.position.instrumentId}
-                      <span className="holding-sub">
-                        {row.accounts.join(" · ") || row.position.instrumentId}
-                        {!row.instrument?.schemeCode && " · no NAV history"}
-                        {!row.covered && " · predates statement"}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {row.covered ? formatCompactInr(row.position.invested) : "—"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatCompactInr(row.value)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {row.gain === null ? (
-                        "—"
-                      ) : (
-                        <>
-                          <span className={row.gain < 0 ? "is-down" : "is-up"}>
-                            {formatSignedInr(row.gain)}
-                          </span>{" "}
-                          <span className="insight-weight">{formatPct(row.gainPct)}</span>
-                        </>
+                {derived.rows.map((row) => {
+                  const id = row.position.instrumentId;
+                  const isExpanded = expandedId === id;
+                  return (
+                    <Fragment key={id}>
+                      <TableRow>
+                        <TableCell>
+                          <button
+                            type="button"
+                            className="holding-toggle"
+                            aria-expanded={isExpanded}
+                            onClick={() => setExpandedId((prev) => (prev === id ? null : id))}
+                          >
+                            <ChevronRight aria-hidden="true" />
+                            <span>
+                              {row.instrument?.name ?? id}
+                              <span className="holding-sub">
+                                {row.accounts.join(" · ") || id}
+                                {!row.instrument?.schemeCode && " · no NAV history"}
+                                {!row.covered && " · predates statement"}
+                              </span>
+                            </span>
+                          </button>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {row.covered ? formatCompactInr(row.position.invested) : "—"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {formatCompactInr(row.value)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {row.gain === null ? (
+                            "—"
+                          ) : (
+                            <>
+                              <span className={row.gain < 0 ? "is-down" : "is-up"}>
+                                {formatSignedInr(row.gain)}
+                              </span>{" "}
+                              <span className="insight-weight">{formatPct(row.gainPct)}</span>
+                            </>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">{formatPct(row.xirr)}</TableCell>
+                      </TableRow>
+                      {isExpanded && (
+                        <TableRow>
+                          <TableCell colSpan={5} className="holding-detail-cell">
+                            <div className="holding-detail">
+                              <div className="holding-detail-meta">
+                                <span>Units: {row.heldUnits.toFixed(3)}</span>
+                                {row.latestNav !== null && (
+                                  <span>Latest NAV: ₹{row.latestNav.toFixed(4)}</span>
+                                )}
+                                <span>Valued as of {row.valDate}</span>
+                                {row.instrument?.isin && <span>ISIN {row.instrument.isin}</span>}
+                              </div>
+                              {row.transactions.length > 0 ? (
+                                <ul className="holding-tx-list">
+                                  {row.transactions.slice(0, 12).map((tx) => (
+                                    <li key={tx.id}>
+                                      <span>{tx.date}</span>
+                                      <span>{formatKindLabel(tx.kind)}</span>
+                                      <span>{tx.units.toFixed(3)} units</span>
+                                      <span>{formatInr(tx.amount)}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="cas-hint">
+                                  Closing balance from depository statement (no transaction ledger).
+                                </p>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
                       )}
-                    </TableCell>
-                    <TableCell className="text-right">{formatPct(row.xirr)}</TableCell>
-                  </TableRow>
-                ))}
+                    </Fragment>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
@@ -526,30 +649,52 @@ export function PortfolioWorkspace() {
             <div className="manual-entries">
               <h3 className="manual-entries-title">Added by hand</h3>
               <ul className="manual-entries-list">
-                {manualTransactions.map((tx) => (
-                  <li key={tx.id} className="manual-entry">
-                    <span className="manual-entry-main">
-                      {model.instrumentsById.get(tx.instrumentId)?.name ??
-                        tx.instrumentId}
-                      <span className="holding-sub">
-                        {tx.date} · {tx.kind === "sell" ? "Sell" : "Buy"} ·{" "}
-                        {tx.units} units · {formatInr(tx.amount)}
+                {manualTransactions.map((tx) => {
+                  const confirming = confirmDeleteId === tx.id;
+                  return (
+                    <li key={tx.id} className="manual-entry">
+                      <span className="manual-entry-main">
+                        {model.instrumentsById.get(tx.instrumentId)?.name ??
+                          tx.instrumentId}
+                        <span className="holding-sub">
+                          {tx.date} · {tx.kind === "sell" ? "Sell" : "Buy"} ·{" "}
+                          {tx.units} units · {formatInr(tx.amount)}
+                        </span>
                       </span>
-                    </span>
-                    <button
-                      type="button"
-                      className="manual-remove"
-                      disabled={deleteMutation.isPending}
-                      onClick={() => {
-                        if (window.confirm("Remove this transaction?")) {
-                          deleteMutation.mutate(tx.id);
-                        }
-                      }}
-                    >
-                      Remove
-                    </button>
-                  </li>
-                ))}
+                      {confirming ? (
+                        <span className="inline-confirm">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="xs"
+                            disabled={deleteMutation.isPending}
+                            onClick={() => setConfirmDeleteId(null)}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            type="button"
+                            size="xs"
+                            className="inline-confirm-danger"
+                            disabled={deleteMutation.isPending}
+                            onClick={() => deleteMutation.mutate(tx.id)}
+                          >
+                            {deleteMutation.isPending ? "Removing…" : "Confirm remove"}
+                          </Button>
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          className="manual-remove"
+                          disabled={deleteMutation.isPending}
+                          onClick={() => setConfirmDeleteId(tx.id)}
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           )}

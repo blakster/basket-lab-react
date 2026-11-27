@@ -103,7 +103,7 @@ export function GrowthChart({ results, baskets }: LabChartsProps) {
       series={keys.map(({ key, basket, result }) => ({
         key,
         label: basket?.name ?? key,
-        color: basket?.color ?? "#6B6B6B",
+        color: basket?.color ?? "var(--steel)",
         dashed: basket?.id === "__nifty-bees",
         lead: result.basketId === leadId,
       }))}
@@ -143,7 +143,7 @@ export function DrawdownChart({ results, baskets }: Omit<LabChartsProps, "amount
       series={keys.map(({ key, basket }) => ({
         key,
         label: basket?.name ?? key,
-        color: basket?.color ?? "#121212",
+        color: basket?.color ?? "var(--ink)",
       }))}
     />
   );

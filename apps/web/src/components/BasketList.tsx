@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import defaults from "../data/defaults.json";
@@ -28,6 +29,19 @@ export function BasketList() {
     openInsights,
   } = useLab();
   const { theme } = useTheme();
+  const [confirmReset, setConfirmReset] = useState(false);
+  const cancelResetRef = useRef<HTMLElement>(null);
+  const resetTriggerRef = useRef<HTMLElement>(null);
+  const wasConfirmingRef = useRef(false);
+
+  useEffect(() => {
+    if (confirmReset) {
+      cancelResetRef.current?.focus();
+    } else if (wasConfirmingRef.current) {
+      resetTriggerRef.current?.focus();
+    }
+    wasConfirmingRef.current = confirmReset;
+  }, [confirmReset]);
 
   function toggleActive(id: string) {
     setBaskets((prev) =>
@@ -69,6 +83,7 @@ export function BasketList() {
     };
     setBaskets(next.baskets);
     setSettings(next.settings);
+    setConfirmReset(false);
     closeEditor();
   }
 
@@ -84,15 +99,38 @@ export function BasketList() {
           </span>
         </div>
         <div className="basket-list-actions">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="basket-reset text-[0.8125rem]"
-            onClick={resetDefaults}
-          >
-            Reset defaults
-          </Button>
+          {confirmReset ? (
+            <span className="inline-confirm" role="group" aria-label="Confirm reset defaults">
+              <Button
+                ref={cancelResetRef}
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setConfirmReset(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="inline-confirm-danger"
+                onClick={resetDefaults}
+              >
+                Confirm reset
+              </Button>
+            </span>
+          ) : (
+            <Button
+              ref={resetTriggerRef}
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="basket-reset text-[0.8125rem]"
+              onClick={() => setConfirmReset(true)}
+            >
+              Reset defaults
+            </Button>
+          )}
           <Button
             type="button"
             variant="outline"

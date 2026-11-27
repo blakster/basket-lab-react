@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { backtestBasket, backtestPlan, cagr, skipYearWindow } from "./performance";
-import { calculateXirr } from "./xirr";
+import { calculateXirr, calculateXirrSafe } from "./xirr";
 import { NAV_A, NAV_B, NAV_SIP } from "../../test/navFixture";
 import type {
   Basket,
@@ -323,5 +323,86 @@ describe("calculateXirr", () => {
       { date: new Date("2024-01-01"), amount: 1100 },
     ]);
     expect(rate).toBeCloseTo(10, 1);
+  });
+
+  it("returns null from calculateXirrSafe when cashflows never change sign", () => {
+    expect(
+      calculateXirrSafe([
+        { date: new Date("2023-01-01"), amount: -1000 },
+        { date: new Date("2024-01-01"), amount: -500 },
+      ]),
+    ).toBeNull();
+  });
+
+  it("converges accurately on 1-day ₹0.01 gain and tiny cashflow magnitudes", () => {
+    const oneDay = calculateXirrSafe([
+      { date: new Date("2024-01-01"), amount: -1000 },
+      { date: new Date("2024-01-02"), amount: 1000.01 },
+    ]);
+    expect(oneDay).not.toBeNull();
+    expect(oneDay!).toBeGreaterThan(0.35);
+    expect(oneDay!).toBeLessThan(0.38);
+
+    const tiny = calculateXirrSafe([
+      { date: new Date("2023-01-01"), amount: -0.0001 },
+      { date: new Date("2024-01-01"), amount: 0.0002 },
+    ]);
+    expect(tiny).not.toBeNull();
+    expect(tiny!).toBeCloseTo(100, 0);
+  });
+
+  it("clamps month-end SIP schedules instead of skipping February", () => {
+    const sipBasket: Basket = {
+      id: "m-end",
+      name: "Month End",
+      color: "var(--chart-1)",
+      active: true,
+      funds: [{ schemeCode: "M", schemeName: "M", isin: null, weight: 100, locked: false }],
+    };
+    const r = backtestBasket(
+      sipBasket,
+      {
+        M: [
+          { date: "2023-01-31", nav: 10 },
+          { date: "2023-02-28", nav: 10 },
+          { date: "2023-03-31", nav: 10 },
+        ],
+      },
+      {
+        mode: "sip",
+        amount: 1000,
+        period: "Custom",
+        customStart: "2023-01-31",
+        customEnd: "2023-03-31",
+      },
+    );
+    expect(r.stats.initial).toBe(3000);
+  });
+
+  it("computes lumpsum CAGR to the last available NAV date, not a later holiday end", () => {
+    const single: Basket = {
+      id: "hol",
+      name: "Holiday",
+      color: "var(--chart-1)",
+      active: true,
+      funds: [{ schemeCode: "H", schemeName: "H", isin: null, weight: 100, locked: false }],
+    };
+    const r = backtestBasket(
+      single,
+      {
+        H: [
+          { date: "2023-01-01", nav: 100 },
+          { date: "2024-01-01", nav: 120 },
+        ],
+      },
+      {
+        mode: "lumpsum",
+        amount: 1000,
+        period: "Custom",
+        customStart: "2023-01-01",
+        customEnd: "2024-06-30",
+      },
+    );
+    expect(r.stats.cagr).toBeCloseTo(20, 4);
   });
 });

@@ -1,4 +1,5 @@
 import tempfile
+import threading
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -169,6 +170,26 @@ async def post_insights(request: Request):
     return compute_insights(request.app.state.db, body, filings_by_code=statuses)
 
 
+# Serialize ingest writers sharing app.state.db so concurrent threadpool
+# requests never interleave delete/insert/commit sequences on the same connection.
+_INGEST_LOCK = threading.Lock()
+
+
+def _locked_run_ingest(db, *, month, files, notes, master):
+    with _INGEST_LOCK:
+        return run_ingest(db, month=month, files=files, notes=notes, master=master)
+
+
+def _locked_ensure_filings(db, codes, *, incoming):
+    with _INGEST_LOCK:
+        return ensure_filings(db, codes, incoming=incoming)
+
+
+def _locked_upload_filing(db, scheme, path, *, month):
+    with _INGEST_LOCK:
+        return upload_filing(db, scheme, path, month=month)
+
+
 @app.post("/api/ingest")
 async def post_ingest(request: Request):
     try:
@@ -192,7 +213,8 @@ async def post_ingest(request: Request):
             master = SchemeMaster.load_cached(DB_PATH.parent)
         except Exception:
             master = None
-    return run_ingest(
+    return await run_in_threadpool(
+        _locked_run_ingest,
         request.app.state.db,
         month=month,
         files=files,
@@ -216,7 +238,8 @@ async def post_ingest_ensure(request: Request):
             content={"error": "bad_request", "message": "schemeCodes required"},
         )
     codes_s = [str(c) for c in codes]
-    return ensure_filings(
+    return await run_in_threadpool(
+        _locked_ensure_filings,
         request.app.state.db,
         codes_s,
         incoming=DB_PATH.parent / "incoming",
@@ -243,7 +266,13 @@ async def post_ingest_upload(request: Request):
     try:
         tmp.write(data)
         tmp.close()
-        status = upload_filing(request.app.state.db, scheme, Path(tmp.name), month=month)
+        status = await run_in_threadpool(
+            _locked_upload_filing,
+            request.app.state.db,
+            scheme,
+            Path(tmp.name),
+            month=month,
+        )
     except FileNotFoundError as exc:
         return JSONResponse(status_code=422, content={"error": "parse-failed", "message": str(exc)})
     except ValueError as exc:

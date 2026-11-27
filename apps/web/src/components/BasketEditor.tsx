@@ -64,6 +64,7 @@ export function BasketEditor() {
     setDraft((prev) => {
       if (!prev) return prev;
       if (prev.funds.some((f) => f.schemeCode === hit.schemeCode)) return prev;
+      const initialWeight = prev.funds.length === 0 ? 100 : 0;
       return {
         ...prev,
         funds: [
@@ -72,10 +73,33 @@ export function BasketEditor() {
             schemeCode: hit.schemeCode,
             schemeName: hit.schemeName,
             isin: hit.isin,
-            weight: 0,
+            weight: initialWeight,
             locked: false,
           },
         ],
+      };
+    });
+  }
+
+  function equalSplit() {
+    setDraft((prev) => {
+      if (!prev) return prev;
+      const unlocked = prev.funds.filter((f) => !f.locked);
+      if (!unlocked.length) return prev;
+      const lockedTotal = prev.funds
+        .filter((f) => f.locked)
+        .reduce((s, f) => s + f.weight, 0);
+      const remainingCents = Math.max(0, Math.round((100 - lockedTotal) * 100));
+      const base = Math.floor(remainingCents / unlocked.length);
+      let extra = remainingCents - base * unlocked.length;
+      return {
+        ...prev,
+        funds: prev.funds.map((f) => {
+          if (f.locked) return f;
+          const cents = base + (extra > 0 ? 1 : 0);
+          if (extra > 0) extra -= 1;
+          return { ...f, weight: cents / 100 };
+        }),
       };
     });
   }
@@ -186,11 +210,24 @@ export function BasketEditor() {
                 selectedCodes={draft.funds.map((fund) => fund.schemeCode)}
               />
               <div className="editor-allocation-heading">
-                <h3>Allocation</h3>
-                <span>
-                  {draft.funds.length}{" "}
-                  {draft.funds.length === 1 ? "fund" : "funds"}
-                </span>
+                <div className="editor-allocation-title">
+                  <h3>Allocation</h3>
+                  <span>
+                    {draft.funds.length}{" "}
+                    {draft.funds.length === 1 ? "fund" : "funds"}
+                  </span>
+                </div>
+                {draft.funds.length >= 2 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="xs"
+                    disabled={draft.funds.every((f) => f.locked)}
+                    onClick={equalSplit}
+                  >
+                    Equal split
+                  </Button>
+                )}
               </div>
               {draft.funds.length === 0 ? (
                 <div className="editor-empty">

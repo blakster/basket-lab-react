@@ -1,4 +1,5 @@
 import type { NavPoint, TimePoint } from "../types";
+import { addMonthsClamped } from "./series";
 
 export type CashflowSpec = {
   mode: "lumpsum" | "sip";
@@ -65,8 +66,7 @@ export function dailyTwrs(
           add = amount * Math.pow(1 + stepUp, Math.floor(sipCount / 12));
         }
         sipCount += 1;
-        nextSip = parseDay(cashflow.startIso);
-        nextSip.setMonth(nextSip.getMonth() + sipCount);
+        nextSip = addMonthsClamped(parseDay(cashflow.startIso), sipCount);
       }
     }
     if (i === 0) continue;

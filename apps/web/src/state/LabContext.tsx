@@ -41,7 +41,7 @@ type LabContextValue = {
   setWorkspace: (workspace: Workspace) => void;
   insightsOpen: boolean;
   insightsBasketId: string | null;
-  openInsights: (basketId?: string) => void;
+  openInsights: (basketId?: string, options?: { allowPending?: boolean }) => void;
   closeInsights: () => void;
 };
 
@@ -135,4 +135,8 @@ export function useLab(): LabContextValue {
   const ctx = useContext(LabContext);
   if (!ctx) throw new Error("useLab must be used within LabProvider");
   return ctx;
+}
+
+export function useOptionalLab(): LabContextValue | null {
+  return useContext(LabContext);
 }
