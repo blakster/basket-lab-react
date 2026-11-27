@@ -40,9 +40,15 @@ function coversEnd(points: NavPoint[], to: string): boolean {
   return gap <= RANGE_SLACK_DAYS;
 }
 
-function coversWindow(points: NavPoint[], since: string, to: string): boolean {
+/** Stale-cache reuse: overlaps [since, to] and reaches `to` within slack. */
+function cacheOverlapsRange(
+  points: NavPoint[],
+  since: string,
+  to: string,
+): boolean {
   if (!points.length) return false;
-  if (!points.some((p) => p.date <= since)) return false;
+  if (firstIso(points) > to) return false;
+  if (lastIso(points) < since) return false;
   return coversEnd(points, to);
 }
 
@@ -52,7 +58,9 @@ function cacheUsable(
   to: string,
   now: number = Date.now(),
 ): boolean {
-  if (!coversWindow(entry.points, since, to)) return false;
+  if (!entry.points.length) return false;
+  if (!entry.points.some((p) => p.date <= since)) return false;
+  if (!coversEnd(entry.points, to)) return false;
   const min = firstIso(entry.points);
   const max = lastIso(entry.points);
   // When the live endpoint `to` is missing from cache, only reuse yesterday's
@@ -87,6 +95,7 @@ export async function loadCachedPortfolioNav(
   codes: string[],
   since: string,
   to: string,
+  sinceByCode?: Record<string, string>,
 ): Promise<Record<string, NavPoint[]>> {
   const unique = [...new Set(codes.filter(Boolean))];
   if (!unique.length) return {};
@@ -97,10 +106,11 @@ export async function loadCachedPortfolioNav(
 
   await Promise.all(
     unique.map(async (code) => {
+      const codeSince = sinceByCode?.[code] ?? since;
       try {
         const entry = await readNavCacheEntry(code);
         entries.set(code, entry);
-        if (entry && cacheUsable(entry, since, to)) {
+        if (entry && cacheUsable(entry, codeSince, to)) {
           navs[code] = entry.points;
           return;
         }
@@ -123,6 +133,7 @@ export async function loadCachedPortfolioNav(
       toFetch.map(async (code) => {
         const points = fetched[code] ?? [];
         const prev = entries.get(code);
+        const codeSince = sinceByCode?.[code] ?? since;
         if (points.length) {
           const merged = mergeNav(prev?.points ?? [], points);
           try {
@@ -131,7 +142,7 @@ export async function loadCachedPortfolioNav(
             // Ignore IndexedDB quota/private-mode errors.
           }
           navs[code] = merged;
-        } else if (prev && coversWindow(prev.points, since, to)) {
+        } else if (prev && cacheOverlapsRange(prev.points, codeSince, to)) {
           navs[code] = prev.points;
         } else {
           navs[code] = [];
@@ -145,25 +156,38 @@ export async function loadCachedPortfolioNav(
 
 /**
  * Look up a single fund's NAV on or shortly before `isoDate` for manual entry
- * autofill. Reads from cache only when a quote exists within the 7-day lookback
- * window, and fetches without writing disjoint narrow slices into the shared cache.
+ * autofill. Returns an exact cached date match immediately (or a prior quote
+ * only if no newer NAV publication is due yet). Otherwise fetches the 7-day
+ * lookback window without writing disjoint slices into the shared cache,
+ * falling back to the cached prior quote only if the provider returns nothing.
  */
 export async function lookupNavOnOrBefore(
   code: string,
   isoDate: string,
+  now: number = Date.now(),
 ): Promise<NavPoint | null> {
   if (!code || !isoDate) return null;
   const lookbackStart = shiftIsoDays(isoDate, -PORTFOLIO_NAV_LOOKBACK_DAYS);
+  let cachedHit: NavPoint | null = null;
   try {
     const cached = await readNavCacheEntry(code);
     const hit = navPointOnOrBefore(cached?.points, isoDate);
-    if (hit && hit.date >= lookbackStart) return hit;
+    if (hit && hit.date >= lookbackStart) {
+      if (hit.date === isoDate) return hit;
+      if (now < next2100IstAfterDate(hit.date)) return hit;
+      cachedHit = hit;
+    }
   } catch {
     // Fall through to network fetch.
   }
-  const fetched = await fetchNav([code], lookbackStart, isoDate);
-  const hit = navPointOnOrBefore(fetched[code], isoDate);
-  return hit && hit.date >= lookbackStart ? hit : null;
+  try {
+    const fetched = await fetchNav([code], lookbackStart, isoDate);
+    const hit = navPointOnOrBefore(fetched[code], isoDate);
+    if (hit && hit.date >= lookbackStart) return hit;
+  } catch {
+    // Fall back to cached quote if network fails.
+  }
+  return cachedHit;
 }
 
 export function navPointOnOrBefore(

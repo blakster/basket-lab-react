@@ -188,10 +188,15 @@ export function PortfolioWorkspace() {
     }
 
     let since: string | null = null;
-    for (const id of codeByInstrument.keys()) {
-      if (!firstTxDateByInstrument.has(id)) continue;
-      const d = firstTxDateByInstrument.get(id)!;
-      if (!since || d < since) since = d;
+    const sinceByCode: Record<string, string> = {};
+    for (const [id, code] of codeByInstrument.entries()) {
+      const d =
+        firstTxDateByInstrument.get(id) ??
+        snapshotByInstrument.get(id)?.date ??
+        null;
+      if (!d) continue;
+      if (!sinceByCode[code] || d < sinceByCode[code]) sinceByCode[code] = d;
+      if (firstTxDateByInstrument.has(id) && (!since || d < since)) since = d;
     }
     if (!since && earliestSnapshot) since = earliestSnapshot;
     const navCodes = [...new Set(codeByInstrument.values())].sort();
@@ -216,6 +221,7 @@ export function PortfolioWorkspace() {
       snapshotByInstrument,
       navCodes,
       since,
+      sinceByCode,
       heldInstrumentIds,
     };
   }, [data]);
@@ -223,7 +229,13 @@ export function PortfolioWorkspace() {
   const today = useMemo(() => localTodayIso(), []);
   const navQuery = useQuery({
     queryKey: ["portfolio-nav", model?.navCodes.join(",") ?? "", model?.since ?? "", today],
-    queryFn: () => loadCachedPortfolioNav(model!.navCodes, model!.since!, today),
+    queryFn: () =>
+      loadCachedPortfolioNav(
+        model!.navCodes,
+        model!.since!,
+        today,
+        model!.sinceByCode,
+      ),
     enabled: !!model && model.navCodes.length > 0 && !!model.since,
     staleTime: 5 * 60 * 1000,
   });
