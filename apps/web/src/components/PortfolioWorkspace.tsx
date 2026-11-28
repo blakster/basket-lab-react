@@ -511,7 +511,9 @@ export function PortfolioWorkspace() {
               </span>
               <span className="kpi-sub">
                 {derived.totals.invested === null
-                  ? "Cost history incomplete"
+                  ? derived.totals.income > 0
+                    ? `Cost history incomplete · plus ${formatInr(derived.totals.income)} dividends`
+                    : "Cost history incomplete"
                   : derived.totals.income > 0
                     ? `Plus ${formatInr(derived.totals.income)} dividends`
                     : "Money you put in"}

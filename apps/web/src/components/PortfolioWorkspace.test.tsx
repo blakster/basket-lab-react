@@ -139,7 +139,17 @@ describe("PortfolioWorkspace commission check", () => {
           symbol: "EXAMPLE",
         },
       ],
-      transactions: [],
+      transactions: [
+        {
+          id: "tx-dividend",
+          accountId: "cdsl:demat:1200000012345678",
+          instrumentId: "amfi:123456",
+          date: "2026-10-15",
+          kind: "dividend",
+          units: 0,
+          amount: 25,
+        },
+      ],
       snapshots: [
         {
           date: "2026-10-31",
@@ -163,6 +173,7 @@ describe("PortfolioWorkspace commission check", () => {
     expect(await screen.findByText("Example Corp Equity Shares")).toBeInTheDocument();
     expect(screen.getByText(/Stock · EXAMPLE · Example demat/)).toBeInTheDocument();
     expect(screen.queryByText(/Stock · EXAMPLE · .*no NAV history/)).not.toBeInTheDocument();
+    expect(screen.getByText("Cost history incomplete · plus ₹25 dividends")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Example Corp Equity Shares/ }));
     expect(await screen.findByText("Shares: 10.000")).toBeInTheDocument();
