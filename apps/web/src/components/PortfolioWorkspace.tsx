@@ -479,7 +479,7 @@ export function PortfolioWorkspace() {
 
       {!hasHoldings ? (
         <section className="portfolio-empty-card" aria-label="Get started">
-          <h3>Import your real holdings to see XIRR and regular-plan leaks</h3>
+          <h3>Import your real holdings in one local portfolio</h3>
           <p>
             Upload a CAMS, KFintech, NSDL, or CDSL consolidated account
             statement with mutual funds or stocks, or log a trade by hand.

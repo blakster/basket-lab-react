@@ -159,8 +159,9 @@ def map_demat_statement(data):
                     skipped += 1
                     continue
                 name = _demat_scheme_name(holding.get("name")) or isin or instrument
+                existing = instruments.get(instrument)
                 symbol = (
-                    str(holding.get("symbol") or "").strip().upper() or None
+                    str(holding.get("symbol") or "").strip().upper() or (existing[4] if existing else None)
                     if kind == "stock"
                     else None
                 )

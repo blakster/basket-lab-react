@@ -64,6 +64,18 @@ def test_demat_mapping():
     assert map_demat_statement(demat_statement()) == rows
 
 
+def test_demat_duplicate_equity_keeps_symbol():
+    data = copy.deepcopy(demat_statement())
+    second = copy.deepcopy(data["accounts"][0])
+    second["client_id"] = "87654321"
+    second["equities"][0].pop("symbol")
+    data["accounts"].insert(1, second)
+    rows = map_demat_statement(data)
+    assert rows["instruments"][0] == (
+        "isin:INE000A01010", "stock", "EXAMPLE CORP EQUITY SHARES", "INE000A01010", "EXAMPLE"
+    )
+
+
 def test_demat_mapping_nsdl_and_fallbacks():
     data = demat_statement()
     data["file_type"] = "NSDL"
