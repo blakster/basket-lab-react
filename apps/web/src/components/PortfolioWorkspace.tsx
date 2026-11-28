@@ -314,6 +314,32 @@ export function PortfolioWorkspace() {
         const covered = model.holdings.get(position.instrumentId)?.covered ?? true;
         const gain = covered ? value + position.proceeds + position.income - position.invested : null;
         const accountIds = model.accountsByInstrument.get(position.instrumentId) ?? new Set<string>();
+        const accounts = [...accountIds]
+          .map((id) => model.accountsById.get(id))
+          .filter(Boolean)
+          .map((a) => a!.label);
+        const kindLabel =
+          instrument?.kind === "stock" ? "Stock" : instrument?.kind === "mf" ? "Mutual fund" : null;
+        const stockSnapshots =
+          instrument?.kind === "stock"
+            ? data.snapshots.filter((snap) => snap.instrumentId === position.instrumentId)
+            : [];
+        const stockSnapshotDates = new Set(stockSnapshots.map((snap) => snap.date));
+        const stockSnapshotUnits = stockSnapshots.reduce((sum, snap) => sum + snap.units, 0);
+        const stockSnapshotValue = stockSnapshots.reduce((sum, snap) => sum + snap.value, 0);
+        const subtitle = [
+          kindLabel,
+          instrument?.kind === "stock" ? instrument.symbol : null,
+          accounts.join(" · ") || position.instrumentId,
+          instrument?.kind === "mf" && !instrument.schemeCode ? "no NAV history" : null,
+          !covered
+            ? instrument?.kind === "stock"
+              ? "cost history unavailable"
+              : "predates statement"
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
         return {
           position,
           heldUnits,
@@ -321,14 +347,15 @@ export function PortfolioWorkspace() {
           value,
           valDate: valueDateByInstrument.get(position.instrumentId) ?? asOfDate,
           latestNav: latestNavByInstrument.get(position.instrumentId) ?? null,
+          statementPrice:
+            instrument?.kind === "stock" && stockSnapshotDates.size === 1 && stockSnapshotUnits > 0
+              ? stockSnapshotValue / stockSnapshotUnits
+              : null,
           gain,
           gainPct: covered && gain !== null && position.invested > 0 ? (gain / position.invested) * 100 : null,
           covered,
           xirr: covered ? xirrPercent(data.transactions, value, valueDate(position.instrumentId), position.instrumentId) : null,
-          accounts: [...accountIds]
-            .map((id) => model.accountsById.get(id))
-            .filter(Boolean)
-            .map((a) => a!.label),
+          subtitle,
           transactions: model.txByInstrument.get(position.instrumentId) ?? [],
         };
       })
@@ -405,7 +432,7 @@ export function PortfolioWorkspace() {
           <p>
             {hasHoldings
               ? `Valued as of ${derived.asOf} · ${derived.rows.length} holding${derived.rows.length === 1 ? "" : "s"}`
-              : "Track real mutual fund holdings locally from CAS PDFs or manual entries."}
+              : "Track real mutual fund and stock holdings locally from CAS PDFs or manual entries."}
           </p>
         </div>
         <div className="portfolio-header-actions">
@@ -452,11 +479,11 @@ export function PortfolioWorkspace() {
 
       {!hasHoldings ? (
         <section className="portfolio-empty-card" aria-label="Get started">
-          <h3>Import your real holdings to see XIRR and regular-plan leaks</h3>
+          <h3>Import your real holdings in one local portfolio</h3>
           <p>
             Upload a CAMS, KFintech, NSDL, or CDSL consolidated account
-            statement, or log a trade by hand. Everything stays in your local
-            SQLite database.
+            statement with mutual funds or stocks, or log a trade by hand.
+            Everything stays in your local SQLite database.
           </p>
           <div className="portfolio-empty-actions">
             <Button type="button" onClick={() => setImportOpen(true)}>
@@ -479,11 +506,17 @@ export function PortfolioWorkspace() {
             </div>
             <div className="desk-kpi">
               <span className="kpi-label">Invested</span>
-              <span className="kpi-value">{formatInr(derived.totals.invested)}</span>
+              <span className="kpi-value">
+                {derived.totals.invested === null ? "—" : formatInr(derived.totals.invested)}
+              </span>
               <span className="kpi-sub">
-                {derived.totals.income > 0
-                  ? `Plus ${formatInr(derived.totals.income)} dividends`
-                  : "Money you put in"}
+                {derived.totals.invested === null
+                  ? derived.totals.income > 0
+                    ? `Cost history incomplete · plus ${formatInr(derived.totals.income)} dividends`
+                    : "Cost history incomplete"
+                  : derived.totals.income > 0
+                    ? `Plus ${formatInr(derived.totals.income)} dividends`
+                    : "Money you put in"}
               </span>
             </div>
             <div className="desk-kpi">
@@ -519,7 +552,7 @@ export function PortfolioWorkspace() {
               </div>
               <GrowthPathChart
                 data={chartData}
-                startAmount={derived.totals.invested}
+                startAmount={derived.totals.invested ?? 0}
                 ariaLabel="Portfolio value over time"
                 series={[{ key: "value", label: "Portfolio", color: "var(--ink)", lead: true }]}
               />
@@ -539,13 +572,13 @@ export function PortfolioWorkspace() {
 
           {fallbackCount > 0 && (
             <p className="cas-hint">
-              {fallbackCount} holding{fallbackCount === 1 ? "" : "s"} without NAV
-              history valued at the statement&apos;s latest figure.
+              {fallbackCount} holding{fallbackCount === 1 ? "" : "s"} valued at
+              the statement&apos;s latest figure.
             </p>
           )}
           {!derived.complete && (
             <p className="cas-hint">
-              Some holdings predate the imported statement, so all-time gain
+              Some holdings have incomplete cost history, so all-time gain
               and XIRR are hidden; current value is exact.
             </p>
           )}
@@ -554,7 +587,7 @@ export function PortfolioWorkspace() {
             <Table className="insight-table">
               <TableHeader>
                 <TableRow>
-                  <TableHead>Fund</TableHead>
+                  <TableHead>Holding</TableHead>
                   <TableHead className="text-right">Invested</TableHead>
                   <TableHead className="text-right">Current</TableHead>
                   <TableHead className="text-right">All-time gain</TableHead>
@@ -578,11 +611,7 @@ export function PortfolioWorkspace() {
                             <ChevronRight aria-hidden="true" />
                             <span>
                               {row.instrument?.name ?? id}
-                              <span className="holding-sub">
-                                {row.accounts.join(" · ") || id}
-                                {!row.instrument?.schemeCode && " · no NAV history"}
-                                {!row.covered && " · predates statement"}
-                              </span>
+                              <span className="holding-sub">{row.subtitle}</span>
                             </span>
                           </button>
                         </TableCell>
@@ -611,9 +640,14 @@ export function PortfolioWorkspace() {
                           <TableCell colSpan={5} className="holding-detail-cell">
                             <div className="holding-detail">
                               <div className="holding-detail-meta">
-                                <span>Units: {row.heldUnits.toFixed(3)}</span>
+                                <span>
+                                  {row.instrument?.kind === "stock" ? "Shares" : "Units"}: {row.heldUnits.toFixed(3)}
+                                </span>
                                 {row.latestNav !== null && (
                                   <span>Latest NAV: ₹{row.latestNav.toFixed(4)}</span>
+                                )}
+                                {row.statementPrice !== null && (
+                                  <span>Statement price: {formatInr(row.statementPrice)}</span>
                                 )}
                                 <span>Valued as of {row.valDate}</span>
                                 {row.instrument?.isin && <span>ISIN {row.instrument.isin}</span>}

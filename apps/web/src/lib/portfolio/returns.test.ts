@@ -415,7 +415,7 @@ describe("portfolioTotals with incomplete history", () => {
       false,
     );
     expect(totals.currentValue).toBe(900);
-    expect(totals.invested).toBe(500);
+    expect(totals.invested).toBeNull();
     expect(totals.gain).toBeNull();
     expect(totals.gainPct).toBeNull();
     expect(totals.xirr).toBeNull();

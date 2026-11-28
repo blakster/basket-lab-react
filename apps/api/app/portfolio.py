@@ -45,7 +45,7 @@ def portfolio(conn: sqlite3.Connection, master: SchemeMaster | None = None) -> d
     ]
     instruments = []
     for row in conn.execute(
-        "SELECT id, kind, name, isin FROM instruments ORDER BY name, id"
+        "SELECT id, kind, name, isin, symbol FROM instruments ORDER BY name, id"
     ):
         instruments.append(
             {
@@ -53,6 +53,7 @@ def portfolio(conn: sqlite3.Connection, master: SchemeMaster | None = None) -> d
                 "kind": row["kind"],
                 "name": row["name"],
                 "isin": row["isin"],
+                "symbol": row["symbol"],
                 "schemeCode": scheme_code_for_instrument(
                     row["id"], row["isin"], master, row["name"]
                 ),

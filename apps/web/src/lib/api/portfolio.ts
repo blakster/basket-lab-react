@@ -9,6 +9,7 @@ export type PortfolioInstrument = {
   kind: string;
   name: string;
   isin: string | null;
+  symbol: string | null;
   schemeCode: string | null;
 };
 

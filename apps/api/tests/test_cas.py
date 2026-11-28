@@ -47,9 +47,9 @@ def test_demat_mapping():
         ("cdsl:folio:12345678/90", "cdsl", "MF folio 12345678/90"),
     ]
     assert rows["instruments"] == [
-        ("isin:INE000A01010", "stock", "EXAMPLE CORP#EQUITY SHARES", "INE000A01010"),
-        ("amfi:123456", "mf", "Example Flexi Cap Fund Direct Plan Growth", "INF000000001"),
-        ("amfi:234567", "mf", "Example Small Cap Fund Direct Plan Growth", "INF000000002"),
+        ("isin:INE000A01010", "stock", "EXAMPLE CORP EQUITY SHARES", "INE000A01010", "EXAMPLE"),
+        ("amfi:123456", "mf", "Example Flexi Cap Fund Direct Plan Growth", "INF000000001", None),
+        ("amfi:234567", "mf", "Example Small Cap Fund Direct Plan Growth", "INF000000002", None),
     ]
     assert rows["snapshots"] == [
         ("2026-10-31", "cdsl:demat:1200000012345678", "isin:INE000A01010", 10.0, 1000.0),
@@ -64,6 +64,18 @@ def test_demat_mapping():
     assert map_demat_statement(demat_statement()) == rows
 
 
+def test_demat_duplicate_equity_keeps_symbol():
+    data = copy.deepcopy(demat_statement())
+    second = copy.deepcopy(data["accounts"][0])
+    second["client_id"] = "87654321"
+    second["equities"][0].pop("symbol")
+    data["accounts"].insert(1, second)
+    rows = map_demat_statement(data)
+    assert rows["instruments"][0] == (
+        "isin:INE000A01010", "stock", "EXAMPLE CORP EQUITY SHARES", "INE000A01010", "EXAMPLE"
+    )
+
+
 def test_demat_mapping_nsdl_and_fallbacks():
     data = demat_statement()
     data["file_type"] = "NSDL"
@@ -75,7 +87,7 @@ def test_demat_mapping_nsdl_and_fallbacks():
     assert ("nsdl:demat:1300000087654321", "nsdl", "Mutual Fund Folios") in rows["accounts"]
     # ISIN-only MF holding falls back to the ISIN instrument and, without a
     # folio, to its depository account.
-    assert ("isin:INF000000002", "mf", "Example Small Cap Fund Direct Plan Growth", "INF000000002") in rows["instruments"]
+    assert ("isin:INF000000002", "mf", "Example Small Cap Fund Direct Plan Growth", "INF000000002", None) in rows["instruments"]
     assert ("2026-10-31", "nsdl:demat:1300000087654321", "isin:INF000000002", 100.0, 5000.0) in rows["snapshots"]
     assert rows["skipped"] == 1
 
@@ -178,9 +190,25 @@ def test_demat_import_endpoint(client, db, monkeypatch):
     }
     assert db.execute("SELECT COUNT(*) FROM transactions").fetchone()[0] == 0
     assert db.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0] == 3
+    portfolio = client.get("/api/portfolio").json()
+    stock = next(i for i in portfolio["instruments"] if i["id"] == "isin:INE000A01010")
+    assert stock["kind"] == "stock"
+    assert stock["symbol"] == "EXAMPLE"
     again = upload().json()
     assert again["accountsInserted"] == again["instrumentsInserted"] == 0
     assert again["snapshotsWritten"] == 3
+
+
+def test_demat_reimport_backfills_stock_symbol(client, db, monkeypatch):
+    db.execute(
+        "INSERT INTO instruments (id, kind, name, isin) VALUES "
+        "('isin:INE000A01010', 'stock', 'EXAMPLE CORP EQUITY SHARES', 'INE000A01010')"
+    )
+    monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: demat_statement())
+    response = client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"demat pdf", "application/pdf")}, data={"password": "x"})
+    assert response.status_code == 200
+    stock = next(i for i in client.get("/api/portfolio").json()["instruments"] if i["id"] == "isin:INE000A01010")
+    assert stock["symbol"] == "EXAMPLE"
 
 
 def test_demat_reimport_drops_sold_holdings(client, db, monkeypatch):
