@@ -320,6 +320,13 @@ export function PortfolioWorkspace() {
           .map((a) => a!.label);
         const kindLabel =
           instrument?.kind === "stock" ? "Stock" : instrument?.kind === "mf" ? "Mutual fund" : null;
+        const stockSnapshots =
+          instrument?.kind === "stock"
+            ? data.snapshots.filter((snap) => snap.instrumentId === position.instrumentId)
+            : [];
+        const stockSnapshotDates = new Set(stockSnapshots.map((snap) => snap.date));
+        const stockSnapshotUnits = stockSnapshots.reduce((sum, snap) => sum + snap.units, 0);
+        const stockSnapshotValue = stockSnapshots.reduce((sum, snap) => sum + snap.value, 0);
         const subtitle = [
           kindLabel,
           instrument?.kind === "stock" ? instrument.symbol : null,
@@ -341,8 +348,8 @@ export function PortfolioWorkspace() {
           valDate: valueDateByInstrument.get(position.instrumentId) ?? asOfDate,
           latestNav: latestNavByInstrument.get(position.instrumentId) ?? null,
           statementPrice:
-            instrument?.kind === "stock" && heldUnits > 0 && value > 0
-              ? value / heldUnits
+            instrument?.kind === "stock" && stockSnapshotDates.size === 1 && stockSnapshotUnits > 0
+              ? stockSnapshotValue / stockSnapshotUnits
               : null,
           gain,
           gainPct: covered && gain !== null && position.invested > 0 ? (gain / position.invested) * 100 : null,

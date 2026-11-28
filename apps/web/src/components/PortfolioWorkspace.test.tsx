@@ -171,6 +171,36 @@ describe("PortfolioWorkspace commission check", () => {
     expect(screen.getByText("ISIN INE000A01010")).toBeInTheDocument();
   });
 
+  it("hides statement price when stock snapshots have mixed dates", async () => {
+    getPortfolioMock.mockResolvedValue({
+      accounts: [
+        { id: "cdsl:one", provider: "cdsl", label: "CDSL" },
+        { id: "nsdl:two", provider: "nsdl", label: "NSDL" },
+      ],
+      instruments: [
+        {
+          id: "isin:INE000A01010",
+          kind: "stock",
+          name: "Example Corp Equity Shares",
+          isin: "INE000A01010",
+          schemeCode: null,
+          symbol: "EXAMPLE",
+        },
+      ],
+      transactions: [],
+      snapshots: [
+        { date: "2026-10-31", accountId: "cdsl:one", instrumentId: "isin:INE000A01010", units: 10, value: 1000 },
+        { date: "2026-09-30", accountId: "nsdl:two", instrumentId: "isin:INE000A01010", units: 5, value: 450 },
+      ],
+    });
+
+    renderWorkspace();
+
+    fireEvent.click(await screen.findByRole("button", { name: /Example Corp Equity Shares/ }));
+    expect(await screen.findByText("Shares: 15.000")).toBeInTheDocument();
+    expect(screen.queryByText(/Statement price:/)).not.toBeInTheDocument();
+  });
+
   it("first Health check click opens the newly saved portfolio basket in Insights", async () => {
     getPortfolioMock.mockResolvedValue({
       accounts: [{ id: "cams:1", provider: "cams", label: "CAMS · 1" }],
