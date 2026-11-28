@@ -123,7 +123,8 @@ export function CasImportDialog({ open, onOpenChange, onImported }: Props) {
           <DialogTitle className="editor-title">Import CAS statement</DialogTitle>
           <DialogDescription className="editor-description">
             CAMS or KFintech consolidated statement, or an NSDL/CDSL depository
-            CAS. Parsed locally; re-importing the same file adds nothing twice.
+            CAS with mutual funds and stocks. Parsed locally; re-importing the
+            same file adds nothing twice.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -172,8 +173,8 @@ export function CasImportDialog({ open, onOpenChange, onImported }: Props) {
                   Drop CAS PDF here, or browse
                 </span>
                 <span className="cas-dropzone-sub">
-                  Depository statements import closing units and value; gain and
-                  XIRR stay hidden where cost history is absent.
+                  Depository statements import closing units, value, and stock
+                  symbols; gain and XIRR stay hidden where cost history is absent.
                 </span>
               </>
             )}

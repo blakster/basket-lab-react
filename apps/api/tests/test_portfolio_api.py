@@ -87,7 +87,7 @@ def test_manual_transaction_create(client):
     assert [a["id"] for a in body["accounts"]] == ["manual:entry"]
     assert body["instruments"] == [
         {"id": "amfi:123456", "kind": "mf", "name": "Example Equity Direct Growth",
-         "isin": None, "schemeCode": "123456"}
+         "isin": None, "symbol": None, "schemeCode": "123456"}
     ]
     assert body["transactions"] == [tx]
     # A second, different transaction on the same fund is allowed.

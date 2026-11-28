@@ -117,6 +117,60 @@ describe("PortfolioWorkspace commission check", () => {
     expect(screen.getByText("Expense ratios dated 2026-10-31.", { exact: false })).toBeInTheDocument();
   });
 
+  it("shows imported stocks as holdings with their statement values", async () => {
+    getPortfolioMock.mockResolvedValue({
+      accounts: [
+        { id: "cdsl:demat:1200000012345678", provider: "cdsl", label: "Example demat" },
+      ],
+      instruments: [
+        {
+          id: "amfi:123456",
+          kind: "mf",
+          name: "Example Flexi Cap Fund Direct Plan Growth",
+          isin: "INF000000001",
+          schemeCode: null,
+        },
+        {
+          id: "isin:INE000A01010",
+          kind: "stock",
+          name: "Example Corp Equity Shares",
+          isin: "INE000A01010",
+          schemeCode: null,
+          symbol: "EXAMPLE",
+        },
+      ],
+      transactions: [],
+      snapshots: [
+        {
+          date: "2026-10-31",
+          accountId: "cdsl:demat:1200000012345678",
+          instrumentId: "amfi:123456",
+          units: 50.5,
+          value: 1010,
+        },
+        {
+          date: "2026-10-31",
+          accountId: "cdsl:demat:1200000012345678",
+          instrumentId: "isin:INE000A01010",
+          units: 10,
+          value: 1000,
+        },
+      ],
+    });
+
+    renderWorkspace();
+
+    expect(await screen.findByText("Example Corp Equity Shares")).toBeInTheDocument();
+    expect(screen.getByText(/Stock · EXAMPLE · Example demat/)).toBeInTheDocument();
+    expect(screen.queryByText(/Stock · EXAMPLE · .*no NAV history/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Example Corp Equity Shares/ }));
+    expect(await screen.findByText("Shares: 10.000")).toBeInTheDocument();
+    expect(screen.getByText("Statement price: ₹100")).toBeInTheDocument();
+    expect(screen.getByText("Valued as of 2026-10-31")).toBeInTheDocument();
+    expect(screen.getByText("ISIN INE000A01010")).toBeInTheDocument();
+  });
+
   it("first Health check click opens the newly saved portfolio basket in Insights", async () => {
     getPortfolioMock.mockResolvedValue({
       accounts: [{ id: "cams:1", provider: "cams", label: "CAMS · 1" }],

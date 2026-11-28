@@ -58,7 +58,7 @@ def map_statement(data):
                 instrument = f'isin:{scheme["isin"]}'
             else:
                 raise ValueError("Scheme has neither AMFI code nor ISIN")
-            instruments[instrument] = (instrument, "mf", scheme["scheme"], scheme.get("isin"))
+            instruments[instrument] = (instrument, "mf", scheme["scheme"], scheme.get("isin"), None)
             for txn in scheme["transactions"]:
                 kind = KINDS.get(txn["type"])
                 if kind is None or txn.get("amount") is None:
@@ -157,7 +157,12 @@ def map_demat_statement(data):
                     skipped += 1
                     continue
                 name = _demat_scheme_name(holding.get("name")) or isin or instrument
-                instruments[instrument] = (instrument, kind, name, isin)
+                symbol = (
+                    str(holding.get("symbol") or "").strip().upper() or None
+                    if kind == "stock"
+                    else None
+                )
+                instruments[instrument] = (instrument, kind, name, isin, symbol)
                 snapshots[(day, account, instrument)] = (
                     day, account, instrument,
                     float(_number(holding.get(units_key) or 0)),
@@ -201,13 +206,15 @@ _IMPORT_LOCK = threading.Lock()
 def write_statement(conn, rows, import_id):
     counts = {}
     with conn:
-        for table, columns in (("accounts", "id,provider,label"), ("instruments", "id,kind,name,isin")):
+        for table, columns in (("accounts", "id,provider,label"), ("instruments", "id,kind,name,isin,symbol")):
             inserted = 0
             for row in rows[table]:
                 cursor = conn.execute(
                     f'INSERT OR IGNORE INTO {table} ({columns}) VALUES ({",".join("?" for _ in row)})', row
                 )
                 inserted += cursor.rowcount
+                if table == "instruments" and row[4]:
+                    conn.execute("UPDATE instruments SET symbol = ? WHERE id = ?", (row[4], row[0]))
             counts[f"{table}Inserted"] = inserted
         inserted = 0
         for row in rows["transactions"]:
