@@ -100,8 +100,10 @@ _AMC_PREFIX = re.compile(r"^[A-Z0-9]{3,6}\s*-\s+")
 
 def _demat_scheme_name(raw):
     name = _AMC_PREFIX.sub("", str(raw or "")).strip()
-    # The PDF text layer leaks control characters into security names.
-    return "".join(ch for ch in name if ch.isprintable()).strip()
+    # The PDF text layer leaks control characters into security names, and
+    # depository text uses # as a security-type separator.
+    clean = "".join(ch for ch in name if ch.isprintable())
+    return re.sub(r"\s+", " ", clean.replace("#", " ")).strip()
 
 
 def map_demat_statement(data):

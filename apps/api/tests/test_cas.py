@@ -47,7 +47,7 @@ def test_demat_mapping():
         ("cdsl:folio:12345678/90", "cdsl", "MF folio 12345678/90"),
     ]
     assert rows["instruments"] == [
-        ("isin:INE000A01010", "stock", "EXAMPLE CORP#EQUITY SHARES", "INE000A01010", "EXAMPLE"),
+        ("isin:INE000A01010", "stock", "EXAMPLE CORP EQUITY SHARES", "INE000A01010", "EXAMPLE"),
         ("amfi:123456", "mf", "Example Flexi Cap Fund Direct Plan Growth", "INF000000001", None),
         ("amfi:234567", "mf", "Example Small Cap Fund Direct Plan Growth", "INF000000002", None),
     ]
@@ -190,7 +190,7 @@ def test_demat_import_endpoint(client, db, monkeypatch):
 def test_demat_reimport_backfills_stock_symbol(client, db, monkeypatch):
     db.execute(
         "INSERT INTO instruments (id, kind, name, isin) VALUES "
-        "('isin:INE000A01010', 'stock', 'EXAMPLE CORP#EQUITY SHARES', 'INE000A01010')"
+        "('isin:INE000A01010', 'stock', 'EXAMPLE CORP EQUITY SHARES', 'INE000A01010')"
     )
     monkeypatch.setattr("app.ingest.cas.casparser.read_cas_pdf", lambda *args, **kwargs: demat_statement())
     response = client.post("/api/portfolio/import/cas", files={"file": ("cas.pdf", b"demat pdf", "application/pdf")}, data={"password": "x"})

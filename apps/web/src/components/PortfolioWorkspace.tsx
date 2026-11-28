@@ -506,11 +506,15 @@ export function PortfolioWorkspace() {
             </div>
             <div className="desk-kpi">
               <span className="kpi-label">Invested</span>
-              <span className="kpi-value">{formatInr(derived.totals.invested)}</span>
+              <span className="kpi-value">
+                {derived.totals.invested === null ? "—" : formatInr(derived.totals.invested)}
+              </span>
               <span className="kpi-sub">
-                {derived.totals.income > 0
-                  ? `Plus ${formatInr(derived.totals.income)} dividends`
-                  : "Money you put in"}
+                {derived.totals.invested === null
+                  ? "Cost history incomplete"
+                  : derived.totals.income > 0
+                    ? `Plus ${formatInr(derived.totals.income)} dividends`
+                    : "Money you put in"}
               </span>
             </div>
             <div className="desk-kpi">
@@ -546,7 +550,7 @@ export function PortfolioWorkspace() {
               </div>
               <GrowthPathChart
                 data={chartData}
-                startAmount={derived.totals.invested}
+                startAmount={derived.totals.invested ?? 0}
                 ariaLabel="Portfolio value over time"
                 series={[{ key: "value", label: "Portfolio", color: "var(--ink)", lead: true }]}
               />

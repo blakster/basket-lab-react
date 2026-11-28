@@ -13,7 +13,7 @@ export type Position = {
 };
 
 export type PortfolioTotals = {
-  invested: number;
+  invested: number | null;
   currentValue: number;
   proceeds: number;
   income: number;
@@ -267,7 +267,7 @@ export function portfolioTotals(
   // statement only covers part of the holding period.
   const gain = complete ? currentValue + proceeds + income - invested : null;
   return {
-    invested,
+    invested: complete ? invested : null,
     currentValue,
     proceeds,
     income,

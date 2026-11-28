@@ -3088,7 +3088,7 @@ button.basket-check[data-state="checked"] {
   border-bottom: 1px solid var(--rule);
 }
 
-.portfolio-desk .desk-kpi:first-child {
+.portfolio-desk .desk-kpi:nth-child(odd) {
   padding-left: 0;
 }
 
